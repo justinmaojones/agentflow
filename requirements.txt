@@ -1,0 +1,10 @@
+gym
+gym[classic_control]
+gym[atari]
+tensorflow
+numpy
+pandas
+matplotlib
+seaborn
+jupyter
+
