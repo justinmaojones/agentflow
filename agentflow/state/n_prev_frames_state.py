@@ -16,15 +16,15 @@ def create_empty_state(frame,n_prev_frames):
 
 class NPrevFramesState(object):
 
-    def __init__(self,n_prev_frames=4,to_dense=False):
+    def __init__(self,n_prev_frames=4,flatten=False):
         self.n_prev_frames = n_prev_frames
-        self.to_dense = to_dense
+        self.flatten = flatten
         self.reset()
 
-    def reset(self):
+    def reset(self,frame=None,**kwargs):
         self._state = None
 
-    def update(self,frame,reset_mask=None,reset_val=0):
+    def update(self,frame,reset_mask=None):
 
         # construct state ndarray using frame as a template
         if self._state is None:
@@ -32,7 +32,7 @@ class NPrevFramesState(object):
 
         # reset state when reset_mask = 1
         if reset_mask is not None:
-            self._state[reset_mask==1] = reset_val
+            self._state[reset_mask==1] = 0 
 
         # update state
         shift_and_update_state(self._state,frame)
@@ -40,8 +40,23 @@ class NPrevFramesState(object):
         return self.state()
 
     def state(self):
-        if self.to_dense:
+        if self.flatten:
             first_dim_size = self._state.shape[0]
             return self._state.reshape(first_dim_size,-1)
         else:
             return self._state
+
+class NPrevFramesStateEnv(object):
+
+    def __init__(self,env,**kwargs):
+        self.state = NPrevFramesState(**kwargs)
+        self.env = env
+
+    def reset(self):
+        frame = self.env.reset()
+        self.state.reset()
+        return self.state.update(frame)
+
+    def step(self,*args,**kwargs):
+        frame, reward, done, info = self.env.step(*args,**kwargs)
+        return self.state.update(frame), reward, done, info

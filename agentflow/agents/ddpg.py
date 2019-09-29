@@ -2,9 +2,6 @@ import tensorflow as tf
 from ..objectives.trfl import dpg, td_learning
 from ..tensorflow.ops import exponential_moving_average
 
-_arg_scope = tf.contrib.framework.arg_scope
-_arg_scope_fns = [tf.layers.batch_normalization,tf.layers.dropout]
-
 class DDPG(object):
 
     def __init__(self,state_shape,action_shape,policy_fn,q_fn,dqda_clipping=None,clip_norm=False):
@@ -41,7 +38,7 @@ class DDPG(object):
         # inputs
         inputs = {
             'state': tf.placeholder(tf.float32,shape=tuple([None]+self.state_shape)),
-            'action': tf.placeholder(tf.int32,shape=tuple([None]+self.action_shape)),
+            'action': tf.placeholder(tf.float32,shape=tuple([None]+self.action_shape)),
             'reward': tf.placeholder(tf.float32,shape=(None,)),
             'done': tf.placeholder(tf.float32,shape=(None,)),
             'state2': tf.placeholder(tf.float32,shape=tuple([None]+self.state_shape)),
@@ -52,36 +49,38 @@ class DDPG(object):
         self.inputs = inputs
 
         # build training networks
-        with _argscope(_argscope_fns,training=True):
 
-            # training network: policy
-            # for input into Q_policy below
-            with tf.variable_scope('policy'):
-                policy_train = self.policy_fn(inputs['state'])
+        # training network: policy
+        # for input into Q_policy below
+        with tf.variable_scope('policy'):
+            policy_train = self.policy_fn(inputs['state'],training=True)
+        
+        # for evaluation in the environment
+        with tf.variable_scope('policy',reuse=True):
+            policy_eval = self.policy_fn(inputs['state'],training=False)
 
-            # training network: Q
-            # for computing gradient of (y-Q(s,a))**2
-            with tf.variable_scope('Q'):
-                Q_action_train = q_fn(inputs['state'],inputs['action'])
+        # training network: Q
+        # for computing TD (time-delay) learning loss
+        with tf.variable_scope('Q'):
+            Q_action_train = self.q_fn(inputs['state'],inputs['action'],training=True)
 
-            # for computing policy gradient w.r.t. Q(state,policy)
-            with tf.variable_scope('Q',reuse=True):
-                Q_policy_train = self.q_fn(inputs['state'],policy_train)
+        # for computing policy gradient w.r.t. Q(state,policy)
+        with tf.variable_scope('Q',reuse=True):
+            Q_policy_train = self.q_fn(inputs['state'],policy_train,training=True)
 
         # target networks
         ema_op, ema_vars_getter = exponential_moving_average(
                 ['Q','policy'],decay=inputs['ema_decay'],zero_debias=True)
 
-        with _argscope(_argscope_fns,training=False):
-            with tf.variable_scope('policy',reuse=True,custom_getter=ema_vars_getter):
-                policy_ema = self.policy_fn(inputs['state2'],training=False)
+        with tf.variable_scope('policy',reuse=True,custom_getter=ema_vars_getter):
+            policy_ema = self.policy_fn(inputs['state2'],training=False)
 
-            with tf.variable_scope('Q',reuse=True,custom_getter=ema_vars_getter):
-                Q_ema_state2 = self.q_fn(inputs['state2'],policy_ema,training=False)
+        with tf.variable_scope('Q',reuse=True,custom_getter=ema_vars_getter):
+            Q_ema_state2 = self.q_fn(inputs['state2'],policy_ema,training=False)
 
         # loss functions
-        loss_Q = td_learning(Q_action,inputs['reward'],inputs['gamma'],Q_ema_state2)
-        loss_policy = dpg(Q_policy,policy,self.dqda_clipping,self.clip_norm)
+        loss_Q = td_learning(Q_action_train,inputs['reward'],inputs['gamma'],Q_ema_state2)
+        loss_policy = dpg(Q_policy_train,policy_train,self.dqda_clipping,self.clip_norm)
         loss = loss_Q + loss_policy
 
         # gradient update for parameters of Q 
@@ -99,8 +98,10 @@ class DDPG(object):
             'loss': loss,
             'loss_Q': loss_Q,
             'loss_policy': loss_policy,
-            'policy': policy,
-            'Q': Q,
+            'policy_train': policy_train,
+            'policy_eval': policy_eval,
+            'Q_action_train': Q_action_train,
+            'Q_policy_train': Q_policy_train,
             'policy_ema': policy_ema,
             'Q_ema_state2': Q_ema_state2,
         }

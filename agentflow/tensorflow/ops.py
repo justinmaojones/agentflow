@@ -10,7 +10,6 @@ def exponential_moving_average(scopes,**kwargs):
         v = getter(name=name,shape=shape,*args,**kwargs)
         ema_output = ema.average(v)
         if ema_output is None:
-            print('CANNOT FIND EMA for %s'%name)
             return v
         else:
             return ema_output
