@@ -1,19 +1,5 @@
 
 
-
-
-
-env = Env()
-obs = env.reset()
-state = preprocess(obs)
-
-state_shape = state.shape[1:]
-action_shape = []
-dqda_clipping = 1
-clip_norm = False
-
-ddpg = DDPG(state_shape,action_shape,policy_fn,q_fn,dqda_clipping,clip_norm)
-
 class Trainer(object):
 
     def __init__(self,env,agent,replay_buffer,preprocess_fn=None):

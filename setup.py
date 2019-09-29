@@ -1,7 +1,7 @@
 from distutils.core import setup
 
 setup(
-	name='rl',
+	name='agentflow',
 	version='1.0',
 	description='reinforcement learning project',
 	author='Justin Mao-Jones',
