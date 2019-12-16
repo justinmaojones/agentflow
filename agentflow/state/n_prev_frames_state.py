@@ -42,9 +42,10 @@ class NPrevFramesState(object):
     def state(self):
         if self.flatten:
             first_dim_size = self._state.shape[0]
-            return self._state.reshape(first_dim_size,-1)
+            output = self._state.reshape(first_dim_size,-1)
         else:
-            return self._state
+            output = self._state
+        return output.copy()
 
 class NPrevFramesStateEnv(object):
 
@@ -60,3 +61,6 @@ class NPrevFramesStateEnv(object):
     def step(self,*args,**kwargs):
         frame, reward, done, info = self.env.step(*args,**kwargs)
         return self.state.update(frame), reward, done, info
+
+    def get_state(self):
+        return self.state.state()

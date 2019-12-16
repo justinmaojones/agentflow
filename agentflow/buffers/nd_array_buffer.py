@@ -46,7 +46,10 @@ class NDArrayBuffer(object):
         return np.concatenate([self.buffer[s] for s in slices],axis=0)
 
     def get(idx):
-        return self.buffer[np.array(idx) % self._n]
+        idx = np.array(idx)
+        if self._n == self.max_length:
+            idx += self._i
+        return self.buffer[idx % self._n]
 
     def sample(self,n=1,seq_size=1):
         assert n > 0

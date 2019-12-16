@@ -1,10 +1,11 @@
 import tensorflow as tf
+import numpy as np
 from ..objectives.trfl import dpg, td_learning
 from ..tensorflow.ops import exponential_moving_average
 
 class DDPG(object):
 
-    def __init__(self,state_shape,action_shape,policy_fn,q_fn,dqda_clipping=None,clip_norm=False):
+    def __init__(self,state_shape,action_shape,policy_fn,q_fn,dqda_clipping=None,clip_norm=False,discrete=False):
         """Implements Deep Deterministic Policy Gradient with Tensorflow
 
         This class builds a DDPG model with optimization update and action prediction steps.
@@ -23,6 +24,7 @@ class DDPG(object):
             between `[-dqda_clipping, dqda_clipping]`.
           clip_norm: Whether to perform dqda clipping on the vector norm of the last
             dimension, or component wise (default).
+          discrete: Whether to treat policy as discrete or continuous.
 
         """
         self.state_shape = list(state_shape)
@@ -31,6 +33,7 @@ class DDPG(object):
         self.q_fn = q_fn
         self.dqda_clipping = dqda_clipping
         self.clip_norm = clip_norm
+        self.discrete = discrete
         self.build_model()
 
     def build_model(self):
@@ -45,6 +48,7 @@ class DDPG(object):
             'gamma': tf.placeholder(tf.float32),
             'learning_rate': tf.placeholder(tf.float32),
             'ema_decay': tf.placeholder(tf.float32),
+            'importance_weight': tf.placeholder(tf.float32,shape=(None,)),
         }
         self.inputs = inputs
 
@@ -74,18 +78,30 @@ class DDPG(object):
 
         with tf.variable_scope('policy',reuse=True,custom_getter=ema_vars_getter):
             policy_ema = self.policy_fn(inputs['state2'],training=False)
+            if self.discrete:
+                pe_depth = self.action_shape[-1] 
+                pe_indices = tf.argmax(policy_ema,axis=-1)
+                policy_ema = tf.one_hot(pe_indices,pe_depth)
 
         with tf.variable_scope('Q',reuse=True,custom_getter=ema_vars_getter):
             Q_ema_state2 = self.q_fn(inputs['state2'],policy_ema,training=False)
 
+        # make sure inputs to loss functions are in the correct shape
+        # (to avoid erroneous broadcasting)
+        reward = tf.reshape(inputs['reward'],[-1])
+        done = tf.reshape(inputs['done'],[-1])
+        Q_action_train = tf.reshape(Q_action_train,[-1])
+        Q_ema_state2 = tf.reshape(Q_ema_state2,[-1])
+
         # loss functions
-        loss_Q = td_learning(Q_action_train,inputs['reward'],inputs['gamma'],Q_ema_state2)
+        loss_Q, y, td_error = td_learning(Q_action_train,reward,inputs['gamma'],(1-done)*Q_ema_state2)
         loss_policy = dpg(Q_policy_train,policy_train,self.dqda_clipping,self.clip_norm)
-        loss = loss_Q + loss_policy
+        loss = tf.reduce_mean(self.inputs['importance_weight']*(loss_Q + loss_policy))
 
         # gradient update for parameters of Q 
         self.optimizer = tf.train.RMSPropOptimizer(inputs['learning_rate']) 
-        train_op = self.optimizer.minimize(loss)
+        with tf.control_dependencies(tf.get_collection(tf.GraphKeys.UPDATE_OPS)):
+            train_op = self.optimizer.minimize(loss)
 
         # used in update step
         self.update_ops = {
@@ -95,6 +111,8 @@ class DDPG(object):
 
         # store attributes for later use
         self.outputs = {
+            'y': y,
+            'td_error': td_error,
             'loss': loss,
             'loss_Q': loss_Q,
             'loss_policy': loss_policy,
@@ -108,19 +126,24 @@ class DDPG(object):
         
     def act(self,state,session=None):
         session = session or tf.get_default_session()
-        return session.run(self.outputs['policy'],{self.inputs['state']:state})
+        return session.run(self.outputs['policy_eval'],{self.inputs['state']:state})
 
-    def update(self,state,action,reward,state2,gamma=0.99,learning_rate=1e-3,ema_decay=0.999,session=None):
+    def update(self,state,action,reward,done,state2,gamma=0.99,learning_rate=1e-3,ema_decay=0.999,importance_weight=None,session=None):
         session = session or tf.get_default_session()
-        sess.run(
-            update_ops,
+        if importance_weight is None:
+            importance_weight = np.ones_like(reward)
+        td_error, _ = session.run(
+            [self.outputs['td_error'],self.update_ops],
             {
                 self.inputs['state']:state,
                 self.inputs['action']:action,
                 self.inputs['reward']:reward,
+                self.inputs['done']:done,
                 self.inputs['state2']:state2,
                 self.inputs['gamma']:gamma,
                 self.inputs['learning_rate']:learning_rate,
                 self.inputs['ema_decay']:ema_decay,
+                self.inputs['importance_weight']:importance_weight,
             }
         )
+        return td_error

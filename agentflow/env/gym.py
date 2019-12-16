@@ -12,8 +12,9 @@ class VecGymEnv(object):
         return np.stack([env.reset() for env in self.envs])
 
     def step(self,action):
-        assert len(action) == len(self.envs)
+        assert len(action) == len(self.envs), '%d %d'%(len(action),len(self.envs))
         obs, rewards, dones, infos = zip(*[env.step(a) for a,env in zip(action,self.envs)])
+        obs = list(obs)
         for i,(done,env) in enumerate(zip(dones,self.envs)):
             if done:
                 obs[i] = env.reset()
@@ -24,4 +25,3 @@ class VecGymEnv(object):
 
     def action_shape(self):
         return tuple([self.n_envs]+list(self.envs[0].action_space.shape))
-

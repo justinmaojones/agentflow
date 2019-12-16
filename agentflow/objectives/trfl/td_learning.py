@@ -56,4 +56,4 @@ def td_learning(v_tm1, r_t, pcont_t, v_t, name="TDLearning"):
     # Loss is MSE scaled by 0.5, so the gradient is equal to the TD error.
     td_error = target - v_tm1
     loss = 0.5 * tf.square(td_error)
-    return loss 
+    return loss, target, td_error 

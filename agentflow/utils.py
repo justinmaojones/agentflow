@@ -1,4 +1,4 @@
-import tesnroflow as tf
+import tensorflow as tf
 
 def check_whats_connected(output):
     for v in tf.global_variables():
