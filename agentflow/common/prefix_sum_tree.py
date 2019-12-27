@@ -1,24 +1,24 @@
 import numpy as np
 import agentflow.buffers.segment_tree_c as segment_tree
 
-class SumPrefixTree(np.ndarray):
+class PrefixSumTree(np.ndarray):
         
     def __new__(self,array):
         
-        assert not isinstance(array,SumPrefixTree), "cannot build SumPrefixTree on another SumPrefixTree object"
+        assert not isinstance(array,PrefixSumTree), "cannot build PrefixSumTree on another PrefixSumTree object"
         
         if (array.base is None or array.size == array.base.size) and array.flags['C_CONTIGUOUS']:
-            return array.view(SumPrefixTree)
+            return array.view(PrefixSumTree)
         
         else:
             # array base is a different size, so return a copy,
             # because it's important that base and self cover the same
             # memory space
-            return array.copy().view(SumPrefixTree)  
+            return array.copy().view(PrefixSumTree)  
         
     def __array_finalize__(self,array):
         
-        if isinstance(self.base,SumPrefixTree):
+        if isinstance(self.base,PrefixSumTree):
             # inherit the same base and sum tree
             self._flat_base = self.base._flat_base
             self._indices = self.base._indices.reshape(array.shape)
@@ -35,7 +35,7 @@ class SumPrefixTree(np.ndarray):
     def __array_wrap__(self, out_arr, context=None):
         # any op that manipulates the array, other than setting values, 
         # should return an ndarray
-        return super(SumPrefixTree, self).__array_wrap__(out_arr, context).view(np.ndarray)
+        return super(PrefixSumTree, self).__array_wrap__(out_arr, context).view(np.ndarray)
     
     def __setitem__(self,idx,val):
         #self.__array__()[idx] = val
@@ -45,7 +45,7 @@ class SumPrefixTree(np.ndarray):
                 indices, values, self._flat_base, self._sumtree)
 
     def __getitem__(self,idx):
-        output = super(SumPrefixTree,self).__getitem__(idx)
+        output = super(PrefixSumTree,self).__getitem__(idx)
         if output.size == self.size and self.base is output.base:
             return output
         else:
