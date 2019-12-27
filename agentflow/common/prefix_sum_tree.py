@@ -29,8 +29,6 @@ class PrefixSumTree(np.ndarray):
             self._indices = np.arange(array.size, dtype=np.int32).reshape(array.shape)
             self._sumtree = np.zeros_like(self._flat_base)
             
-        assert self.size == self.base.size, "self and base should be the same size"
-            
         
     def __array_wrap__(self, out_arr, context=None):
         # any op that manipulates the array, other than setting values, 
@@ -60,7 +58,7 @@ class PrefixSumTree(np.ndarray):
         # init return array
         output = np.zeros(prefix_sum.size,dtype=np.int32)
         # get ids
-        segment_tree.get_prefix_sum_multi_idx2(output,prefix_sum_flat,self,self._sumtree)
+        segment_tree.get_prefix_sum_multi_idx2(output,prefix_sum_flat,self._flat_base,self._sumtree)
         return output.reshape(prefix_sum.shape)
 
     def sample(self,nsamples=1):
@@ -69,7 +67,7 @@ class PrefixSumTree(np.ndarray):
         # init return array
         output = np.zeros(nsamples,dtype=np.int32)
         # get sampled ids
-        segment_tree.get_prefix_sum_multi_idx2(output,vals,self,self._sumtree)
+        segment_tree.get_prefix_sum_multi_idx2(output,vals,self._flat_base,self._sumtree)
         return output
 
 
