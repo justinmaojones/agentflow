@@ -1,6 +1,7 @@
 import numpy as np
 from .nd_array_buffer_last_dim import NDArrayBufferLastDim
-from .segment_tree import CircularSumTree, CircularMinTree
+from ..common.prefix_sum_tree import PrefixSumTree
+
 
 class BufferMap(object):
     
@@ -44,6 +45,29 @@ class BufferMap(object):
         output = {k:self.buffers[k].buffer[idx_batch,...,idx_time] for k in self.buffers}
         return output
 
+class CircularSumTree(PrefixSumTree):
+
+    def __new__(self,agent_dim_size,time_dim_size):
+        return PrefixSumTree((agent_dim_size,time_dim_size)).view(CircularSumTree)
+
+
+    def __init__(self,agent_dim_size,time_dim_size):
+        self._index = 0
+        self.agent_dim_size = agent_dim_size
+        self.time_dim_size = time_dim_size
+        self._full = False
+        
+    def append(self,val):
+        if self._full:
+            dropped = self[:,self._index]
+        else:
+            dropped = None
+        self[:,self._index] = val
+        self._index = (self._index + 1) % self.shape[1]
+        if self._index == 0:
+            self._full = True
+        return dropped
+
 class PrioritizedBufferMap(BufferMap):
 
     def __init__(self,max_length=2**20,last_dim=True,alpha=1.,eps=1e-6,wclip=128.):
@@ -56,8 +80,7 @@ class PrioritizedBufferMap(BufferMap):
 
         assert max_length & (max_length-1) == 0, "max_length must be a power of 2"
         self._sum_tree = None 
-        self._isum_tree = None 
-        self._min_tree = None 
+        self._inv_sum = 0.
 
     def _smooth_and_warp_priority(self,priority):
         p = (np.abs(priority)+self._eps)**self._alpha
@@ -68,16 +91,14 @@ class PrioritizedBufferMap(BufferMap):
     def append(self,data,priority):
         super(PrioritizedBufferMap,self).append(data)
 
-        if not self._sum_tree:
-            self._sum_tree = [CircularSumTree(self.max_length) for i in range(self.first_dim_size)]
-            self._isum_tree = [CircularSumTree(self.max_length) for i in range(self.first_dim_size)]
-            self._min_tree = [CircularMinTree(self.max_length) for i in range(self.first_dim_size)]
+        if self._sum_tree is None:
+            self._sum_tree = CircularSumTree(self.first_dim_size,self.max_length)
 
-        P = self._smooth_and_warp_priority(priority)
-        for i,p in enumerate(P):
-            self._sum_tree[i].append(p)
-            self._isum_tree[i].append(1./p)
-            self._min_tree[i].append(p)
+        p = self._smooth_and_warp_priority(priority)
+        self._inv_sum += (1./p).sum()
+        dropped = self._sum_tree.append(p)
+        if dropped is not None:
+            self._inv_sum -= (1./dropped).sum()
 
     def extend(self,X,priorities):
         for x,p in zip(X,priorities):
@@ -90,27 +111,18 @@ class PrioritizedBufferMap(BufferMap):
 
         # first dim = number of agents
         # last dim = time
-        idx_batch = np.random.choice(self.first_dim_size,size=nsamples,replace=True,p=pr_sums/pr_sum)
-        idx_time = np.array([self._sum_tree[i].sample() for i in idx_batch])
+        idx_sample = self._sum_tree.sample(nsamples)
+        idx_batch = idx_sample // self._sum_tree.time_dim_size
+        idx_time = idx_sample - (idx_batch * self._sum_tree.time_dim_size)
         output = {k:self.buffers[k].buffer[idx_batch,...,idx_time] for k in self.buffers}
 
         # sampled inverse priorities
-        #pr = np.array([self._sum_tree[i][j] for i,j in zip(idx_batch,idx_time)])
-        ipr = np.array([self._isum_tree[i][j] for i,j in zip(idx_batch,idx_time)])
+        ipr = 1./self._sum_tree[idx_batch,idx_time]
 
         # importance weights
-        #p = pr/pr_sum
-        N = len(self._sum_tree)*len(self._sum_tree[0])
-        ipr_sum = sum([tree.sum() for tree in self._isum_tree])
-        w = ipr / ipr_sum * N
-        #wn = w/w.sum()*len(self._sum_tree)*len(self._sum_tree[0])
-        #w = (1./len(self)/p)**beta
-
-        # normalized importance weights
-        #pr_min = min([tree.min() for tree in self._min_tree])
-        #p_min = pr_min/pr_sum
-        #max_w = (1./len(self)/p_min)**beta
-        #w_normed = w/max_w
+        N = self._sum_tree.size
+        ipr_sum = self._inv_sum
+        w = (ipr / ipr_sum * N) ** beta
 
         assert 'importance_weight' not in output
         output['importance_weight'] = w
@@ -121,10 +133,9 @@ class PrioritizedBufferMap(BufferMap):
         return output
 
     def update_priorities(self,priority):
-        P = self._smooth_and_warp_priority(priority)
-        for i,j,p in zip(self._idx_batch,self._idx_time,P):
-            self._sum_tree[i][j] = p
-            self._isum_tree[i][j] = 1./p
-            self._min_tree[i][j] = p
+        p = self._smooth_and_warp_priority(priority)
+        dropped = self._sum_tree[self._idx_batch,self._idx_time]
+        self._sum_tree[self._idx_batch,self._idx_time] = p
+        self._inv_sum += (1./p).sum() - (1./dropped).sum()
         self._idx_batch = None
         self._idx_time = None
