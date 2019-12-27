@@ -3,18 +3,18 @@ import agentflow.buffers.segment_tree_c as segment_tree
 
 class PrefixSumTree(np.ndarray):
         
-    def __new__(self,array):
+    def __new__(self,shape_or_array):
+
+        if isinstance(shape_or_array,PrefixSumTree):
+            return shape_or_array
         
-        assert not isinstance(array,PrefixSumTree), "cannot build PrefixSumTree on another PrefixSumTree object"
-        
-        if (array.base is None or array.size == array.base.size) and array.flags['C_CONTIGUOUS']:
-            return array.view(PrefixSumTree)
-        
+        elif isinstance(shape_or_array,np.ndarray):
+            array = np.zeros(shape_or_array.shape,dtype=np.float64).view(PrefixSumTree)
+            array.ravel()[:] = shape_or_array.ravel()
+            return array
         else:
-            # array base is a different size, so return a copy,
-            # because it's important that base and self cover the same
-            # memory space
-            return array.copy().view(PrefixSumTree)  
+            return np.zeros(shape_or_array,dtype=np.float64).view(PrefixSumTree)
+            
         
     def __array_finalize__(self,array):
         
@@ -38,7 +38,6 @@ class PrefixSumTree(np.ndarray):
         return super(PrefixSumTree, self).__array_wrap__(out_arr, context).view(np.ndarray)
     
     def __setitem__(self,idx,val):
-        #self.__array__()[idx] = val
         indices = np.ascontiguousarray(self._indices[idx]).ravel()
         values = np.ascontiguousarray(val,dtype=self._flat_base.dtype).ravel()
         segment_tree.update_tree_multi2(
@@ -47,12 +46,42 @@ class PrefixSumTree(np.ndarray):
     def __getitem__(self,idx):
         output = super(PrefixSumTree,self).__getitem__(idx)
         if output.size == self.size and self.base is output.base:
+            # if the base is the same and we have the entire array
+            # then it is safe to return as a PrefixSumTree object
             return output
         else:
+            # otherwise, not safe, return a normal ndarray
             return output.view(np.ndarray)
     
     def get_prefix_sum_id(self,prefix_sum):
-        prefix_sum_flat = np.ascontiguousarray(prefix_sum).ravel()
+        # ensure prefix sum is the correct type
+        prefix_sum = np.ascontiguousarray(prefix_sum,dtype=self.dtype)
+        prefix_sum_flat = prefix_sum.ravel()
+        # init return array
         output = np.zeros(prefix_sum.size,dtype=np.int32)
+        # get ids
         segment_tree.get_prefix_sum_multi_idx2(output,prefix_sum_flat,self,self._sumtree)
         return output.reshape(prefix_sum.shape)
+
+    def sample(self,nsamples=1):
+        # sample priority values in the cumulative sum
+        vals = (self.sum() * np.random.rand(nsamples)).astype(self.dtype)
+        # init return array
+        output = np.zeros(nsamples,dtype=np.int32)
+        # get sampled ids
+        segment_tree.get_prefix_sum_multi_idx2(output,vals,self,self._sumtree)
+        return output
+
+
+    def __sum__(self):
+        if len(self) == 1:
+            return self[0]
+        else:
+            return self._sumtree[1]
+
+    def sum(self,*args,**kwargs):
+        if len(args) == 0 and len(kwargs) == 0 and len(self) > 1:
+            return self._sumtree[1]
+        else:
+            return super(PrefixSumTree, self).sum(*args,**kwargs)
+
