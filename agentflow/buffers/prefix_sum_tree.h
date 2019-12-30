@@ -1,7 +1,7 @@
-#ifndef SEGMENT_TREE_H
-#define SEGMENT_TREE_H
+#ifndef PREFIX_SUM_TREE_H
+#define PREFIX_SUM_TREE_H
 
-namespace segment_tree {
+namespace prefix_sum_tree {
     void update_tree_c(int idx, double val, double* array, const int n);
     void update_tree_multi_c(int* idxs, double* vals, const int m, double* array, const int n);
     void update_tree_multi2_c(

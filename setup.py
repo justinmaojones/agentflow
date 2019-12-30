@@ -14,8 +14,10 @@ setup(
     cmdclass={'build_ext': build_ext},
     ext_modules= [
         Extension(
-            'agentflow.buffers.segment_tree_c',
-            sources=['src/_segment_tree.pyx','src/segment_tree.cpp'],
+            'agentflow.buffers.prefix_sum_tree_methods',
+            sources=[
+                'agentflow/buffers/_prefix_sum_tree.pyx',
+                'agentflow/buffers/prefix_sum_tree.cpp'],
             include_dirs=[numpy.get_include()],
             language='C++'),
     ]

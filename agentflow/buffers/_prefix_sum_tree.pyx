@@ -7,26 +7,26 @@ from cython.parallel import prange
 cnp.import_array()
 
 # cdefine the signature of our c function
-cdef extern from "segment_tree.h" namespace "segment_tree" nogil:
+cdef extern from "prefix_sum_tree.h" namespace "prefix_sum_tree" nogil:
     void update_tree_c(int idx, double val, double* array, const int n);
 
-cdef extern from "segment_tree.h" namespace "segment_tree" nogil:
+cdef extern from "prefix_sum_tree.h" namespace "prefix_sum_tree" nogil:
     void update_tree_multi_c(int* idxs, double* val, const int m, double* array, const int n);
 
-cdef extern from "segment_tree.h" namespace "segment_tree" nogil:
+cdef extern from "prefix_sum_tree.h" namespace "prefix_sum_tree" nogil:
     void update_tree_multi2_c(
             int* idxs, const int I,
             double* vals, const int V, 
             double* array, const int n,
             double* sumtree);
 
-cdef extern from "segment_tree.h" namespace "segment_tree" nogil:
+cdef extern from "prefix_sum_tree.h" namespace "prefix_sum_tree" nogil:
     int get_prefix_sum_idx_c(double val, double* array, const int n);
 
-cdef extern from "segment_tree.h" namespace "segment_tree" nogil:
+cdef extern from "prefix_sum_tree.h" namespace "prefix_sum_tree" nogil:
     void get_prefix_sum_idx_multi_c(int* outarray, double* vals, const int m, double* array, const int n); 
 
-cdef extern from "segment_tree.h" namespace "segment_tree" nogil:
+cdef extern from "prefix_sum_tree.h" namespace "prefix_sum_tree" nogil:
     void get_prefix_sum_idx_multi2_c(int* outarray, double* vals, const int m, double* array, const int n, double* sumtree);
 
 
