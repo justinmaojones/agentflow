@@ -96,7 +96,7 @@ namespace prefix_sum_tree {
         }
     }
 
-    int get_prefix_sum_idx2_c(double val, double* array, double* sumtree, const int n) {
+    int get_prefix_sum_idx_disjoint_c(double val, double* array, double* sumtree, const int n) {
         int i = 1;
         double left_val;
         while(i < n) {
@@ -116,9 +116,9 @@ namespace prefix_sum_tree {
         return i - n;
     }
 
-    void get_prefix_sum_idx_multi2_c(int* outarray, double* vals, const int m, double* array, const int n, double* sumtree) {
+    void get_prefix_sum_idx_disjoint_multi_c(int* outarray, double* vals, const int m, double* array, const int n, double* sumtree) {
         for(int i=0; i<m; i++) {
-            *outarray = get_prefix_sum_idx2_c(*vals,array,sumtree,n);
+            *outarray = get_prefix_sum_idx_disjoint_c(*vals,array,sumtree,n);
             outarray++;
             vals++;
         }

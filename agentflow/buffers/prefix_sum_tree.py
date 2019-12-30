@@ -1,5 +1,5 @@
 import numpy as np
-import agentflow.buffers.segment_tree_c as segment_tree
+import agentflow.buffers.prefix_sum_tree_methods as prefix_sum_tree_methods
 
 class PrefixSumTree(np.ndarray):
         
@@ -38,7 +38,7 @@ class PrefixSumTree(np.ndarray):
     def __setitem__(self,idx,val):
         indices = np.ascontiguousarray(self._indices[idx]).ravel()
         values = np.ascontiguousarray(val,dtype=self._flat_base.dtype).ravel()
-        segment_tree.update_tree_multi2(
+        prefix_sum_tree_methods.update_disjoint_tree_multi(
                 indices, values, self._flat_base, self._sumtree)
 
     def __getitem__(self,idx):
@@ -58,7 +58,7 @@ class PrefixSumTree(np.ndarray):
         # init return array
         output = np.zeros(prefix_sum.size,dtype=np.int32)
         # get ids
-        segment_tree.get_prefix_sum_multi_idx2(output,prefix_sum_flat,self._flat_base,self._sumtree)
+        prefix_sum_tree_methods.get_prefix_sum_multi_idx2(output,prefix_sum_flat,self._flat_base,self._sumtree)
         return output.reshape(prefix_sum.shape)
 
     def sample(self,nsamples=1):
@@ -67,7 +67,7 @@ class PrefixSumTree(np.ndarray):
         # init return array
         output = np.zeros(nsamples,dtype=np.int32)
         # get sampled ids
-        segment_tree.get_prefix_sum_multi_idx2(output,vals,self._flat_base,self._sumtree)
+        prefix_sum_tree_methods.get_prefix_sum_multi_idx2(output,vals,self._flat_base,self._sumtree)
         return output
 
 

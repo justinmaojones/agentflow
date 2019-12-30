@@ -14,7 +14,7 @@ cdef extern from "prefix_sum_tree.h" namespace "prefix_sum_tree" nogil:
     void update_tree_multi_c(int* idxs, double* val, const int m, double* array, const int n);
 
 cdef extern from "prefix_sum_tree.h" namespace "prefix_sum_tree" nogil:
-    void update_tree_multi2_c(
+    void update_disjoint_tree_multi_c(
             int* idxs, const int I,
             double* vals, const int V, 
             double* array, const int n,
@@ -27,7 +27,7 @@ cdef extern from "prefix_sum_tree.h" namespace "prefix_sum_tree" nogil:
     void get_prefix_sum_idx_multi_c(int* outarray, double* vals, const int m, double* array, const int n); 
 
 cdef extern from "prefix_sum_tree.h" namespace "prefix_sum_tree" nogil:
-    void get_prefix_sum_idx_multi2_c(int* outarray, double* vals, const int m, double* array, const int n, double* sumtree);
+    void get_prefix_sum_idx_disjoint_multi_c(int* outarray, double* vals, const int m, double* array, const int n, double* sumtree);
 
 
 def update_tree(
@@ -49,7 +49,7 @@ def update_tree_multi(
 
     update_tree_multi_c(&idxs[0], &vals[0], m, &array[0], n);
 
-def update_tree_multi2(
+def update_disjoint_tree_multi(
             cnp.ndarray[int, ndim=1, mode="c"] idxs not None,
             cnp.ndarray[double, ndim=1, mode="c"] vals not None,
             cnp.ndarray[double, ndim=1, mode="c"] array not None,
@@ -59,19 +59,7 @@ def update_tree_multi2(
     cdef int I = idxs.shape[0];
     cdef int V = vals.shape[0];
 
-    update_tree_multi2_c(&idxs[0], I, &vals[0], V, &array[0], n, &sumtree[0]);
-
-def update_tree_multi3(
-            cnp.ndarray[double, ndim=1, mode="c"] ref not None,
-            cnp.ndarray[double, ndim=1, mode="c"] vals not None,
-            cnp.ndarray[double, ndim=1, mode="c"] array not None,
-            cnp.ndarray[double, ndim=1, mode="c"] sumtree not None):
-
-    cdef int n = sumtree.shape[0];
-    cdef int m = vals.shape[0];
-
-    #update_tree_multi3_c(&ref[0],&vals[0],&array[0],m,sumtree,n);
-
+    update_disjoint_tree_multi_c(&idxs[0], I, &vals[0], V, &array[0], n, &sumtree[0]);
 
 def get_prefix_sum_idx(
             double val,
@@ -93,17 +81,6 @@ def get_prefix_sum_multi_idx(
 
     return output
 
-def get_index(
-            cnp.ndarray[double, ndim=1, mode="c"] array1 not None,
-            cnp.ndarray[double, ndim=1, mode="c"] array2 not None):
-
-    return &array2[0] - &array1[0]
-
-def get_ref(
-        cnp.ndarray[double, ndim=1, mode="c"] array1 not None):
-
-    return array1.data[0]
-            
 def get_prefix_sum_multi_idx2(
             cnp.ndarray[int, ndim=1, mode="c"] output not None,
             cnp.ndarray[double, ndim=1, mode="c"] vals not None,
@@ -113,7 +90,7 @@ def get_prefix_sum_multi_idx2(
     cdef int n = sumtree.shape[0];
     cdef int m = vals.shape[0];
 
-    get_prefix_sum_idx_multi2_c(&output[0], &vals[0], m, &array[0], n, &sumtree[0]);
+    get_prefix_sum_idx_disjoint_multi_c(&output[0], &vals[0], m, &array[0], n, &sumtree[0]);
 
     return output
 
