@@ -1,6 +1,6 @@
 import unittest
 import numpy as np
-from agentflow.buffers.segment_tree import SumTree, MinTree
+from agentflow.buffers.prefix_tree_slow import SumTree, MinTree
 
 class TestSumTree(unittest.TestCase):
 

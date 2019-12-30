@@ -1,6 +1,6 @@
 import unittest
 import numpy as np
-from agentflow.common.prefix_sum_tree import PrefixSumTree
+from agentflow.buffers.prefix_sum_tree import PrefixSumTree
 
 class TestPrefixSumTree(unittest.TestCase):
 
