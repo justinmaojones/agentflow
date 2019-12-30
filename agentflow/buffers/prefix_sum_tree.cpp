@@ -1,9 +1,10 @@
 #include <math.h>
 #include <stdio.h>
-#include "segment_tree.h"
+#include "prefix_sum_tree.h"
 
-namespace segment_tree {
+namespace prefix_sum_tree {
     void update_tree_c(int idx, double val, double* array, const int n) {
+        // assumes first half of array is sumtree and second half of array are the leaves
         array += idx + n;
         idx += n;
         val -= *array;
@@ -27,7 +28,8 @@ namespace segment_tree {
         }
     }
 
-    void update_tree2_c(int idx, double val, double* array, const int n, double* sumtree) {
+    void update_disjoint_tree_c(int idx, double val, double* array, const int n, double* sumtree) {
+        // assumes array and sumtree are the same size, where sumtree is a prefix sum tree of array
         array += idx;
         idx = (idx + n)/2; // idx of parent in sumtree
         double diff = val - *array;
@@ -40,7 +42,7 @@ namespace segment_tree {
         }
     }
 
-    void update_tree_multi2_c(
+    void update_disjoint_tree_multi_c(
             int* idxs, const int I,
             double* vals, const int V, 
             double* array, const int n,
@@ -49,7 +51,7 @@ namespace segment_tree {
         const double* vals0 = vals;
         int v = 0;
         for(int i=0; i<I; i++) {
-            update_tree2_c(*idxs,*vals,array,n,sumtree);
+            update_disjoint_tree_c(*idxs,*vals,array,n,sumtree);
             idxs++;
             vals++;
             v++;
@@ -62,27 +64,11 @@ namespace segment_tree {
         }
     }
 
-    void update_tree3_c(double* ref, double* val, double* array, double* sumtree, const int n) {
-        int idx = (array - ref + n) / 2;
-        double diff = *val - *array;
-        *array = *val;
-        sumtree += idx;
-        while(idx > 0) {
-            *sumtree += diff;
-            sumtree -= idx - (idx/2);
-            idx /= 2;
-        }
-    }
-
-    void update_tree_multi3_c(double* ref, double* vals, double* array, const int m, double* sumtree, const int n) {
-        for(int i=0; i<m; i++) {
-            update_tree3_c(ref,vals,array,sumtree,n);
-            vals++;
-            array++;
-        }
-    }
-
     int get_prefix_sum_idx_c(double val, double* array, const int n) {
+        // assumes first half of array is sumtree and second half of array are the leaves
+        // if val < 0 returns 0, 
+        // elif val >= sum(array) returns n
+        // else returns an index i such that sum(leaves[:i]) < val <= sum(leaves[:i+1])
         int i = 1;
         while(i<n) {
             int left = 2*i;

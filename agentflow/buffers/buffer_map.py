@@ -1,6 +1,6 @@
 import numpy as np
 from .nd_array_buffer_last_dim import NDArrayBufferLastDim
-from ..common.prefix_sum_tree import PrefixSumTree
+from .prefix_sum_tree import PrefixSumTree
 
 
 class BufferMap(object):
