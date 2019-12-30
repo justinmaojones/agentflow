@@ -10,6 +10,7 @@ import numpy as np
 import h5py
 import os
 import yaml 
+import time
 import click
 
 def dense_net(x,units,layers,batchnorm=True,activation=tf.nn.relu,training=False,**kwargs):
@@ -103,6 +104,9 @@ def noisy_action(action,eps=1.,clip=5e-2):
 @click.option('--seed',default=None, type=int)
 def run(**kwargs):
 
+    for k in sorted(kwargs):
+        print('CONFIG: ',k,str(kwargs[k]))
+
     discrete = True
     T = kwargs['num_steps']
     n_envs = kwargs['n_envs']
@@ -160,15 +164,22 @@ def run(**kwargs):
         'reward_history': [],
         'action_history': [],
         'test_ep_returns': [],
+        'test_ep_steps': [],
+        'step_duration_sec': [],
+        'duration_cumulative': [],
     }
 
     state = env.reset()
+
+    start_time = time.time()
 
     with tf.Session() as sess:
         sess.run(tf.global_variables_initializer())
 
         pb = tf.keras.utils.Progbar(T)
         for t in range(T):
+
+            start_step_time = time.time()
 
             action = agent.act(state)
             if len(replay_buffer) >= begin_learning_at_step:
@@ -196,11 +207,16 @@ def run(**kwargs):
 
             if t % 100 == 0 and t > 0:
                 log['test_ep_returns'].append(test_agent(test_env,agent))
+                log['test_ep_steps'].append(t)
 
                 pb.add(1,[('avg_action', action.mean()),('test_ep_returns', log['test_ep_returns'][-1])])
             else:
 
                 pb.add(1,[('avg_action', action.mean())])
+
+            end_time = time.time()
+            log['step_duration_sec'].append(end_time-start_step_time)
+            log['duration_cumulative'].append(end_time-start_time)
 
     with h5py.File(os.path.join(savedir,'log.h5'), 'w') as f:
         for k in log:
