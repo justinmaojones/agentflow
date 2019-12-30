@@ -1,9 +1,9 @@
-gym
-gym[classic_control]
-gym[atari]
-tensorflow
-numpy
-pandas
+gym==0.13.1
+gym[classic_control]==0.13.1
+gym[atari]==0.13.1
+tensorflow==0.14.0
+numpy==1.16.4
+pandas==0.24.2
 matplotlib
 seaborn
 jupyter
