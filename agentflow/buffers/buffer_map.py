@@ -88,8 +88,11 @@ class PrioritizedBufferMap(BufferMap):
         p = 1./ip
         return p
 
-    def append(self,data,priority):
+    def append(self,data,priority=None):
         super(PrioritizedBufferMap,self).append(data)
+
+        if priority is None:
+            priority = np.ones((self.first_dim_size,1))
 
         if self._sum_tree is None:
             self._sum_tree = CircularSumTree(self.first_dim_size,self.max_length)
