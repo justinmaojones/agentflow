@@ -12,10 +12,6 @@ import os
 import yaml 
 import click
 
-# Settings
-
-# Build environment and agent
-
 def dense_net(x,units,layers,batchnorm=True,activation=tf.nn.relu,training=False,**kwargs):
 
     assert isinstance(layers,int) and layers > 0, 'layers should be a positive integer'
@@ -103,6 +99,8 @@ def noisy_action(action,eps=1.,clip=5e-2):
 @click.option('--buffer_size', default=2**11, type=int)
 @click.option('--begin_learning_at_step', default=2e3)
 @click.option('--batchsize', default=100)
+@click.option('--savedir', default='results')
+@click.option('--seed',default=None, type=int)
 def run(**kwargs):
 
     discrete = True
@@ -119,14 +117,18 @@ def run(**kwargs):
     buffer_size = kwargs['buffer_size']
     begin_learning_at_step = kwargs['begin_learning_at_step']
     batchsize = kwargs['batchsize']
+    savedir = kwargs['savedir']
+
+    if kwargs['seed'] is not None:
+        np.random.seed(kwargs['seed'])
+        tf.set_random_seed(int(np.random.choice(int(1e6))+1))
 
     kwarg_hash = str(hash(str(sorted(kwargs))))
-    savedir = 'results/experiment' + kwarg_hash
+    savedir = os.path.join(savedir,'experiment' + kwarg_hash)
     os.system('mkdir -p {savedir}'.format(**locals()))
 
     with open(os.path.join(savedir,'config.yaml'),'w') as f:
         yaml.dump(kwargs, f)
-
 
     # Environment
     env = VecGymEnv(env_id,n_envs=n_envs)
