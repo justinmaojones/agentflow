@@ -1,5 +1,5 @@
 import numpy as np
-import agentflow.buffers.prefix_sum_tree_methods as prefix_sum_tree_methods
+from agentflow.buffers import prefix_sum_tree_methods
 
 class PrefixSumTree(np.ndarray):
         

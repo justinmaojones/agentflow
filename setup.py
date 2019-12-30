@@ -10,7 +10,7 @@ setup(
 	author='Justin Mao-Jones',
 	author_email='justinmaojones@gmail.com',
 	install_requires=open('requirements.txt').read(),
-	packages=[],
+	packages=['agentflow'],
     cmdclass={'build_ext': build_ext},
     ext_modules= [
         Extension(

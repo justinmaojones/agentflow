@@ -77,18 +77,6 @@ class TestSumTree(unittest.TestCase):
             # test get_prefix_sum_idx
             self.run_test_get_prefix_sum_idx(x,sum_tree)
 
-    def test_sum_tree_sample(self):
-
-        for size in range(2,16):
-            x = np.random.choice(50,size=size)
-            sum_tree = SumTree(size)
-
-            for i,v in enumerate(x):
-                sum_tree[i] = v
-
-            self.assertTrue(len(set(sum_tree.sample(100)))>1)
-
-
 class TestMinTree(unittest.TestCase):
 
     def test_min_tree(self):
