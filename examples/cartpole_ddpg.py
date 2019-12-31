@@ -20,11 +20,7 @@ def build_net_fn(hidden_dims,hidden_layers,output_dim,batchnorm):
         if batchnorm:
             BN = tf.layers.BatchNormalization()
             h = BN(h,training=training)
-
-            h = dense_net(h,hidden_dims,hidden_layers,batchnorm=False,training=training)
-        else:
-            h = dense_net(h,hidden_dims,hidden_layers,batchnorm=False,training=training)
-
+        h = dense_net(h,hidden_dims,hidden_layers,batchnorm=False,training=training)
         return tf.layers.dense(h,output_dim)
     return net_fn
 
@@ -65,7 +61,7 @@ def test_agent(test_env,agent):
 @click.option('--begin_learning_at_step', default=1000)
 @click.option('--learning_rate', default=1e-4)
 @click.option('--n_update_steps', default=2, type=int)
-@click.option('--n_steps_per_update', default=4, type=int)
+@click.option('--update_freq', default=4, type=int)
 @click.option('--n_steps_per_eval', default=100, type=int)
 @click.option('--batchsize', default=100)
 @click.option('--savedir', default='results')
@@ -114,11 +110,14 @@ def run(**cfg):
 
     agent = DDPG(state_shape[1:],[2],policy_fn,q_fn,cfg['dqda_clipping'],cfg['clip_norm'],discrete=discrete)
 
-    # Train and Test
-    VARVALS = {v.name:tf.reduce_mean(tf.square(v)) for v in tf.global_variables()}
-
+    # Replay Buffer
     if cfg['buffer_type'] == 'prioritized':
-        replay_buffer = PrioritizedBufferMap(cfg['buffer_size'],alpha=0.5,eps=0.1)
+        n_beta_annealing_steps = cfg['num_steps']/cfg['update_freq']*cfg['n_update_steps']
+        replay_buffer = PrioritizedBufferMap(
+                cfg['buffer_size'],
+                alpha=0.5,
+                eps=0.1,
+                n_beta_annealing_steps=n_beta_annealing_steps)
     else:
         replay_buffer = BufferMap(cfg['buffer_size'])
 
@@ -148,34 +147,37 @@ def run(**cfg):
             if len(replay_buffer) >= cfg['begin_learning_at_step']:
                 action = noisy_action(action)
             else:
-                action = np.random.choice(2,size=len(action))
+                action = np.random.choice(action.shape[1],size=len(action))
 
             state2, reward, done, info = env.step(action.astype('int').ravel())
 
             log['reward_history'].append(reward)
             log['action_history'].append(action)
 
-            replay_buffer.append({'state':state,'action':onehot(action),'reward':reward,'done':done,'state2':state2})
+            replay_buffer.append({
+                'state':state,
+                'action':onehot(action),
+                'reward':reward,
+                'done':done,
+                'state2':state2
+            })
             state = state2
 
             if len(replay_buffer) >= cfg['begin_learning_at_step']:
-                if t % cfg['n_steps_per_update'] == 0:
+                if t % cfg['update_freq'] == 0:
                     for i in range(cfg['n_update_steps']):
                         if cfg['buffer_type'] == 'prioritized':
-                            beta = t*1./T
-                            td_error = agent.update(learning_rate=1e-4,**replay_buffer.sample(cfg['batchsize'],beta=beta))
+                            td_error = agent.update(learning_rate=cfg['learning_rate'],**replay_buffer.sample(cfg['batchsize']))
                             replay_buffer.update_priorities(td_error)
                         else:
-                            agent.update(learning_rate=1e-4,**replay_buffer.sample(cfg['batchsize']))
+                            agent.update(learning_rate=cfg['learning_rate'],**replay_buffer.sample(cfg['batchsize']))
 
 
             if t % cfg['n_steps_per_eval'] == 0 and t > 0:
                 log['test_ep_returns'].append(test_agent(test_env,agent))
                 log['test_ep_steps'].append(t)
-
                 pb.add(1,[('avg_action', action.mean()),('test_ep_returns', log['test_ep_returns'][-1])])
             else:
-
                 pb.add(1,[('avg_action', action.mean())])
 
             end_time = time.time()
