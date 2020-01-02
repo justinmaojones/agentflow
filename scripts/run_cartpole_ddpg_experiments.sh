@@ -1,4 +1,4 @@
-export NUMSTEPS=20000
+export NUMSTEPS=10000
 
 python examples/cartpole_ddpg.py --num_steps=$NUMSTEPS --buffer_type=prioritized --seed=1 --savedir='results/cartpole_ddpg/prioritized_buffer'
 python examples/cartpole_ddpg.py --num_steps=$NUMSTEPS --buffer_type=prioritized --seed=2 --savedir='results/cartpole_ddpg/prioritized_buffer'

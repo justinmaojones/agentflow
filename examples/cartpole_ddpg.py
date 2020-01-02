@@ -113,9 +113,10 @@ def run(**cfg):
     # Replay Buffer
     if cfg['buffer_type'] == 'prioritized':
         n_beta_annealing_steps = cfg['num_steps']/cfg['update_freq']*cfg['n_update_steps']
+        print('CONFIG: ','n_beta_annealing_steps',n_beta_annealing_steps)
         replay_buffer = PrioritizedBufferMap(
                 cfg['buffer_size'],
-                alpha=0.5,
+                alpha=1.,
                 eps=0.1,
                 n_beta_annealing_steps=n_beta_annealing_steps)
     else:
@@ -140,7 +141,6 @@ def run(**cfg):
         T = cfg['num_steps']
         pb = tf.keras.utils.Progbar(T)
         for t in range(T):
-
             start_step_time = time.time()
 
             action = agent.act(state)
@@ -151,9 +151,6 @@ def run(**cfg):
 
             state2, reward, done, info = env.step(action.astype('int').ravel())
 
-            log['reward_history'].append(reward)
-            log['action_history'].append(action)
-
             replay_buffer.append({
                 'state':state,
                 'action':onehot(action),
@@ -161,28 +158,32 @@ def run(**cfg):
                 'done':done,
                 'state2':state2
             })
-            state = state2
+            state = state2 
 
-            if len(replay_buffer) >= cfg['begin_learning_at_step']:
-                if t % cfg['update_freq'] == 0:
-                    for i in range(cfg['n_update_steps']):
-                        if cfg['buffer_type'] == 'prioritized':
-                            td_error = agent.update(learning_rate=cfg['learning_rate'],**replay_buffer.sample(cfg['batchsize']))
-                            replay_buffer.update_priorities(td_error)
-                        else:
-                            agent.update(learning_rate=cfg['learning_rate'],**replay_buffer.sample(cfg['batchsize']))
+            if len(replay_buffer) >= cfg['begin_learning_at_step'] and t % cfg['update_freq'] == 0:
+                for i in range(cfg['n_update_steps']):
+                    if cfg['buffer_type'] == 'prioritized':
+                        beta = t*1/T
+                        td_error = agent.update(learning_rate=cfg['learning_rate'],**replay_buffer.sample(cfg['batchsize'],beta=beta))
+                        replay_buffer.update_priorities(td_error)
+                    else:
+                        agent.update(learning_rate=cfg['learning_rate'],**replay_buffer.sample(cfg['batchsize']))
 
-
+            # Bookkeeping
+            log['reward_history'].append(reward)
+            log['action_history'].append(action)
             if t % cfg['n_steps_per_eval'] == 0 and t > 0:
                 log['test_ep_returns'].append(test_agent(test_env,agent))
                 log['test_ep_steps'].append(t)
                 pb.add(1,[('avg_action', action.mean()),('test_ep_returns', log['test_ep_returns'][-1])])
             else:
                 pb.add(1,[('avg_action', action.mean())])
-
             end_time = time.time()
             log['step_duration_sec'].append(end_time-start_step_time)
             log['duration_cumulative'].append(end_time-start_time)
+
+    if cfg['buffer_type'] == 'prioritized':
+        log['priorities'] = replay_buffer
 
     with h5py.File(os.path.join(savedir,'log.h5'), 'w') as f:
         for k in log:
