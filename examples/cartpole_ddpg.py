@@ -58,6 +58,10 @@ def test_agent(test_env,agent):
 @click.option('--batchnorm', default=True, type=bool)
 @click.option('--buffer_type', default='normal', type=click.Choice(['normal','prioritized']))
 @click.option('--buffer_size', default=2**11, type=int)
+@click.option('--prioritized_replay_alpha', default=0.6, type=float)
+@click.option('--prioritized_replay_beta0', default=0.4, type=float)
+@click.option('--prioritized_replay_beta_iters', default=None, type=int)
+@click.option('--prioritized_replay_eps', default=1e-6, type=float)
 @click.option('--begin_learning_at_step', default=1000)
 @click.option('--learning_rate', default=1e-4)
 @click.option('--n_update_steps', default=2, type=int)
@@ -75,7 +79,7 @@ def run(**cfg):
 
     if cfg['seed'] is not None:
         np.random.seed(cfg['seed'])
-        tf.set_random_seed(int(np.random.choice(int(1e6))+1))
+        tf.set_random_seed(int(10*cfg['seed']))
 
     cfg_hash = str(hash(str(sorted(cfg))))
     savedir = os.path.join(cfg['savedir'],'experiment' + cfg_hash)
@@ -112,13 +116,10 @@ def run(**cfg):
 
     # Replay Buffer
     if cfg['buffer_type'] == 'prioritized':
-        n_beta_annealing_steps = cfg['num_steps']/cfg['update_freq']*cfg['n_update_steps']
-        print('CONFIG: ','n_beta_annealing_steps',n_beta_annealing_steps)
         replay_buffer = PrioritizedBufferMap(
                 cfg['buffer_size'],
-                alpha=1.,
-                eps=0.1,
-                n_beta_annealing_steps=n_beta_annealing_steps)
+                alpha=cfg['prioritized_replay_alpha'],
+                eps=cfg['prioritized_replay_eps'])
     else:
         replay_buffer = BufferMap(cfg['buffer_size'])
 
@@ -129,6 +130,8 @@ def run(**cfg):
         'test_ep_steps': [],
         'step_duration_sec': [],
         'duration_cumulative': [],
+        'beta': [],
+        'max_importance_weight': [],
     }
 
     state = env.reset()
@@ -139,6 +142,8 @@ def run(**cfg):
         sess.run(tf.global_variables_initializer())
 
         T = cfg['num_steps']
+        T_beta = T if cfg['prioritized_replay_beta_iters'] is None else cfg['prioritized_replay_beta_iters']
+        beta0 = cfg['prioritized_replay_beta0']
         pb = tf.keras.utils.Progbar(T)
         for t in range(T):
             start_step_time = time.time()
@@ -163,8 +168,11 @@ def run(**cfg):
             if len(replay_buffer) >= cfg['begin_learning_at_step'] and t % cfg['update_freq'] == 0:
                 for i in range(cfg['n_update_steps']):
                     if cfg['buffer_type'] == 'prioritized':
-                        beta = t*1/T
-                        td_error = agent.update(learning_rate=cfg['learning_rate'],**replay_buffer.sample(cfg['batchsize'],beta=beta))
+                        beta = beta0 + (1.-beta0)*min(1.,float(t)/T_beta)
+                        log['beta'].append(beta)
+                        sample = replay_buffer.sample(cfg['batchsize'],beta=beta)
+                        log['max_importance_weight'].append(sample['importance_weight'].max())
+                        td_error = agent.update(learning_rate=cfg['learning_rate'],**sample)
                         replay_buffer.update_priorities(td_error)
                     else:
                         agent.update(learning_rate=cfg['learning_rate'],**replay_buffer.sample(cfg['batchsize']))
@@ -183,10 +191,13 @@ def run(**cfg):
             log['duration_cumulative'].append(end_time-start_time)
 
     if cfg['buffer_type'] == 'prioritized':
-        log['priorities'] = replay_buffer
+        log['priorities'] = replay_buffer.priorities()
+        log['sample_importance_weights'] = replay_buffer.sample(1000,beta=1.)['importance_weight']
 
     with h5py.File(os.path.join(savedir,'log.h5'), 'w') as f:
+        print('writing to h5 file')
         for k in log:
+            print('H5: %s'%k)
             f[k] = log[k]
 
 if __name__=='__main__':

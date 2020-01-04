@@ -43,12 +43,12 @@ class PrefixSumTree(np.ndarray):
 
     def __getitem__(self,idx):
         output = super(PrefixSumTree,self).__getitem__(idx)
-        if output.size == self.size and self.base is output.base:
-            # if the base is the same and we have the entire array
-            # then it is safe to return as a PrefixSumTree object
-            return output
+        if self is output.base or self is output:
+            # if the output is a view of self, then copy it
+            # because working directly with a view of self is dangerous
+            return output.view(np.ndarray).copy()
         else:
-            # otherwise, not safe, return a normal ndarray
+            # otherwise, already copied, so return a normal ndarray
             return output.view(np.ndarray)
     
     def get_prefix_sum_id(self,prefix_sum):
