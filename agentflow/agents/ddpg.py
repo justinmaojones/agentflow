@@ -127,13 +127,17 @@ class DDPG(object):
     def act(self,state,session=None):
         session = session or tf.get_default_session()
         return session.run(self.outputs['policy_eval'],{self.inputs['state']:state})
+        
+    def act_train(self,state,session=None):
+        session = session or tf.get_default_session()
+        return session.run(self.outputs['policy_train'],{self.inputs['state']:state})
 
-    def update(self,state,action,reward,done,state2,gamma=0.99,learning_rate=1e-3,ema_decay=0.999,importance_weight=None,session=None):
+    def update(self,state,action,reward,done,state2,gamma=0.99,learning_rate=1e-3,ema_decay=0.999,importance_weight=None,session=None,outputs=['td_error']):
         session = session or tf.get_default_session()
         if importance_weight is None:
             importance_weight = np.ones_like(reward)
-        td_error, _ = session.run(
-            [self.outputs['td_error'],self.update_ops],
+        my_outputs, _ = session.run(
+            [[self.outputs[k] for k in outputs],self.update_ops],
             {
                 self.inputs['state']:state,
                 self.inputs['action']:action,
@@ -146,4 +150,4 @@ class DDPG(object):
                 self.inputs['importance_weight']:importance_weight,
             }
         )
-        return td_error
+        return my_outputs
