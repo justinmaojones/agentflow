@@ -72,8 +72,10 @@ def noisy_action(action_softmax,eps=1.,clip=5e-2):
 @click.option('--prioritized_replay_beta_iters', default=None, type=int)
 @click.option('--prioritized_replay_eps', default=1e-6, type=float)
 @click.option('--prioritized_replay_weights_uniform', default=False, type=bool)
+@click.option('--prioritized_replay_compute_init', default=False, type=bool)
 @click.option('--begin_learning_at_step', default=1e4)
 @click.option('--learning_rate', default=1e-4)
+@click.option('--gamma', default=0.99)
 @click.option('--n_update_steps', default=4, type=int)
 @click.option('--update_freq', default=1, type=int)
 @click.option('--n_steps_per_eval', default=100, type=int)
@@ -107,11 +109,13 @@ def run(**cfg):
     test_env = NPrevFramesStateEnv(test_env,n_prev_frames=4,flatten=True)
 
     if cfg['add_episode_time_state']:
+        print('ADDING EPISODE TIME STATES')
         env = AddEpisodeTimeStateEnv(env) 
         test_env = AddEpisodeTimeStateEnv(test_env) 
 
     state = env.reset()
     state_shape = state.shape
+    print('STATE SHAPE: ',state_shape)
     action_shape = env.env.action_shape()
 
     # Agent
@@ -177,13 +181,20 @@ def run(**cfg):
 
             state2, reward, done, info = env.step(action.astype('int').ravel())
 
-            replay_buffer.append({
+            data = {
                 'state':state,
                 'action':onehot(action),
                 'reward':reward,
                 'done':done,
                 'state2':state2
-            })
+            }
+            if cfg['buffer_type'] == 'prioritized' and cfg['prioritized_replay_compute_init']:
+                replay_buffer.append(
+                    data,
+                    priority = sess.run(agent.outputs['td_error'],agent.get_inputs(gamma=cfg['gamma'],**data))
+                )
+            else:
+                replay_buffer.append(data)
             state = state2 
 
             pb_input = []
@@ -202,6 +213,7 @@ def run(**cfg):
                         td_error, Q_ema_state2 = agent.update(
                                 learning_rate=cfg['learning_rate'],
                                 ema_decay=cfg['ema_decay'],
+                                gamma=cfg['gamma'],
                                 outputs=['td_error','Q_ema_state2'],
                                 **sample)
 
@@ -213,6 +225,7 @@ def run(**cfg):
                         Q_ema_state2, = agent.update(
                                 learning_rate=cfg['learning_rate'],
                                 ema_decay=cfg['ema_decay'],
+                                gamma=cfg['gamma'],
                                 outputs=['Q_ema_state2'],
                                 **sample)
                 pb_input.append(('Q_ema_state2', Q_ema_state2.mean()))
