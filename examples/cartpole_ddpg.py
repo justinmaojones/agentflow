@@ -1,8 +1,8 @@
 from agentflow.env import VecGymEnv
 from agentflow.agents import DDPG
 from agentflow.buffers import BufferMap, PrioritizedBufferMap
-from agentflow.state import NPrevFramesStateEnv
-from agentflow.numpy.ops import onehot, noisy_action 
+from agentflow.state import NPrevFramesStateEnv, AddEpisodeTimeStateEnv
+from agentflow.numpy.ops import onehot
 from agentflow.tensorflow.nn import dense_net
 from agentflow.tensorflow.ops import normalize_ema
 from agentflow.utils import check_whats_connected
@@ -46,26 +46,36 @@ def test_agent(test_env,agent):
         rt += reward.sum()
     return rt
 
+def noisy_action(action_softmax,eps=1.,clip=5e-2):
+    action_softmax_clipped = np.clip(action_softmax,clip,1-clip)
+    logit_unscaled = np.log(action_softmax_clipped)
+    u = np.random.rand(*logit_unscaled.shape)
+    g = -np.log(-np.log(u))
+    return (eps*g+logit_unscaled).argmax(axis=-1)
+
 @click.command()
 @click.option('--num_steps', default=20000, type=int)
 @click.option('--n_envs', default=10)
 @click.option('--env_id', default='CartPole-v1')
 @click.option('--dqda_clipping', default=1.)
 @click.option('--clip_norm', default=True, type=bool)
-@click.option('--hidden_dims', default=64)
-@click.option('--hidden_layers', default=3)
+@click.option('--ema_decay', default=0.99, type=float)
+@click.option('--hidden_dims', default=32)
+@click.option('--hidden_layers', default=2)
 @click.option('--output_dim', default=2)
 @click.option('--batchnorm', default=True, type=bool)
+@click.option('--add_episode_time_state', default=False, type=bool)
 @click.option('--buffer_type', default='normal', type=click.Choice(['normal','prioritized']))
 @click.option('--buffer_size', default=2**11, type=int)
 @click.option('--prioritized_replay_alpha', default=0.6, type=float)
 @click.option('--prioritized_replay_beta0', default=0.4, type=float)
 @click.option('--prioritized_replay_beta_iters', default=None, type=int)
 @click.option('--prioritized_replay_eps', default=1e-6, type=float)
-@click.option('--begin_learning_at_step', default=1000)
+@click.option('--prioritized_replay_weights_uniform', default=False, type=bool)
+@click.option('--begin_learning_at_step', default=1e4)
 @click.option('--learning_rate', default=1e-4)
-@click.option('--n_update_steps', default=2, type=int)
-@click.option('--update_freq', default=4, type=int)
+@click.option('--n_update_steps', default=4, type=int)
+@click.option('--update_freq', default=1, type=int)
 @click.option('--n_steps_per_eval', default=100, type=int)
 @click.option('--batchsize', default=100)
 @click.option('--savedir', default='results')
@@ -83,6 +93,7 @@ def run(**cfg):
 
     cfg_hash = str(hash(str(sorted(cfg))))
     savedir = os.path.join(cfg['savedir'],'experiment' + cfg_hash)
+    print('SAVING TO: {savedir}'.format(**locals()))
     os.system('mkdir -p {savedir}'.format(**locals()))
 
     with open(os.path.join(savedir,'config.yaml'),'w') as f:
@@ -94,6 +105,10 @@ def run(**cfg):
 
     test_env = VecGymEnv(cfg['env_id'],n_envs=1)
     test_env = NPrevFramesStateEnv(test_env,n_prev_frames=4,flatten=True)
+
+    if cfg['add_episode_time_state']:
+        env = AddEpisodeTimeStateEnv(env) 
+        test_env = AddEpisodeTimeStateEnv(test_env) 
 
     state = env.reset()
     state_shape = state.shape
@@ -132,6 +147,7 @@ def run(**cfg):
         'duration_cumulative': [],
         'beta': [],
         'max_importance_weight': [],
+        'Q': [],
     }
 
     state = env.reset()
@@ -144,11 +160,16 @@ def run(**cfg):
         T = cfg['num_steps']
         T_beta = T if cfg['prioritized_replay_beta_iters'] is None else cfg['prioritized_replay_beta_iters']
         beta0 = cfg['prioritized_replay_beta0']
-        pb = tf.keras.utils.Progbar(T)
+        pb = tf.keras.utils.Progbar(T,stateful_metrics=['test_ep_returns','avg_action'])
         for t in range(T):
             start_step_time = time.time()
 
             action = agent.act(state)
+
+            #if len(replay_buffer) < cfg['begin_learning_at_step'] or np.random.rand() <= 0.02:
+            #    action = np.random.choice(action.shape[1],size=len(action))
+            #else:
+            #    action = action.argmax(axis=1)
             if len(replay_buffer) >= cfg['begin_learning_at_step']:
                 action = noisy_action(action)
             else:
@@ -165,27 +186,49 @@ def run(**cfg):
             })
             state = state2 
 
-            if len(replay_buffer) >= cfg['begin_learning_at_step'] and t % cfg['update_freq'] == 0:
+            pb_input = []
+            if t >= cfg['begin_learning_at_step'] and t % cfg['update_freq'] == 0:
                 for i in range(cfg['n_update_steps']):
                     if cfg['buffer_type'] == 'prioritized':
+
                         beta = beta0 + (1.-beta0)*min(1.,float(t)/T_beta)
                         log['beta'].append(beta)
+
                         sample = replay_buffer.sample(cfg['batchsize'],beta=beta)
+                        if cfg['prioritized_replay_weights_uniform']:
+                            sample['importance_weight'] = np.ones_like(sample['importance_weight'])
                         log['max_importance_weight'].append(sample['importance_weight'].max())
-                        td_error = agent.update(learning_rate=cfg['learning_rate'],**sample)
+
+                        td_error, Q_ema_state2 = agent.update(
+                                learning_rate=cfg['learning_rate'],
+                                ema_decay=cfg['ema_decay'],
+                                outputs=['td_error','Q_ema_state2'],
+                                **sample)
+
                         replay_buffer.update_priorities(td_error)
                     else:
-                        agent.update(learning_rate=cfg['learning_rate'],**replay_buffer.sample(cfg['batchsize']))
+
+                        sample = replay_buffer.sample(cfg['batchsize'])
+
+                        Q_ema_state2, = agent.update(
+                                learning_rate=cfg['learning_rate'],
+                                ema_decay=cfg['ema_decay'],
+                                outputs=['Q_ema_state2'],
+                                **sample)
+                pb_input.append(('Q_ema_state2', Q_ema_state2.mean()))
+                log['Q'].append(Q_ema_state2.mean())
 
             # Bookkeeping
             log['reward_history'].append(reward)
             log['action_history'].append(action)
+            avg_action = np.mean(log['action_history'][-20:])
+            pb_input.append(('avg_action', avg_action))
             if t % cfg['n_steps_per_eval'] == 0 and t > 0:
                 log['test_ep_returns'].append(test_agent(test_env,agent))
                 log['test_ep_steps'].append(t)
-                pb.add(1,[('avg_action', action.mean()),('test_ep_returns', log['test_ep_returns'][-1])])
-            else:
-                pb.add(1,[('avg_action', action.mean())])
+                avg_test_ep_returns = np.mean(log['test_ep_returns'][-1:])
+                pb_input.append(('test_ep_returns', avg_test_ep_returns))
+            pb.add(1,pb_input)
             end_time = time.time()
             log['step_duration_sec'].append(end_time-start_step_time)
             log['duration_cumulative'].append(end_time-start_time)
@@ -195,6 +238,7 @@ def run(**cfg):
         log['sample_importance_weights'] = replay_buffer.sample(1000,beta=1.)['importance_weight']
 
     with h5py.File(os.path.join(savedir,'log.h5'), 'w') as f:
+        print('SAVING TO: {savedir}'.format(**locals()))
         print('writing to h5 file')
         for k in log:
             print('H5: %s'%k)
