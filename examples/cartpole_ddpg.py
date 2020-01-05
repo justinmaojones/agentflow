@@ -39,11 +39,18 @@ def build_q_fn(*args,**kwargs):
     return q_fn
 
 def test_agent(test_env,agent):
-    state, rt, done = test_env.reset(), 0, 0
-    while np.sum(done) == 0:
+    state = test_env.reset()
+    rt = None
+    all_done = 0
+    while np.mean(all_done) < 1:
         action = agent.act(state).argmax(axis=-1).ravel()
         state, reward, done, _ = test_env.step(action)
-        rt += reward.sum()
+        if rt is None:
+            rt = reward.copy()
+            all_done = done.copy()
+        else:
+            rt += reward*(1-all_done)
+            all_done = np.maximum(done,all_done)
     return rt
 
 def noisy_action(action_softmax,eps=1.,clip=5e-2):
@@ -105,7 +112,7 @@ def run(**cfg):
     env = VecGymEnv(cfg['env_id'],n_envs=cfg['n_envs'])
     env = NPrevFramesStateEnv(env,n_prev_frames=4,flatten=True)
 
-    test_env = VecGymEnv(cfg['env_id'],n_envs=1)
+    test_env = VecGymEnv(cfg['env_id'],n_envs=cfg['n_envs'])
     test_env = NPrevFramesStateEnv(test_env,n_prev_frames=4,flatten=True)
 
     if cfg['add_episode_time_state']:
