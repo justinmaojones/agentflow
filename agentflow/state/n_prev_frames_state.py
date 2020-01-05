@@ -60,7 +60,10 @@ class NPrevFramesStateEnv(object):
 
     def step(self,*args,**kwargs):
         frame, reward, done, info = self.env.step(*args,**kwargs)
-        return self.state.update(frame), reward, done, info
+        return self.state.update(frame,done), reward, done, info
 
     def get_state(self):
         return self.state.state()
+
+    def action_shape(self):
+        return self.env.action_shape()
