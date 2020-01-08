@@ -1,2 +1,3 @@
 from .n_prev_frames_state import NPrevFramesStateEnv
 from .add_episode_time_state import AddEpisodeTimeStateEnv
+from .reward_forward_filter import RewardForwardFilterEnv
