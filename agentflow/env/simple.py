@@ -2,13 +2,18 @@ import numpy as np
 
 class VecConcaveFuncEnv(object):
 
-    def __init__(self,n_dims=1,n_envs=4,max_steps=100,min_reward=-20):
+    def __init__(self,n_dims=1,n_envs=4,max_steps=100,min_reward=-20,square_boundary_limit=None):
         self.n_dims = n_dims
         self.n_envs = n_envs
         self._state = None
         self.max_steps = max_steps
         self.min_reward = min_reward
         self._steps = None
+        self._square_boundary_limit = square_boundary_limit
+
+    def apply_boundary(self):
+        if self._square_boundary_limit is not None:
+            self._state = np.clip(self._state,-self._square_boundary_limit,self._square_boundary_limit)
 
     def reset(self,done=None):
         reset_state = np.random.randn(self.n_envs,self.n_dims)
@@ -21,6 +26,7 @@ class VecConcaveFuncEnv(object):
             self._state = self._state*(1-done) + reset_state*done
             done = done.ravel()
             self._steps = self._steps*(1-done) + reset_steps*done
+        self.apply_boundary()
         return self._state
 
     def compute_reward(self,state):
@@ -40,6 +46,8 @@ class VecConcaveFuncEnv(object):
                 rewards <= self.min_reward).astype(float)
 
         self._state = self.reset(dones)
+
+        self.apply_boundary()
 
         return self._state, rewards, dones, {}
 
