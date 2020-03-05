@@ -12,7 +12,7 @@ def shift_and_update_state(state,frame):
 
 def create_empty_state(frame,n_prev_frames):
     shape = list(frame.shape) + [n_prev_frames]
-    return np.zeros(shape)
+    return np.zeros(shape,dtype=frame.dtype)
 
 class NPrevFramesState(object):
 
@@ -23,12 +23,15 @@ class NPrevFramesState(object):
 
     def reset(self,frame=None,**kwargs):
         self._state = None
+        self._new_shape = None
 
     def update(self,frame,reset_mask=None):
 
         # construct state ndarray using frame as a template
         if self._state is None:
             self._state = create_empty_state(frame,self.n_prev_frames)
+            shape = self._state.shape
+            self._new_shape = [s for s in shape[:-2]] + [shape[-2]*shape[-1]]
 
         # reset state when reset_mask = 1
         if reset_mask is not None:
@@ -41,8 +44,7 @@ class NPrevFramesState(object):
 
     def state(self):
         if self.flatten:
-            first_dim_size = self._state.shape[0]
-            output = self._state.reshape(first_dim_size,-1)
+            output = self._state.reshape(*self._new_shape)
         else:
             output = self._state
         return output.copy()

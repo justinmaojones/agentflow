@@ -1,7 +1,10 @@
 from agentflow.env import VecGymEnv
-from agentflow.agents import DDPG
+from agentflow.agents import StableDDPG
 from agentflow.buffers import BufferMap, PrioritizedBufferMap
-from agentflow.state import NPrevFramesStateEnv, AddEpisodeTimeStateEnv
+from agentflow.state import NPrevFramesStateEnv
+from agentflow.state import AddEpisodeTimeStateEnv
+from agentflow.state import ResizeImageStateEnv
+from agentflow.state import CvtRGB2GrayImageStateEnv
 from agentflow.numpy.ops import onehot
 from agentflow.tensorflow.nn import dense_net
 from agentflow.tensorflow.ops import normalize_ema
@@ -14,28 +17,68 @@ import yaml
 import time
 import click
 
+# TODO
+# * modify preprocessing to include actions
+# * how to handle time state?  it converts to float64 :(
+
+def conv_net(x, conv_units, fc_units, fc_layers, batchnorm=True,activation=tf.nn.relu,training=False,**kwargs):
+
+    conv_layers = 4
+    assert isinstance(conv_layers,int) and conv_layers > 0, 'conv_layers should be a positive integer'
+    assert isinstance(conv_units, int) and conv_units > 0, 'conv_units should be a positive integer'
+    assert isinstance(fc_layers,int) and fc_layers > 0, 'fc_layers should be a positive integer'
+    assert isinstance(fc_units, int) and fc_units > 0, 'fc_units should be a positive integer'
+
+    h = x
+    for l in range(conv_layers):
+        kernel_size = (3,3)
+        strides = (1,1)
+        h = tf.layers.conv2d(h,conv_units,kernel_size,strides)
+        h = activation(h)
+        h = tf.layers.max_pooling2d(h,(2,2),(2,2))
+
+        if batchnorm:
+            BN = tf.layers.BatchNormalization()
+            h = BN(h,training=training)
+
+    h = tf.layers.flatten(h)
+    h = dense_net(h,fc_units,fc_layers,batchnorm,activation,training,**kwargs)
+    return h
+
 def build_net_fn(hidden_dims,hidden_layers,output_dim,batchnorm):
     def net_fn(h,training=False):
         h = dense_net(h,hidden_dims,hidden_layers,batchnorm=batchnorm,training=training)
         return tf.layers.dense(h,output_dim)
     return net_fn
 
+def build_conv_net_fn(hidden_dims,hidden_layers,output_dim,batchnorm):
+    def conv_net_fn(h,training=False):
+        h = conv_net(h,hidden_dims,hidden_dims,hidden_layers,batchnorm=batchnorm,training=training)
+        return tf.layers.dense(h,output_dim)
+    return conv_net_fn
+
 def build_policy_fn(hidden_dims,hidden_layers,output_dim,batchnorm,normalize_inputs=True):
-    net_fn = build_net_fn(hidden_dims,hidden_layers,output_dim,batchnorm)
+    conv_net_fn = build_conv_net_fn(hidden_dims,hidden_layers,output_dim,batchnorm)
     def policy_fn(state,training=False):
+        state = state/255. - 0.5
         if normalize_inputs:
             state, _ = normalize_ema(state,training)
-        h = net_fn(state,training)
+        h = conv_net_fn(state,training)
         return tf.nn.softmax(h,axis=-1)
     return policy_fn
 
 def build_q_fn(hidden_dims,hidden_layers,output_dim,batchnorm,normalize_inputs=True):
-    net_fn = build_net_fn(hidden_dims,hidden_layers,output_dim,batchnorm)
+    dense_net_fn = build_net_fn(hidden_dims,hidden_layers,output_dim,batchnorm)
+    conv_net_fn = build_conv_net_fn(hidden_dims,hidden_layers,hidden_dims,batchnorm)
     def q_fn(state,action,training=False):
+        state = state/255. - 0.5
         if normalize_inputs:
             state, _ = normalize_ema(state,training)
-        h = tf.concat([state,action],axis=1)
-        return net_fn(h,training)
+        h_state = conv_net_fn(state,training)
+        h_action = tf.layers.dense(action,hidden_dims)
+        h = tf.concat([h_state,h_action],axis=1)
+        h = dense_net_fn(h,training)
+        return h
     return q_fn
 
 def test_agent(test_env,agent):
@@ -63,13 +106,13 @@ def noisy_action(action_softmax,eps=1.,clip=5e-2):
 @click.command()
 @click.option('--num_steps', default=20000, type=int)
 @click.option('--n_envs', default=10)
-@click.option('--env_id', default='CartPole-v1')
+@click.option('--env_id', default='PongDeterministic-v4')
 @click.option('--dqda_clipping', default=1.)
 @click.option('--clip_norm', default=True, type=bool)
 @click.option('--ema_decay', default=0.99, type=float)
-@click.option('--hidden_dims', default=32)
-@click.option('--hidden_layers', default=2)
-@click.option('--output_dim', default=2)
+@click.option('--hidden_dims', default=16)
+@click.option('--hidden_layers', default=1)
+@click.option('--output_dim', default=6)
 @click.option('--normalize_inputs', default=True, type=bool)
 @click.option('--batchnorm', default=False, type=bool)
 @click.option('--add_episode_time_state', default=False, type=bool)
@@ -83,6 +126,8 @@ def noisy_action(action_softmax,eps=1.,clip=5e-2):
 @click.option('--prioritized_replay_compute_init', default=False, type=bool)
 @click.option('--begin_learning_at_step', default=1e4)
 @click.option('--learning_rate', default=1e-4)
+@click.option('--learning_rate_q', default=1.)
+@click.option('--beta', default=1.)
 @click.option('--gamma', default=0.99)
 @click.option('--weight_decay', default=0.0)
 @click.option('--n_update_steps', default=4, type=int)
@@ -111,21 +156,27 @@ def run(**cfg):
         yaml.dump(cfg, f)
 
     # Environment
-    env = VecGymEnv(cfg['env_id'],n_envs=cfg['n_envs'])
-    env = NPrevFramesStateEnv(env,n_prev_frames=4,flatten=True)
+    gym_env = VecGymEnv(cfg['env_id'],n_envs=cfg['n_envs'])
+    env = gym_env
+    env = CvtRGB2GrayImageStateEnv(env)
+    env = ResizeImageStateEnv(env,resized_shape=(64,64))
+    env = NPrevFramesStateEnv(env,n_prev_frames=4,flatten=False)
 
     test_env = VecGymEnv(cfg['env_id'],n_envs=cfg['n_envs'])
-    test_env = NPrevFramesStateEnv(test_env,n_prev_frames=4,flatten=True)
+    test_env = CvtRGB2GrayImageStateEnv(test_env)
+    test_env = ResizeImageStateEnv(test_env,resized_shape=(64,64))
+    test_env = NPrevFramesStateEnv(test_env,n_prev_frames=4,flatten=False)
 
     if cfg['add_episode_time_state']:
         print('ADDING EPISODE TIME STATES')
+        assert False, "This will convert the state to float64, need a better way to handle this before using it"
         env = AddEpisodeTimeStateEnv(env) 
         test_env = AddEpisodeTimeStateEnv(test_env) 
 
     state = env.reset()
     state_shape = state.shape
     print('STATE SHAPE: ',state_shape)
-    action_shape = env.env.action_shape()
+    action_shape = gym_env.action_space().n 
 
     # Agent
     policy_fn = build_policy_fn(
@@ -144,7 +195,7 @@ def run(**cfg):
             cfg['normalize_inputs']
     )
 
-    agent = DDPG(state_shape[1:],[2],policy_fn,q_fn,cfg['dqda_clipping'],cfg['clip_norm'],discrete=discrete)
+    agent = StableDDPG(state_shape[1:],[action_shape],policy_fn,q_fn,cfg['dqda_clipping'],cfg['clip_norm'],discrete=discrete,beta=cfg['beta'])
 
     # Replay Buffer
     if cfg['buffer_type'] == 'prioritized':
@@ -157,7 +208,9 @@ def run(**cfg):
 
     log = {
         'reward_history': [],
+        'done_history': [],
         'action_history': [],
+        'action_probs_history': [],
         'test_ep_returns': [],
         'test_ep_steps': [],
         'step_duration_sec': [],
@@ -165,6 +218,10 @@ def run(**cfg):
         'beta': [],
         'max_importance_weight': [],
         'Q': [],
+        'loss_Q': [],
+        'Q_updates': [],
+        'loss_Q_updates': [],
+        'frames': [],
     }
 
     state = env.reset()
@@ -177,26 +234,29 @@ def run(**cfg):
         T = cfg['num_steps']
         T_beta = T if cfg['prioritized_replay_beta_iters'] is None else cfg['prioritized_replay_beta_iters']
         beta0 = cfg['prioritized_replay_beta0']
-        pb = tf.keras.utils.Progbar(T,stateful_metrics=['test_ep_returns','avg_action'])
+        pb = tf.keras.utils.Progbar(T,stateful_metrics=['test_ep_returns','avg_action','Q_ema_state2'])
         for t in range(T):
             start_step_time = time.time()
 
-            action = agent.act(state)
+            action_probs = agent.act(state)
 
             #if len(replay_buffer) < cfg['begin_learning_at_step'] or np.random.rand() <= 0.02:
             #    action = np.random.choice(action.shape[1],size=len(action))
             #else:
             #    action = action.argmax(axis=1)
             if len(replay_buffer) >= cfg['begin_learning_at_step']:
-                action = noisy_action(action)
+                action = noisy_action(action_probs)
             else:
-                action = np.random.choice(action.shape[1],size=len(action))
+                action = np.random.choice(action_probs.shape[1],size=len(action_probs))
 
             state2, reward, done, info = env.step(action.astype('int').ravel())
 
+            log['frames'].append(len(state2))
+            log['action_probs_history'].append(action_probs)
+
             data = {
                 'state':state,
-                'action':onehot(action),
+                'action':onehot(action,depth=action_shape),
                 'reward':reward,
                 'done':done,
                 'state2':state2
@@ -212,6 +272,8 @@ def run(**cfg):
 
             pb_input = []
             if t >= cfg['begin_learning_at_step'] and t % cfg['update_freq'] == 0:
+                Q_ema_state2_list = []
+                losses_Q_list = []
                 for i in range(cfg['n_update_steps']):
                     if cfg['buffer_type'] == 'prioritized':
 
@@ -223,12 +285,13 @@ def run(**cfg):
                             sample['importance_weight'] = np.ones_like(sample['importance_weight'])
                         log['max_importance_weight'].append(sample['importance_weight'].max())
 
-                        td_error, Q_ema_state2 = agent.update(
+                        td_error, Q_ema_state2, losses_Q = agent.update(
                                 learning_rate=cfg['learning_rate'],
+                                learning_rate_q=cfg['learning_rate_q'],
                                 ema_decay=cfg['ema_decay'],
                                 gamma=cfg['gamma'],
                                 weight_decay=cfg['weight_decay'],
-                                outputs=['td_error','Q_ema_state2'],
+                                outputs=['td_error','Q_ema_state2','losses_Q'],
                                 **sample)
 
                         replay_buffer.update_priorities(td_error)
@@ -236,18 +299,27 @@ def run(**cfg):
 
                         sample = replay_buffer.sample(cfg['batchsize'])
 
-                        Q_ema_state2, = agent.update(
+                        Q_ema_state2, losses_Q = agent.update(
                                 learning_rate=cfg['learning_rate'],
+                                learning_rate_q=cfg['learning_rate_q'],
                                 ema_decay=cfg['ema_decay'],
                                 gamma=cfg['gamma'],
                                 weight_decay=cfg['weight_decay'],
-                                outputs=['Q_ema_state2'],
+                                outputs=['Q_ema_state2','losses_Q'],
                                 **sample)
+                    Q_ema_state2_list.append(Q_ema_state2.mean())
+                    losses_Q_list.append(losses_Q.mean())
+                    log['Q_updates'].append(Q_ema_state2_list[-1])
+                    log['loss_Q_updates'].append(losses_Q_list[-1])
+                Q_ema_state2_mean = np.mean(Q_ema_state2_list)
+                losses_Q_mean = np.mean(losses_Q_list)
                 pb_input.append(('Q_ema_state2', Q_ema_state2.mean()))
-                log['Q'].append(Q_ema_state2.mean())
+                log['Q'].append(Q_ema_state2_mean)
+                log['loss_Q'].append(losses_Q_mean)
 
             # Bookkeeping
             log['reward_history'].append(reward)
+            log['done_history'].append(done)
             log['action_history'].append(action)
             avg_action = np.mean(log['action_history'][-20:])
             pb_input.append(('avg_action', avg_action))
@@ -257,10 +329,17 @@ def run(**cfg):
                 #log['test_duration_cumulative'].append(time.time()-start_time)
                 avg_test_ep_returns = np.mean(log['test_ep_returns'][-1:])
                 pb_input.append(('test_ep_returns', avg_test_ep_returns))
+
             pb.add(1,pb_input)
             end_time = time.time()
             log['step_duration_sec'].append(end_time-start_step_time)
             log['duration_cumulative'].append(end_time-start_time)
+
+            if t % cfg['n_steps_per_eval'] == 0 and t > 0:
+                with h5py.File(os.path.join(savedir,'log_intermediate.h5'), 'w') as f:
+                    for k in log:
+                        f[k] = log[k]
+
 
     if cfg['buffer_type'] == 'prioritized':
         log['priorities'] = replay_buffer.priorities()
