@@ -15,7 +15,7 @@ class NDArrayBufferLastDim(object):
     def append(self,x):
         if self.buffer is None:
             shape = tuple(list(x.shape) + [self.max_length])
-            self.buffer = np.zeros(shape)
+            self.buffer = np.zeros(shape,dtype=x.dtype)
         ndim = self.buffer.ndim
         self.buffer[...,self._index] = x
         self._n = min(self._n+1,self.max_length)
