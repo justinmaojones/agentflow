@@ -53,6 +53,7 @@ class DDPG(object):
                 'learning_rate': tf.placeholder(tf.float32),
                 'ema_decay': tf.placeholder(tf.float32),
                 'importance_weight': tf.placeholder(tf.float32,shape=(None,)),
+                'weight_decay': tf.placeholder(tf.float32,shape=())
             }
             self.inputs = inputs
 
@@ -82,17 +83,24 @@ class DDPG(object):
 
             # target networks
             ema, ema_op, ema_vars_getter = exponential_moving_average(
-                    ['Q','policy','R'],decay=inputs['ema_decay'],zero_debias=True)
+                    scope.name,decay=inputs['ema_decay'],zero_debias=True)
 
             with tf.variable_scope('policy',reuse=True,custom_getter=ema_vars_getter):
-                policy_ema = self.policy_fn(inputs['state2'],training=False)
+                policy_ema = self.policy_fn(inputs['state'],training=False)
                 if self.discrete:
                     pe_depth = self.action_shape[-1] 
                     pe_indices = tf.argmax(policy_ema,axis=-1)
                     policy_ema = tf.one_hot(pe_indices,pe_depth)
 
+            with tf.variable_scope('policy',reuse=True,custom_getter=ema_vars_getter):
+                policy_ema_state2 = self.policy_fn(inputs['state2'],training=False)
+                if self.discrete:
+                    pe_depth = self.action_shape[-1] 
+                    pe_indices = tf.argmax(policy_ema_state2,axis=-1)
+                    policy_ema_state2 = tf.one_hot(pe_indices,pe_depth)
+
             with tf.variable_scope('Q',reuse=True,custom_getter=ema_vars_getter):
-                Q_ema_state2 = self.q_fn(inputs['state2'],policy_ema,training=False)
+                Q_ema_state2 = self.q_fn(inputs['state2'],policy_ema_state2,training=False)
 
             with tf.variable_scope('R',reuse=True,custom_getter=ema_vars_getter):
                 R_ema = self.q_fn(inputs['state'],policy_ema,training=False)
@@ -106,21 +114,44 @@ class DDPG(object):
             R_action_train = tf.reshape(R_action_train,[-1])
             R_ema = tf.reshape(R_ema,[-1])
 
+            # average reward
+            reward_avg = tf.Variable(tf.zeros(1),dtype=tf.float32,name='avg_reward')
+
             # loss functions
             if self.episodic:
                 loss_Q, y, td_error = td_learning(
                         Q_action_train,reward,inputs['gamma'],(1-done)*Q_ema_state2)
+                loss_R = 1.
             else:
-                #reward_avg = tf.reduce_mean(reward)
-                #reward_avg_op = ema.apply([reward_avg])
-                #reward_avg_ema = ema.average(reward_avg)
-                #relative_reward = reward - reward_avg_ema
-                reward_differential = reward - tf.stop_gradient(R_ema)
-                loss_Q, y, td_error = td_learning(
-                        Q_action_train,reward_differential,inputs['gamma'],Q_ema_state2)
+                reward_differential = tf.stop_gradient(reward) - reward_avg 
+#                loss_Q, y, td_error = td_learning(
+#                        Q_action_train,reward_differential,inputs['gamma'],Q_ema_state2)
+                if False:
+                    loss_Q, y, td_error = td_learning(
+                            Q_action_train,
+                            (1-inputs['gamma'])*tf.stop_gradient(reward) - reward_avg,
+                            inputs['gamma'],
+                            Q_ema_state2)
+                else:
+                    loss_Q, y, td_error = td_learning(
+                            Q_action_train,(1-inputs['gamma'])*reward,inputs['gamma'],Q_ema_state2)
 
+                #loss_R = 0.5*tf.square(R_action_train - reward)
+                loss_R = 0.5*tf.square(
+                        reward_differential+tf.stop_gradient(Q_ema_state2-Q_action_train))
             loss_policy = dpg(Q_policy_train,policy_train,self.dqda_clipping,self.clip_norm)
-            loss = tf.reduce_mean(self.inputs['importance_weight']*(loss_Q + loss_policy))
+            loss = tf.reduce_mean(self.inputs['importance_weight']*(loss_Q + loss_policy + loss_R))
+
+            # policy gradient
+            policy_gradient = tf.gradients(loss_policy,policy_train)
+
+            # weight decay
+            variables = []
+            for v in tf.trainable_variables(scope=scope.name):
+                if v != reward_avg:
+                    variables.append(v)
+            l2_reg = inputs['weight_decay']*tf.reduce_sum([tf.nn.l2_loss(v) for v in variables])
+            loss += l2_reg
 
             # gradient update for parameters of Q 
             self.optimizer = tf.train.RMSPropOptimizer(inputs['learning_rate']) 
@@ -145,12 +176,15 @@ class DDPG(object):
                 'Q_action_train': Q_action_train,
                 'Q_policy_train': Q_policy_train,
                 'policy_ema': policy_ema,
+                'policy_ema_state2': policy_ema_state2,
                 'Q_ema_state2': Q_ema_state2,
                 'R_action_train': R_action_train,
                 'R_ema': R_ema,
+                'reward_avg': reward_avg,
+                'policy_gradient': policy_gradient,
             }
 
-            if not self..episodic:
+            if not self.episodic:
                 self.outputs['reward_differential'] = reward_differential
         
     def act(self,state,session=None):
@@ -164,7 +198,7 @@ class DDPG(object):
     def get_inputs(self,**inputs):
         return {self.inputs[k]: inputs[k] for k in inputs}
 
-    def update(self,state,action,reward,done,state2,gamma=0.99,learning_rate=1e-3,ema_decay=0.999,importance_weight=None,session=None,outputs=['td_error']):
+    def update(self,state,action,reward,done,state2,gamma=0.99,learning_rate=1e-3,ema_decay=0.999,weight_decay=0.1,importance_weight=None,session=None,outputs=['td_error']):
         session = session or tf.get_default_session()
         if importance_weight is None:
             importance_weight = np.ones_like(reward)
@@ -179,6 +213,7 @@ class DDPG(object):
                 self.inputs['gamma']:gamma,
                 self.inputs['learning_rate']:learning_rate,
                 self.inputs['ema_decay']:ema_decay,
+                self.inputs['weight_decay']:weight_decay,
                 self.inputs['importance_weight']:importance_weight,
             }
         )
