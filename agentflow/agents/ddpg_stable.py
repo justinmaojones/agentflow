@@ -258,11 +258,11 @@ class StableDDPG(object):
         
     def act(self,state,session=None):
         session = session or tf.get_default_session()
-        return session.run(self.outputs['policy_eval'],{self.inputs['state']:state})
+        return session.run(self.outputs['policy_eval'],{self.inputs['state']:state.astype('float32')})
         
     def act_train(self,state,session=None):
         session = session or tf.get_default_session()
-        return session.run(self.outputs['policy_train'],{self.inputs['state']:state})
+        return session.run(self.outputs['policy_train'],{self.inputs['state']:state.astype('float32')})
 
     def get_inputs(self,**inputs):
         return {self.inputs[k]: inputs[k] for k in inputs}
@@ -274,11 +274,11 @@ class StableDDPG(object):
         my_outputs, _ = session.run(
             [[self.outputs[k] for k in outputs],self.update_ops],
             {
-                self.inputs['state']:state,
+                self.inputs['state']:state.astype('float32'),
                 self.inputs['action']:action,
                 self.inputs['reward']:reward,
                 self.inputs['done']:done,
-                self.inputs['state2']:state2,
+                self.inputs['state2']:state2.astype('float32'),
                 self.inputs['gamma']:gamma,
                 self.inputs['learning_rate']:learning_rate,
                 self.inputs['learning_rate_q']:learning_rate_q,
