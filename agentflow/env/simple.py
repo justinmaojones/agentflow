@@ -57,4 +57,5 @@ class VecConcaveFuncEnv(object):
     def action_shape(self):
         return (self.n_envs, self.n_dims)
 
-
+    def get_state(self):
+        return self._state
