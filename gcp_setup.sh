@@ -1,4 +1,4 @@
-sudo apt-get install -y tmux python-dev python3-dev build-essential libssl-dev libffi-dev libxml2-dev libxslt1-dev zlib1g-dev
+sudo apt-get install -y tmux python-dev python3-dev build-essential libssl-dev libffi-dev libxml2-dev libxslt1-dev zlib1g-dev libgtk2.0-dev
 curl https://bootstrap.pypa.io/get-pip.py -o get-pip.py
 python get-pip.py --user
 python3 get-pip.py --user

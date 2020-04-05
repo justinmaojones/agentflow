@@ -270,6 +270,8 @@ def run(**cfg):
         'action_probs_history': [],
         'test_ep_returns': [],
         'test_ep_steps': [],
+        'test_ep_rewards': [],
+        'test_ep_dones': [],
         'train_ep_returns': [],
         'step_duration_sec': [],
         'duration_cumulative': [],
