@@ -84,6 +84,12 @@ def noisy_action(action_softmax,eps=1.,clip=5e-2):
 @click.option('--begin_learning_at_step', default=1e4)
 @click.option('--learning_rate', default=1e-4)
 @click.option('--learning_rate_q', default=1.)
+@click.option('--optimizer_q', type=str, default='gradient_descent')
+@click.option('--optimizer_q_decay', type=float, default=None)
+@click.option('--optimizer_q_momentum', type=float, default=None)
+@click.option('--optimizer_q_use_nesterov', type=bool, default=None)
+@click.option('--opt_q_layerwise', type=bool, default=False)
+@click.option('--alpha', default=1.)
 @click.option('--beta', default=1.)
 @click.option('--gamma', default=0.99)
 @click.option('--weight_decay', default=0.0)
@@ -146,7 +152,23 @@ def run(**cfg):
             cfg['normalize_inputs']
     )
 
-    agent = StableDDPG(state_shape[1:],[2],policy_fn,q_fn,cfg['dqda_clipping'],cfg['clip_norm'],discrete=discrete,beta=cfg['beta'])
+    optimizer_q_kwargs = {}
+    if cfg['optimizer_q_decay'] is not None:
+        optimizer_q_kwargs['decay'] = cfg['optimizer_q_decay']
+    if cfg['optimizer_q_momentum'] is not None:
+        optimizer_q_kwargs['momentum'] = cfg['optimizer_q_momentum']
+    if cfg['optimizer_q_use_nesterov'] is not None:
+        optimizer_q_kwargs['use_nesterov'] = cfg['optimizer_q_use_nesterov']
+    agent = StableDDPG(
+        state_shape[1:],[2],policy_fn,q_fn,
+        cfg['dqda_clipping'],cfg['clip_norm'],
+        discrete=discrete,
+        alpha=cfg['alpha'],
+        beta=cfg['beta'],
+        optimizer_q=cfg['optimizer_q'],
+        opt_q_layerwise=cfg['opt_q_layerwise'],
+        optimizer_q_kwargs=optimizer_q_kwargs,
+    )
 
     # Replay Buffer
     if cfg['buffer_type'] == 'prioritized':
