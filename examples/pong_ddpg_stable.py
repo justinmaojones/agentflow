@@ -297,7 +297,7 @@ def run(**cfg):
         T = cfg['num_steps']
         T_beta = T if cfg['prioritized_replay_beta_iters'] is None else cfg['prioritized_replay_beta_iters']
         beta0 = cfg['prioritized_replay_beta0']
-        pb = tf.keras.utils.Progbar(T,stateful_metrics=['test_ep_returns','avg_action','Q_ema_state2'])
+        pb = tf.keras.utils.Progbar(T,stateful_metrics=['test_ep_returns','avg_action','Q_action_train'])
         for t in range(T):
             start_step_time = time.time()
 
@@ -339,7 +339,7 @@ def run(**cfg):
 
             pb_input = []
             if t >= cfg['begin_learning_at_step'] and t % cfg['update_freq'] == 0:
-                Q_ema_state2_list = []
+                Q_action_train_list = []
                 losses_Q_list = []
                 for i in range(cfg['n_update_steps']):
                     if cfg['buffer_type'] == 'prioritized':
@@ -352,13 +352,13 @@ def run(**cfg):
                             sample['importance_weight'] = np.ones_like(sample['importance_weight'])
                         log['max_importance_weight'].append(sample['importance_weight'].max())
 
-                        td_error, Q_ema_state2, losses_Q = agent.update(
+                        td_error, Q_action_train, losses_Q = agent.update(
                                 learning_rate=cfg['learning_rate'],
                                 learning_rate_q=cfg['learning_rate_q'],
                                 ema_decay=cfg['ema_decay'],
                                 gamma=cfg['gamma'],
                                 weight_decay=cfg['weight_decay'],
-                                outputs=['td_error','Q_ema_state2','losses_Q'],
+                                outputs=['td_error','Q_action_train','losses_Q'],
                                 **sample)
 
                         if not cfg['prioritized_replay_simple']:
@@ -367,22 +367,22 @@ def run(**cfg):
 
                         sample = replay_buffer.sample(cfg['batchsize'])
 
-                        Q_ema_state2, losses_Q = agent.update(
+                        Q_action_train, losses_Q = agent.update(
                                 learning_rate=cfg['learning_rate'],
                                 learning_rate_q=cfg['learning_rate_q'],
                                 ema_decay=cfg['ema_decay'],
                                 gamma=cfg['gamma'],
                                 weight_decay=cfg['weight_decay'],
-                                outputs=['Q_ema_state2','losses_Q'],
+                                outputs=['Q_action_train','losses_Q'],
                                 **sample)
-                    Q_ema_state2_list.append(Q_ema_state2.mean())
+                    Q_action_train_list.append(Q_action_train.mean())
                     losses_Q_list.append(losses_Q.mean())
-                    log['Q_updates'].append(Q_ema_state2_list[-1])
+                    log['Q_updates'].append(Q_action_train_list[-1])
                     log['loss_Q_updates'].append(losses_Q_list[-1])
-                Q_ema_state2_mean = np.mean(Q_ema_state2_list)
+                Q_action_train_mean = np.mean(Q_action_train_list)
                 losses_Q_mean = np.mean(losses_Q_list)
-                pb_input.append(('Q_ema_state2', Q_ema_state2.mean()))
-                log['Q'].append(Q_ema_state2_mean)
+                pb_input.append(('Q_action_train', Q_action_train.mean()))
+                log['Q'].append(Q_action_train_mean)
                 log['loss_Q'].append(losses_Q_mean)
 
             # Bookkeeping
