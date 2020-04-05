@@ -1,7 +1,7 @@
 gym==0.13.1
 gym[classic_control]==0.13.1
 gym[atari]==0.13.1
-tensorflow==1.14.0
+tensorflow==1.15.0
 numpy==1.16.4
 pandas==0.24.2
 pyyaml
