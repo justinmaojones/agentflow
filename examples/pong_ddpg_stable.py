@@ -61,12 +61,14 @@ def build_conv_net_fn(hidden_dims,hidden_layers,output_dim,batchnorm,stop_gradie
     return conv_net_fn
 
 def build_policy_fn(hidden_dims,hidden_layers,output_dim,batchnorm,normalize_inputs=True,freeze_conv_net=False):
+    dense_net_fn = build_net_fn(hidden_dims,hidden_layers,output_dim,batchnorm)
     conv_net_fn = build_conv_net_fn(hidden_dims,hidden_layers,output_dim,batchnorm,freeze_conv_net)
     def policy_fn(state,training=False):
         state = state/255. - 0.5
         if normalize_inputs:
             state, _ = normalize_ema(state,training)
         h = conv_net_fn(state,training,)
+        h = dense_net_fn(h,training)
         return tf.nn.softmax(h,axis=-1)
     return policy_fn
 
