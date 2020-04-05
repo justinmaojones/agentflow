@@ -272,8 +272,8 @@ def run(**cfg):
         'action_probs_history': [],
         'test_ep_returns': [],
         'test_ep_steps': [],
-        'test_ep_rewards': [],
-        'test_ep_dones': [],
+        #'test_ep_rewards': [],
+        #'test_ep_dones': [],
         'train_ep_returns': [],
         'step_duration_sec': [],
         'duration_cumulative': [],
@@ -394,8 +394,8 @@ def run(**cfg):
             if t % cfg['n_steps_per_eval'] == 0 and t > 0:
                 test_ep_returns, test_ep_rewards, test_ep_dones = test_agent(test_env,agent)
                 log['test_ep_returns'].append(test_ep_returns)
-                log['test_ep_rewards'].append(test_ep_rewards)
-                log['test_ep_dones'].append(test_ep_dones)
+                #log['test_ep_rewards'].append(test_ep_rewards)
+                #log['test_ep_dones'].append(test_ep_dones)
                 log['test_ep_steps'].append(t)
                 #log['test_duration_cumulative'].append(time.time()-start_time)
                 avg_test_ep_returns = np.mean(log['test_ep_returns'][-1:])
