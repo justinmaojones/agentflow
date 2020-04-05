@@ -51,25 +51,28 @@ def build_net_fn(hidden_dims,hidden_layers,output_dim,batchnorm):
         return tf.layers.dense(h,output_dim)
     return net_fn
 
-def build_conv_net_fn(hidden_dims,hidden_layers,output_dim,batchnorm):
+def build_conv_net_fn(hidden_dims,hidden_layers,output_dim,batchnorm,stop_gradient=False):
     def conv_net_fn(h,training=False):
         h = conv_net(h,hidden_dims,hidden_dims,hidden_layers,batchnorm=batchnorm,training=training)
-        return tf.layers.dense(h,output_dim)
+        h = tf.layers.dense(h,output_dim)
+        if stop_gradient:
+            h = tf.stop_gradient(h)
+        return h
     return conv_net_fn
 
-def build_policy_fn(hidden_dims,hidden_layers,output_dim,batchnorm,normalize_inputs=True):
-    conv_net_fn = build_conv_net_fn(hidden_dims,hidden_layers,output_dim,batchnorm)
+def build_policy_fn(hidden_dims,hidden_layers,output_dim,batchnorm,normalize_inputs=True,freeze_conv_net=False):
+    conv_net_fn = build_conv_net_fn(hidden_dims,hidden_layers,output_dim,batchnorm,freeze_conv_net)
     def policy_fn(state,training=False):
         state = state/255. - 0.5
         if normalize_inputs:
             state, _ = normalize_ema(state,training)
-        h = conv_net_fn(state,training)
+        h = conv_net_fn(state,training,)
         return tf.nn.softmax(h,axis=-1)
     return policy_fn
 
-def build_q_fn(hidden_dims,hidden_layers,output_dim,batchnorm,normalize_inputs=True):
+def build_q_fn(hidden_dims,hidden_layers,output_dim,batchnorm,normalize_inputs=True,freeze_conv_net=False):
     dense_net_fn = build_net_fn(hidden_dims,hidden_layers,output_dim,batchnorm)
-    conv_net_fn = build_conv_net_fn(hidden_dims,hidden_layers,hidden_dims,batchnorm)
+    conv_net_fn = build_conv_net_fn(hidden_dims,hidden_layers,hidden_dims,batchnorm,freeze_conv_net)
     def q_fn(state,action,training=False):
         state = state/255. - 0.5
         if normalize_inputs:
@@ -125,14 +128,15 @@ class TrackEpisodeScore(object):
 
 @click.command()
 @click.option('--num_steps', default=20000, type=int)
-@click.option('--n_envs', default=10)
+@click.option('--n_envs', default=1)
 @click.option('--env_id', default='PongDeterministic-v4')
-@click.option('--n_prev_frames', default=4, type=int)
+@click.option('--n_prev_frames', default=12, type=int)
 @click.option('--dqda_clipping', default=1.)
 @click.option('--clip_norm', default=True, type=bool)
 @click.option('--ema_decay', default=0.99, type=float)
-@click.option('--hidden_dims', default=16)
-@click.option('--hidden_layers', default=1)
+@click.option('--hidden_dims', default=32)
+@click.option('--hidden_layers', default=2)
+@click.option('--freeze_conv_net', default=False, type=bool)
 @click.option('--output_dim', default=6)
 @click.option('--normalize_inputs', default=True, type=bool)
 @click.option('--batchnorm', default=False, type=bool)
@@ -211,7 +215,8 @@ def run(**cfg):
             cfg['hidden_layers'],
             cfg['output_dim'],
             cfg['batchnorm'],
-            cfg['normalize_inputs']
+            cfg['normalize_inputs'],
+            cfg['freeze_conv_net'],
     )
 
     q_fn = build_q_fn(
@@ -219,7 +224,8 @@ def run(**cfg):
             cfg['hidden_layers'],
             1,
             cfg['batchnorm'],
-            cfg['normalize_inputs']
+            cfg['normalize_inputs'],
+            cfg['freeze_conv_net'],
     )
 
     optimizer_q_kwargs = {}
