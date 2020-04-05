@@ -10,4 +10,4 @@ click
 matplotlib
 seaborn
 jupyter
-
+opencv-python
