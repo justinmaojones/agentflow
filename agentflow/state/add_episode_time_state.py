@@ -16,7 +16,7 @@ class AddEpisodeTimeState(object):
         if self._state is None:
             shape = list(frame.shape)
             shape[-1] = 1
-            self._time = np.zeros(shape,dtype=frame.dtype)
+            self._time = np.zeros(shape,dtype='int32')
         else:
             self._time += 1
 
@@ -24,7 +24,7 @@ class AddEpisodeTimeState(object):
         if reset_mask is not None:
             self._time[reset_mask==1,...,-1] = 0 
 
-        time_state = np.log(1.+self._time)
+        time_state = np.log(1.+self._time,dtype='float32')
         self._state = np.concatenate([frame,time_state],axis=-1)
 
         return self.state()
