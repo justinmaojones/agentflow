@@ -23,7 +23,7 @@ import click
 
 def conv_net(x, conv_units, fc_units, fc_layers, batchnorm=True,activation=tf.nn.relu,training=False,**kwargs):
 
-    conv_layers = 4
+    conv_layers = 3
     assert isinstance(conv_layers,int) and conv_layers > 0, 'conv_layers should be a positive integer'
     assert isinstance(conv_units, int) and conv_units > 0, 'conv_units should be a positive integer'
     assert isinstance(fc_layers,int) and fc_layers > 0, 'fc_layers should be a positive integer'
@@ -32,10 +32,10 @@ def conv_net(x, conv_units, fc_units, fc_layers, batchnorm=True,activation=tf.nn
     h = x
     for l in range(conv_layers):
         kernel_size = (3,3)
-        strides = (1,1)
+        strides = (2,2)
         h = tf.layers.conv2d(h,conv_units,kernel_size,strides)
         h = activation(h)
-        h = tf.layers.max_pooling2d(h,(2,2),(2,2))
+        #h = tf.layers.max_pooling2d(h,(2,2),(2,2))
 
         if batchnorm:
             BN = tf.layers.BatchNormalization()
@@ -103,10 +103,31 @@ def noisy_action(action_softmax,eps=1.,clip=5e-2):
     g = -np.log(-np.log(u))
     return (eps*g+logit_unscaled).argmax(axis=-1)
 
+class TrackEpisodeScore(object):
+
+    def __init__(self):
+        self._prev_ep_scores = None
+        self._curr_ep_scores = None
+
+    def get_prev_ep_scores(self):
+        assert self._prev_ep_scores is not None
+        return self._prev_ep_scores
+
+    def update(self,rewards,dones):
+        if self._curr_ep_scores is None:
+            self._prev_ep_scores = np.zeros_like(rewards) 
+            self._curr_ep_scores = np.zeros_like(rewards)
+        self._curr_ep_scores += rewards
+        self._prev_ep_scores = self._prev_ep_scores*(1-dones) + self._curr_ep_scores*dones
+        self._curr_ep_scores *= 1-dones
+        return self.get_prev_ep_scores()
+
+
 @click.command()
 @click.option('--num_steps', default=20000, type=int)
 @click.option('--n_envs', default=10)
 @click.option('--env_id', default='PongDeterministic-v4')
+@click.option('--n_prev_frames', default=4, type=int)
 @click.option('--dqda_clipping', default=1.)
 @click.option('--clip_norm', default=True, type=bool)
 @click.option('--ema_decay', default=0.99, type=float)
@@ -127,6 +148,12 @@ def noisy_action(action_softmax,eps=1.,clip=5e-2):
 @click.option('--begin_learning_at_step', default=1e4)
 @click.option('--learning_rate', default=1e-4)
 @click.option('--learning_rate_q', default=1.)
+@click.option('--optimizer_q', type=str, default='gradient_descent')
+@click.option('--optimizer_q_decay', type=float, default=None)
+@click.option('--optimizer_q_momentum', type=float, default=None)
+@click.option('--optimizer_q_use_nesterov', type=bool, default=None)
+@click.option('--opt_q_layerwise', type=bool, default=False)
+@click.option('--alpha', default=1.)
 @click.option('--beta', default=1.)
 @click.option('--gamma', default=0.99)
 @click.option('--weight_decay', default=0.0)
@@ -160,12 +187,12 @@ def run(**cfg):
     env = gym_env
     env = CvtRGB2GrayImageStateEnv(env)
     env = ResizeImageStateEnv(env,resized_shape=(64,64))
-    env = NPrevFramesStateEnv(env,n_prev_frames=4,flatten=False)
+    env = NPrevFramesStateEnv(env,n_prev_frames=cfg['n_prev_frames'],flatten=False)
 
-    test_env = VecGymEnv(cfg['env_id'],n_envs=cfg['n_envs'])
+    test_env = VecGymEnv(cfg['env_id'],n_envs=1)
     test_env = CvtRGB2GrayImageStateEnv(test_env)
     test_env = ResizeImageStateEnv(test_env,resized_shape=(64,64))
-    test_env = NPrevFramesStateEnv(test_env,n_prev_frames=4,flatten=False)
+    test_env = NPrevFramesStateEnv(test_env,n_prev_frames=cfg['n_prev_frames'],flatten=False)
 
     if cfg['add_episode_time_state']:
         print('ADDING EPISODE TIME STATES')
@@ -195,7 +222,24 @@ def run(**cfg):
             cfg['normalize_inputs']
     )
 
-    agent = StableDDPG(state_shape[1:],[action_shape],policy_fn,q_fn,cfg['dqda_clipping'],cfg['clip_norm'],discrete=discrete,beta=cfg['beta'])
+    optimizer_q_kwargs = {}
+    if cfg['optimizer_q_decay'] is not None:
+        optimizer_q_kwargs['decay'] = cfg['optimizer_q_decay']
+    if cfg['optimizer_q_momentum'] is not None:
+        optimizer_q_kwargs['momentum'] = cfg['optimizer_q_momentum']
+    if cfg['optimizer_q_use_nesterov'] is not None:
+        optimizer_q_kwargs['use_nesterov'] = cfg['optimizer_q_use_nesterov']
+    agent = StableDDPG(
+        state_shape[1:],[action_shape],policy_fn,q_fn,
+        cfg['dqda_clipping'],
+        cfg['clip_norm'],
+        discrete=discrete,
+        alpha=cfg['alpha'],
+        beta=cfg['beta'],
+        optimizer_q=cfg['optimizer_q'],
+        opt_q_layerwise=cfg['opt_q_layerwise'],
+        optimizer_q_kwargs=optimizer_q_kwargs,
+    )
 
     # Replay Buffer
     if cfg['buffer_type'] == 'prioritized':
@@ -213,6 +257,7 @@ def run(**cfg):
         'action_probs_history': [],
         'test_ep_returns': [],
         'test_ep_steps': [],
+        'train_ep_returns': [],
         'step_duration_sec': [],
         'duration_cumulative': [],
         'beta': [],
@@ -223,6 +268,7 @@ def run(**cfg):
         'loss_Q_updates': [],
         'frames': [],
     }
+    track_train_ep_returns = TrackEpisodeScore()
 
     state = env.reset()
 
@@ -253,6 +299,7 @@ def run(**cfg):
 
             log['frames'].append(len(state2))
             log['action_probs_history'].append(action_probs)
+            log['train_ep_returns'].append(track_train_ep_returns.update(reward,done))
 
             data = {
                 'state':state,
