@@ -105,7 +105,7 @@ def test_agent(test_env,agent):
         rewards.append(reward)
         dones.append(done)
         actions.append(action)
-    return rt, rewards, dones, actions
+    return rt, np.array(rewards), np.array(dones), np.array(actions)
 
 def noisy_action(action_softmax,eps=1.,clip=5e-2):
     action_softmax_clipped = np.clip(action_softmax,clip,1-clip)
