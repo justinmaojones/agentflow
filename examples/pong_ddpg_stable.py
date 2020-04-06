@@ -305,7 +305,7 @@ def run(**cfg):
         T = cfg['num_steps']
         T_beta = T if cfg['prioritized_replay_beta_iters'] is None else cfg['prioritized_replay_beta_iters']
         beta0 = cfg['prioritized_replay_beta0']
-        pb = tf.keras.utils.Progbar(T,stateful_metrics=['test_ep_returns','avg_action','Q_action_train','losses_Q'])
+        pb = tf.keras.utils.Progbar(T,stateful_metrics=['test_ep_returns','test_ep_entropy','avg_action','Q_action_train','losses_Q'])
         for t in range(T):
             start_step_time = time.time()
 
