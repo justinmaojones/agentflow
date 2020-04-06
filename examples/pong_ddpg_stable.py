@@ -297,7 +297,7 @@ def run(**cfg):
         T = cfg['num_steps']
         T_beta = T if cfg['prioritized_replay_beta_iters'] is None else cfg['prioritized_replay_beta_iters']
         beta0 = cfg['prioritized_replay_beta0']
-        pb = tf.keras.utils.Progbar(T,stateful_metrics=['test_ep_returns','avg_action','Q_action_train'])
+        pb = tf.keras.utils.Progbar(T,stateful_metrics=['test_ep_returns','avg_action','Q_action_train','losses_Q'])
         for t in range(T):
             start_step_time = time.time()
 
@@ -381,7 +381,8 @@ def run(**cfg):
                     log['loss_Q_updates'].append(losses_Q_list[-1])
                 Q_action_train_mean = np.mean(Q_action_train_list)
                 losses_Q_mean = np.mean(losses_Q_list)
-                pb_input.append(('Q_action_train', Q_action_train.mean()))
+                pb_input.append(('Q_action_train', Q_action_train_mean))
+                pb_input.append(('loss_Q', losses_Q_mean))
                 log['Q'].append(Q_action_train_mean)
                 log['loss_Q'].append(losses_Q_mean)
 
