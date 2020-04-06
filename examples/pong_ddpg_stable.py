@@ -414,7 +414,12 @@ def run(**cfg):
             if t % cfg['n_steps_per_eval'] == 0 and t > 0:
                 with h5py.File(os.path.join(savedir,'log_intermediate.h5'), 'w') as f:
                     for k in log:
-                        f[k] = log[k]
+                        if isinstance(log[k],dict):
+                            g = f.create_group(k)
+                            for k2 in log[k]:
+                                g[str(k2)] = log[k][k2]
+                        else:
+                            f[k] = log[k]
 
 
     if cfg['buffer_type'] == 'prioritized':
@@ -426,7 +431,12 @@ def run(**cfg):
         print('writing to h5 file')
         for k in log:
             print('H5: %s'%k)
-            f[k] = log[k]
+            if isinstance(log[k],dict):
+                g = f.create_group(k)
+                for k2 in log[k]:
+                    g[str(k2)] = log[k][k2]
+            else:
+                f[k] = log[k]
 
 if __name__=='__main__':
     run()
