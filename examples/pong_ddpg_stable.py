@@ -92,6 +92,7 @@ def test_agent(test_env,agent):
     all_done = 0
     rewards = []
     dones = []
+    actions = []
     while np.mean(all_done) < 1:
         action = agent.act(state).argmax(axis=-1).ravel()
         state, reward, done, _ = test_env.step(action)
@@ -103,7 +104,8 @@ def test_agent(test_env,agent):
             all_done = np.maximum(done,all_done)
         rewards.append(reward)
         dones.append(done)
-    return rt, rewards, dones
+        actions.append(action)
+    return rt, rewards, dones, actions
 
 def noisy_action(action_softmax,eps=1.,clip=5e-2):
     action_softmax_clipped = np.clip(action_softmax,clip,1-clip)
@@ -272,8 +274,9 @@ def run(**cfg):
         'action_probs_history': [],
         'test_ep_returns': [],
         'test_ep_steps': [],
-        #'test_ep_rewards': [],
-        #'test_ep_dones': [],
+        'test_ep_rewards': {},
+        'test_ep_dones': {},
+        'test_ep_actions': {},
         'train_ep_returns': [],
         'step_duration_sec': [],
         'duration_cumulative': [],
@@ -393,10 +396,11 @@ def run(**cfg):
             avg_action = np.mean(log['action_history'][-20:])
             pb_input.append(('avg_action', avg_action))
             if t % cfg['n_steps_per_eval'] == 0 and t > 0:
-                test_ep_returns, test_ep_rewards, test_ep_dones = test_agent(test_env,agent)
+                test_ep_returns, test_ep_rewards, test_ep_dones, test_ep_actions = test_agent(test_env,agent)
                 log['test_ep_returns'].append(test_ep_returns)
-                #log['test_ep_rewards'].append(test_ep_rewards)
-                #log['test_ep_dones'].append(test_ep_dones)
+                log['test_ep_rewards'][t] = test_ep_rewards
+                log['test_ep_dones'][t] = test_ep_dones
+                log['test_ep_actions'][t] = test_ep_actions
                 log['test_ep_steps'].append(t)
                 #log['test_duration_cumulative'].append(time.time()-start_time)
                 avg_test_ep_returns = np.mean(log['test_ep_returns'][-1:])
