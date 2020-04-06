@@ -107,6 +107,10 @@ def test_agent(test_env,agent):
         actions.append(action)
     return rt, np.array(rewards), np.array(dones), np.array(actions)
 
+def entropy(a):
+    p = (a[:,None] == np.unique(a)[None]).mean(axis=0)
+    return -(p*np.log(p)).sum()
+
 def noisy_action(action_softmax,eps=1.,clip=5e-2):
     action_softmax_clipped = np.clip(action_softmax,clip,1-clip)
     logit_unscaled = np.log(action_softmax_clipped)
@@ -278,6 +282,7 @@ def run(**cfg):
         'test_ep_dones': {},
         'test_ep_actions': {},
         'train_ep_returns': [],
+        'train_ep_entropy': [],
         'step_duration_sec': [],
         'duration_cumulative': [],
         'beta': [],
@@ -397,7 +402,9 @@ def run(**cfg):
             pb_input.append(('avg_action', avg_action))
             if t % cfg['n_steps_per_eval'] == 0 and t > 0:
                 test_ep_returns, test_ep_rewards, test_ep_dones, test_ep_actions = test_agent(test_env,agent)
+                test_ep_actions_entropy = entropy(test_ep_actions.ravel())
                 log['test_ep_returns'].append(test_ep_returns)
+                log['test_ep_entropy'].append(test_ep_entropy)
                 log['test_ep_rewards'][t] = test_ep_rewards
                 log['test_ep_dones'][t] = test_ep_dones
                 log['test_ep_actions'][t] = test_ep_actions
@@ -405,6 +412,7 @@ def run(**cfg):
                 #log['test_duration_cumulative'].append(time.time()-start_time)
                 avg_test_ep_returns = np.mean(log['test_ep_returns'][-1:])
                 pb_input.append(('test_ep_returns', avg_test_ep_returns))
+                pb_input.append(('test_ep_entropy', test_ep_entropy))
 
             pb.add(1,pb_input)
             end_time = time.time()
