@@ -409,7 +409,7 @@ def run(**cfg):
             avg_action = np.mean(log['action_history'][-20:])
             pb_input.append(('avg_action', avg_action))
 
-            if t % cfg['n_steps_per_eval'] == 0:
+            if t % cfg['n_steps_per_eval'] == 0 or t==0:
                 test_ep_returns, test_ep_rewards, test_ep_dones, test_ep_actions = test_agent(test_env,agent)
                 test_ep_actions_entropy = entropy(test_ep_actions.ravel())
                 log['test_ep_returns'].append(test_ep_returns)
