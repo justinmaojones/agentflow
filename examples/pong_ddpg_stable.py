@@ -167,6 +167,7 @@ class TrackEpisodeScore(object):
 @click.option('--begin_learning_at_step', default=1e4)
 @click.option('--learning_rate', default=1e-4)
 @click.option('--learning_rate_q', default=1.)
+@click.option('--n_steps_train_only_q', default=0)
 @click.option('--optimizer_q', type=str, default='gradient_descent')
 @click.option('--optimizer_q_decay', type=float, default=None)
 @click.option('--optimizer_q_momentum', type=float, default=None)
@@ -349,7 +350,14 @@ def run(**cfg):
             if t >= cfg['begin_learning_at_step'] and t % cfg['update_freq'] == 0:
                 Q_action_train_list = []
                 losses_Q_list = []
+
+                if t >= cfg['begin_learning_at_step'] + cfg['n_steps_train_only_q']:
+                    policy_learning_rate = cfg['learning_rate']
+                else:
+                    policy_learning_rate = 0.
+
                 for i in range(cfg['n_update_steps']):
+
                     if cfg['buffer_type'] == 'prioritized':
 
                         beta = beta0 + (1.-beta0)*min(1.,float(t)/T_beta)
@@ -361,7 +369,7 @@ def run(**cfg):
                         log['max_importance_weight'].append(sample['importance_weight'].max())
 
                         td_error, Q_action_train, losses_Q = agent.update(
-                                learning_rate=cfg['learning_rate'],
+                                learning_rate=policy_learning_rate,
                                 learning_rate_q=cfg['learning_rate_q'],
                                 ema_decay=cfg['ema_decay'],
                                 gamma=cfg['gamma'],
@@ -376,7 +384,7 @@ def run(**cfg):
                         sample = replay_buffer.sample(cfg['batchsize'])
 
                         Q_action_train, losses_Q = agent.update(
-                                learning_rate=cfg['learning_rate'],
+                                learning_rate=policy_learning_rate,
                                 learning_rate_q=cfg['learning_rate_q'],
                                 ema_decay=cfg['ema_decay'],
                                 gamma=cfg['gamma'],
