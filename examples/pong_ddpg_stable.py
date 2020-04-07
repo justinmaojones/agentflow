@@ -306,7 +306,14 @@ def run(**cfg):
         T = cfg['num_steps']
         T_beta = T if cfg['prioritized_replay_beta_iters'] is None else cfg['prioritized_replay_beta_iters']
         beta0 = cfg['prioritized_replay_beta0']
-        pb = tf.keras.utils.Progbar(T,stateful_metrics=['test_ep_returns','test_ep_actions_entropy','avg_action','Q_action_train','losses_Q'])
+        pb = tf.keras.utils.Progbar(T,stateful_metrics=[
+            'test_ep_returns',
+            'test_ep_actions_entropy',
+            'test_ep_length',
+            'avg_action',
+            'Q_action_train',
+            'losses_Q'
+        ])
         for t in range(T):
             start_step_time = time.time()
 
@@ -412,7 +419,9 @@ def run(**cfg):
             if t % cfg['n_steps_per_eval'] == 0 or t==0:
                 test_ep_returns, test_ep_rewards, test_ep_dones, test_ep_actions = test_agent(test_env,agent)
                 test_ep_actions_entropy = entropy(test_ep_actions.ravel())
+                test_ep_length = len(test_ep_actions)
                 log['test_ep_returns'].append(test_ep_returns)
+                log['test_ep_length'].append(test_ep_length)
                 log['test_ep_actions_entropy'].append(test_ep_actions_entropy)
                 log['test_ep_rewards'][t] = test_ep_rewards
                 log['test_ep_dones'][t] = test_ep_dones
