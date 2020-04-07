@@ -189,7 +189,7 @@ class StableDDPG(object):
                         reward_differential+tf.stop_gradient(Q_ema_state2-Q_action_train))
             losses_policy = dpg(Q_policy_train,policy_train,self.dqda_clipping,self.clip_norm)
             loss_policy = tf.reduce_mean(self.inputs['importance_weight']*losses_policy)
-            loss = tf.reduce_mean(self.inputs['importance_weight']*(losses_Q + losses_policy + loss_R))
+            loss = tf.reduce_mean(self.inputs['importance_weight']*losses_policy)
 
             # policy gradient
             policy_gradient = tf.gradients(losses_policy,policy_train)
