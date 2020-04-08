@@ -7,7 +7,7 @@ export UPDATE_FREQ=32
 export N_PREV_FRAMES=12
 export LEARNING_RATE_Q=1e-1
 
-export SAVEDIR=results/pong_ddpg_stable/lrq${LEARNING_RATE_Q}_npf${N_PREV_FRAMES}_momentum0.2_nesterov_alpha2_frzn_prioritized_only_q_10k
+export SAVEDIR=results/pong_ddpg_stable/lrq${LEARNING_RATE_Q}_npf${N_PREV_FRAMES}_momentum0.2_nesterov_alpha2_frzn_prioritized_only_q_20k
 
 for SEED in 1 #2 3 4 5 6 7 8 9 10
 do
