@@ -81,6 +81,9 @@ def noisy_action(action_softmax,eps=1.,clip=5e-2):
 @click.option('--prioritized_replay_eps', default=1e-6, type=float)
 @click.option('--prioritized_replay_weights_uniform', default=False, type=bool)
 @click.option('--prioritized_replay_compute_init', default=False, type=bool)
+@click.option('--prioritized_replay_simple', default=False, type=bool)
+@click.option('--prioritized_replay_simple_reward_adder', default=4, type=float)
+@click.option('--prioritized_replay_simple_done_adder', default=4, type=float)
 @click.option('--begin_learning_at_step', default=1e4)
 @click.option('--learning_rate', default=1e-4)
 @click.option('--learning_rate_q', default=1.)
@@ -226,10 +229,13 @@ def run(**cfg):
                 'state2':state2
             }
             if cfg['buffer_type'] == 'prioritized' and cfg['prioritized_replay_compute_init']:
-                replay_buffer.append(
-                    data,
-                    priority = sess.run(agent.outputs['td_error'],agent.get_inputs(gamma=cfg['gamma'],**data))
-                )
+                priority = sess.run(agent.outputs['td_error'],agent.get_inputs(gamma=cfg['gamma'],**data))
+                replay_buffer.append(data,priority=priority)
+            elif cfg['buffer_type'] == 'prioritized' and cfg['prioritized_replay_simple']:
+                priority = np.ones_like(data['reward'])
+                priority += cfg['prioritized_replay_simple_reward_adder']*(data['reward']!=0)
+                priority += cfg['prioritized_replay_simple_done_adder']*data['done']
+                replay_buffer.append(data,priority=priority)
             else:
                 replay_buffer.append(data)
             state = state2 
@@ -256,7 +262,8 @@ def run(**cfg):
                                 outputs=['td_error','Q_ema_state2'],
                                 **sample)
 
-                        replay_buffer.update_priorities(td_error)
+                        if not cfg['prioritized_replay_simple']:
+                            replay_buffer.update_priorities(td_error)
                     else:
 
                         sample = replay_buffer.sample(cfg['batchsize'])
