@@ -4,7 +4,7 @@ from ..objectives import dpg, td_learning
 from ..tensorflow.ops import exponential_moving_average, get_gradient_matrix
 
 
-def get_modified_gradients_pinv(var_list,y_pred,y2_pred,td_err,alpha,beta,vprev=None,fast=True):
+def get_modified_gradients_pinv(var_list,y_pred,y2_pred,td_err,alpha,beta,vprev=None,fast=True,weight_decay=None):
     var_list, gradients = get_gradient_matrix(var_list,y_pred)
     var_list2, gradients2 = get_gradient_matrix(var_list,y2_pred)
 
@@ -30,6 +30,8 @@ def get_modified_gradients_pinv(var_list,y_pred,y2_pred,td_err,alpha,beta,vprev=
     for v in var_list:
         w = np.prod(v.shape).value
         g = tf.reshape(modified_grad_flat[i:i+w],v.shape)
+        if weight_decay is not None:
+            g += weight_decay*v
         modified_grad.append((g,v))
         i += w
 
@@ -216,6 +218,7 @@ class StableDDPG(object):
                                 td_error,
                                 alpha=self.alpha,
                                 beta=self.beta,
+                                weight_decay=inputs['weight_decay'],
                             )
                             grad_Q.extend(gv)
 
@@ -227,6 +230,7 @@ class StableDDPG(object):
                         td_error,
                         alpha=self.alpha,
                         beta=self.beta,
+                        weight_decay=inputs['weight_decay'],
                     )
 
             qkw = {} if self.optimizer_q_kwargs is None else self.optimizer_q_kwargs

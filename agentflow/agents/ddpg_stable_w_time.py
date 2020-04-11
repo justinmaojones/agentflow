@@ -7,7 +7,10 @@ from .ddpg_stable import get_modified_gradients_pinv
 
 class StableDDPGTime(object):
 
-    def __init__(self,state_shape,action_shape,policy_fn,q_fn,dqda_clipping=None,clip_norm=False,discrete=False,episodic=True,beta=1,alpha=1):
+    def __init__(self,state_shape,action_shape,policy_fn,q_fn,dqda_clipping=None,
+            clip_norm=False,discrete=False,episodic=True,beta=1,alpha=1,
+            optimizer_q='gradient_descent',opt_q_layerwise=False,optimizer_q_kwargs=None,
+        ):
         """Implements Deep Deterministic Policy Gradient with Tensorflow
 
         This class builds a DDPG model with optimization update and action prediction steps.
@@ -40,6 +43,9 @@ class StableDDPGTime(object):
         self.episodic = episodic
         self.alpha = alpha
         self.beta = beta
+        self.optimizer_q = optimizer_q
+        self.opt_q_layerwise = opt_q_layerwise
+        self.optimizer_q_kwargs = optimizer_q_kwargs
         self.build_model()
 
     def build_model(self):
@@ -150,7 +156,7 @@ class StableDDPGTime(object):
                         reward_differential+tf.stop_gradient(Q_ema_state2-Q_action_train))
             losses_policy = dpg(Q_policy_train,policy_train,self.dqda_clipping,self.clip_norm)
             loss_policy = tf.reduce_mean(self.inputs['importance_weight']*losses_policy)
-            loss = tf.reduce_mean(self.inputs['importance_weight']*(losses_Q + losses_policy + loss_R))
+            loss = tf.reduce_mean(self.inputs['importance_weight']*(losses_policy))
 
             # policy gradient
             policy_gradient = tf.gradients(losses_policy,policy_train)
@@ -166,21 +172,50 @@ class StableDDPGTime(object):
             # stable gradients for parameters of Q
             with tf.variable_scope('Q') as scope_Q:
                 self.var_list_Q = tf.trainable_variables(scope=scope_Q.name)
-                grad_Q, _ = get_modified_gradients_pinv(
-                    self.var_list_Q,
-                    Q_action_train,
-                    Q_ema_state2,
-                    td_error,
-                    alpha=self.alpha,
-                    beta=self.beta,
-                )
-            self.optimizer_Q = tf.train.GradientDescentOptimizer(inputs['learning_rate_q'])
+                if self.opt_q_layerwise:
+                    grad_Q = []
+                    for v in self.var_list_Q:
+                        if 'kernel' in v.name:
+                            gv, _ = get_modified_gradients_pinv(
+                                [v],
+                                Q_action_train,
+                                Q_ema_state2,
+                                td_error,
+                                alpha=self.alpha,
+                                beta=self.beta,
+                                weight_decay=inputs['weight_decay'],
+                            )
+                            grad_Q.extend(gv)
+
+                else:
+                    grad_Q, _ = get_modified_gradients_pinv(
+                        self.var_list_Q,
+                        Q_action_train,
+                        Q_ema_state2,
+                        td_error,
+                        alpha=self.alpha,
+                        beta=self.beta,
+                        weight_decay=inputs['weight_decay'],
+                    )
+
+            qkw = {} if self.optimizer_q_kwargs is None else self.optimizer_q_kwargs
+            if self.optimizer_q == 'gradient_descent':
+                self.optimizer_Q = tf.train.GradientDescentOptimizer(inputs['learning_rate_q'],**qkw)
+            elif self.optimizer_q == 'momentum':
+                self.optimizer_Q = tf.train.MomentumOptimizer(inputs['learning_rate_q'],**qkw)
+            elif self.optimizer_q == 'rms_prop':
+                self.optimizer_Q = tf.train.RMSPropOptimizer(inputs['learning_rate_q'],**qkw)
+            elif self.optimizer_q == 'adam':
+                self.optimizer_Q = tf.train.AdamOptimizer(inputs['learning_rate_q'],**qkw)
+            else:
+                raise NotImplementedError('optimizer_q="%s" not implemented' % self.optimizer_q)
             train_op_Q = self.optimizer_Q.apply_gradients(grad_Q)
             
             # gradient update for parameters of policy
             with tf.variable_scope('policy') as scope_policy:
                 self.var_list_policy = tf.trainable_variables(scope=scope_policy.name)
             self.optimizer = tf.train.RMSPropOptimizer(inputs['learning_rate']) 
+
             other_update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS,scope=scope.name)
             with tf.control_dependencies(other_update_ops):
                 train_op = self.optimizer.minimize(loss,var_list=self.var_list_policy)
