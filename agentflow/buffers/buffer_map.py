@@ -9,6 +9,7 @@ class BufferMap(object):
         self._n = 0
         self.buffer_cls = NDArrayBufferLastDim 
         self.buffers = {}
+        self._index = 0
 
     def __len__(self):
         return self._n
@@ -43,4 +44,21 @@ class BufferMap(object):
         idx_time = np.random.choice(self._n-1,size=nsamples,replace=True)
         output = {k:self.buffers[k].buffer[idx_batch,...,idx_time] for k in self.buffers}
         return output
+
+    def sample_backwards(self,nsamples,ntimesteps=None):
+        if ntimesteps is None:
+            ntimesteps = nsamples
+        idx_batch = np.random.choice(self.first_dim_size,size=nsamples,replace=True)
+        idx_time = np.random.randint(
+            low = self._n + self._index - ntimesteps,
+            high = self._n + self._index,
+            size = nsamples
+        ) % self._n
+        output = {k:self.buffers[k].buffer[idx_batch,...,idx_time] for k in self.buffers}
+        self._index = (self._n + self._index - ntimesteps) % self._n
+        return output
+
+    def reset_index(self):
+        self._index = 0
+
 

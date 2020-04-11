@@ -75,6 +75,7 @@ def noisy_action(action_softmax,eps=1.,clip=5e-2):
 @click.option('--add_episode_time_state', default=False, type=bool)
 @click.option('--buffer_type', default='normal', type=click.Choice(['normal','prioritized']))
 @click.option('--buffer_size', default=2**11, type=int)
+@click.option('--sample_backwards', default=False, type=bool)
 @click.option('--prioritized_replay_alpha', default=0.6, type=float)
 @click.option('--prioritized_replay_beta0', default=0.4, type=float)
 @click.option('--prioritized_replay_beta_iters', default=None, type=int)
@@ -248,7 +249,10 @@ def run(**cfg):
                         beta = beta0 + (1.-beta0)*min(1.,float(t)/T_beta)
                         log['beta'].append(beta)
 
-                        sample = replay_buffer.sample(cfg['batchsize'],beta=beta)
+                        if cfg['sample_backwards']:
+                            raise NotImplementedError("sample_backwards not implemented for prioritized buffer")
+                        else:
+                            sample = replay_buffer.sample(cfg['batchsize'],beta=beta)
                         if cfg['prioritized_replay_weights_uniform']:
                             sample['importance_weight'] = np.ones_like(sample['importance_weight'])
                         log['max_importance_weight'].append(sample['importance_weight'].max())
@@ -266,7 +270,10 @@ def run(**cfg):
                             replay_buffer.update_priorities(td_error)
                     else:
 
-                        sample = replay_buffer.sample(cfg['batchsize'])
+                        if cfg['sample_backwards']:
+                            sample = replay_buffer.sample_backwards(cfg['batchsize'])
+                        else:
+                            sample = replay_buffer.sample(cfg['batchsize'])
 
                         Q_ema_state2, = agent.update(
                                 learning_rate=cfg['learning_rate'],
