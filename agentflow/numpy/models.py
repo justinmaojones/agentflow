@@ -70,6 +70,17 @@ class TimeDelayedGradientDescent(TimeDelayedModel):
         g = np.dot(err,X)/len(X) + alpha*w
         return y, err, w - lr*g
 
+class TimeDelayedGradientDescentStabilized(TimeDelayedModel):
+
+    def update(self,X,X2,r,done,w,lr=1,gamma=0.99,alpha=1,ema=0.99,beta=1,**kwargs):
+        self.update_w_ema(w,ema)
+        y = np.dot(X,w)
+        y2 = np.dot(X2,self._w_ema)
+        err = y - (r+(1-done)*gamma*y2)
+        g2 = X2.sum(axis=0)
+        g = np.dot(err,X)/len(X) + alpha*w + beta*g2
+        return y, err, w - lr*g
+
 class TimeDelayedNewton(TimeDelayedModel):
 
     def update(self,X,X2,r,done,w,lr=1,gamma=0.99,alpha=1,ema=0.99,**kwargs):
