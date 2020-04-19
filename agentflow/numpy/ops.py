@@ -12,4 +12,9 @@ def onehot(x,depth=2):
     y[np.arange(len(x)),x] = 1.
     return y.astype('float32')
 
-
+def binarize(x,b):
+    y = []
+    for i in range(b):
+        y.append(x % 2)
+        x = x // 2
+    return np.concatenate(y,axis=-1)

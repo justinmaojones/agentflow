@@ -1,9 +1,11 @@
 import numpy as np
+import agentflow.numpy.ops as np_ops
 
 class AddEpisodeTimeState(object):
 
-    def __init__(self,flatten=False):
+    def __init__(self,flatten=False,binarized=False):
         self.flatten = flatten
+        self.binarized = binarized
         self.reset()
 
     def reset(self,frame=None,**kwargs):
@@ -24,8 +26,12 @@ class AddEpisodeTimeState(object):
         if reset_mask is not None:
             self._time[reset_mask==1,...,-1] = 0 
 
-        time_state = np.log(1.+self._time,dtype='float32')
-        self._state = np.concatenate([frame,time_state],axis=-1)
+        if self.binarized:
+            time_state = np_ops.binarize(self._time,32)
+            self._state = np.concatenate([frame,time_state],axis=-1)
+        else:
+            time_state = np.log(1.+self._time,dtype='float32')
+            self._state = np.concatenate([frame,time_state],axis=-1)
 
         return self.state()
 

@@ -99,4 +99,9 @@ def get_modified_gradients_softmax(y_true,logits,var_list,alpha=1,axis=1):
     }
     return modified_grad, supplementary_output
 
-
+def binarize(x,b):
+    y = []
+    for i in range(b):
+        y.append(tf.mod(x, 2))
+        x = x // 2
+    return tf.concat(y,axis=-1)

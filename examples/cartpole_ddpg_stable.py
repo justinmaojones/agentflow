@@ -70,9 +70,11 @@ def noisy_action(action_softmax,eps=1.,clip=5e-2):
 @click.option('--hidden_dims', default=32)
 @click.option('--hidden_layers', default=2)
 @click.option('--output_dim', default=2)
+@click.option('--discrete', default=True, type=bool)
 @click.option('--normalize_inputs', default=True, type=bool)
 @click.option('--batchnorm', default=False, type=bool)
 @click.option('--add_episode_time_state', default=False, type=bool)
+@click.option('--binarized_time_state', default=False, type=bool)
 @click.option('--buffer_type', default='normal', type=click.Choice(['normal','prioritized']))
 @click.option('--buffer_size', default=2**11, type=int)
 @click.option('--sample_backwards', default=False, type=bool)
@@ -108,8 +110,6 @@ def run(**cfg):
     for k in sorted(cfg):
         print('CONFIG: ',k,str(cfg[k]))
 
-    discrete = True
-
     if cfg['seed'] is not None:
         np.random.seed(cfg['seed'])
         tf.set_random_seed(int(10*cfg['seed']))
@@ -131,8 +131,8 @@ def run(**cfg):
 
     if cfg['add_episode_time_state']:
         print('ADDING EPISODE TIME STATES')
-        env = AddEpisodeTimeStateEnv(env) 
-        test_env = AddEpisodeTimeStateEnv(test_env) 
+        env = AddEpisodeTimeStateEnv(env,binarized=cfg['binarized_time_state']) 
+        test_env = AddEpisodeTimeStateEnv(test_env,binarized=cfg['binarized_time_state']) 
 
     state = env.reset()
     state_shape = state.shape
@@ -166,7 +166,7 @@ def run(**cfg):
     agent = StableDDPG(
         state_shape[1:],[2],policy_fn,q_fn,
         cfg['dqda_clipping'],cfg['clip_norm'],
-        discrete=discrete,
+        discrete=cfg['discrete'],
         alpha=cfg['alpha'],
         beta=cfg['beta'],
         optimizer_q=cfg['optimizer_q'],
