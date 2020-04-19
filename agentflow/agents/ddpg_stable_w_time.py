@@ -54,20 +54,20 @@ class StableDDPGTime(object):
 
             # inputs
             inputs = {
-                'state': tf.placeholder(tf.float32,shape=tuple([None]+self.state_shape)),
-                'time': tf.placeholder(tf.float32,shape=(None,)),
-                'action': tf.placeholder(tf.float32,shape=tuple([None]+self.action_shape)),
-                'reward': tf.placeholder(tf.float32,shape=(None,)),
-                'done': tf.placeholder(tf.float32,shape=(None,)),
-                'state2': tf.placeholder(tf.float32,shape=tuple([None]+self.state_shape)),
-                'time2': tf.placeholder(tf.float32,shape=(None,)),
-                'gamma': tf.placeholder(tf.float32),
-                'learning_rate': tf.placeholder(tf.float32),
-                'learning_rate_q': tf.placeholder(tf.float32),
-                'ema_decay': tf.placeholder(tf.float32),
-                'importance_weight': tf.placeholder(tf.float32,shape=(None,)),
-                'weight_decay': tf.placeholder(tf.float32,shape=()),
-                'learning_rate': tf.placeholder(tf.float32),
+                'state': tf.placeholder(tf.float32,shape=tuple([None]+self.state_shape),name='state'),
+                'time': tf.placeholder(tf.float32,shape=(None,),name='time'),
+                'action': tf.placeholder(tf.float32,shape=tuple([None]+self.action_shape),name='action'),
+                'reward': tf.placeholder(tf.float32,shape=(None,),name='reward'),
+                'done': tf.placeholder(tf.float32,shape=(None,),name='done'),
+                'state2': tf.placeholder(tf.float32,shape=tuple([None]+self.state_shape),name='state2'),
+                'time2': tf.placeholder(tf.float32,shape=(None,),name='time2'),
+                'gamma': tf.placeholder(tf.float32,name='gamma'),
+                'learning_rate': tf.placeholder(tf.float32,name='learning_rate'),
+                'learning_rate_q': tf.placeholder(tf.float32,name='learning_rate_q'),
+                'ema_decay': tf.placeholder(tf.float32,name='ema_decay'),
+                'importance_weight': tf.placeholder(tf.float32,shape=(None,),name='importance_weight'),
+                'weight_decay': tf.placeholder(tf.float32,shape=(),name='weight_decay'),
+                'learning_rate': tf.placeholder(tf.float32,name='learning_rate'),
             }
             self.inputs = inputs
 
