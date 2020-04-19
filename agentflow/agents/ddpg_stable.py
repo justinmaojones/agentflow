@@ -4,7 +4,7 @@ from ..objectives import dpg, td_learning
 from ..tensorflow.ops import exponential_moving_average, get_gradient_matrix
 
 
-def get_modified_gradients_pinv(var_list,y_pred,y2_pred,td_err,alpha,beta,vprev=None,fast=True,weight_decay=None):
+def get_modified_gradients_pinv(var_list,y_pred,y2_pred,td_err,alpha,beta,vprev=None,fast=True,weight_decay=None,normalize_gradients=False):
     var_list, gradients = get_gradient_matrix(var_list,y_pred)
     var_list2, gradients2 = get_gradient_matrix(var_list,y2_pred)
 
@@ -21,6 +21,11 @@ def get_modified_gradients_pinv(var_list,y_pred,y2_pred,td_err,alpha,beta,vprev=
         A = tf.concat([A,vprev[None]],axis=0)
         zeros = tf.zeros(1,tf.float32)
         b = tf.concat([b,zeros],axis=0)
+
+    if normalize_gradients:
+        A_norm = tf.sqrt(tf.reduce_max(tf.reduce_sum(tf.square(A),axis=1)))
+        A = A/A_norm
+        b = b/A_norm
 
     modified_grad_flat = tf.linalg.lstsq(A,b[:,None],fast=fast,l2_regularizer=alpha)
     #modified_grad_flat = modified_grad_flat/tf.cast(tf.shape(grads)[0],tf.float32)
@@ -140,6 +145,8 @@ class StableDDPG(object):
                     pe_depth = self.action_shape[-1] 
                     pe_indices = tf.argmax(policy_ema_probs,axis=-1)
                     policy_ema = tf.one_hot(pe_indices,pe_depth)
+                else:
+                    policy_ema = policy_ema_probs
 
             with tf.variable_scope('policy',reuse=True,custom_getter=ema_vars_getter):
                 policy_ema_state2_probs = self.policy_fn(inputs['state2'],training=False)
@@ -147,6 +154,8 @@ class StableDDPG(object):
                     pe_depth = self.action_shape[-1] 
                     pe_indices = tf.argmax(policy_ema_state2_probs,axis=-1)
                     policy_ema_state2 = tf.one_hot(pe_indices,pe_depth)
+                else:
+                    policy_ema_state2 = policy_ema_state2_probs
 
             #with tf.variable_scope('Q',reuse=True,custom_getter=ema_vars_getter):
             with tf.variable_scope('Q',reuse=True):
