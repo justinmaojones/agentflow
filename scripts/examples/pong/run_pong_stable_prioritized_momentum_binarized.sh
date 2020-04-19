@@ -6,8 +6,10 @@ export BATCHSIZE=32
 export UPDATE_FREQ=32
 export N_PREV_FRAMES=12
 export LEARNING_RATE_Q=1e-1
+export HIDDEN_DIMS=128
+export HIDDEN_LAYERS=2
 
-export SAVEDIR=results/pong_ddpg_stable/lrq${LEARNING_RATE_Q}_npf${N_PREV_FRAMES}_momentum0.2_nesterov_alpha2_prioritized_init_q5k_wd1e-3
+export SAVEDIR=results/pong_ddpg_stable/lrq${LEARNING_RATE_Q}_npf${N_PREV_FRAMES}_momentum0.2_nesterov_alpha2_prioritized_init_q5k_wd1e-3_hd${HIDDEN_DIMS}_hl${HIDDEN_LAYERS}
 
 for SEED in 1 #2 3 4 5 6 7 8 9 10
 do
@@ -17,6 +19,8 @@ do
         --n_update_steps=$N_UPDATE_STEPS \
         --batchsize=$BATCHSIZE \
         --binarized=True \
+        --hidden_dims=$HIDDEN_DIMS \
+        --hidden_layers=$HIDDEN_LAYERS \
         --buffer_type=prioritized \
         --prioritized_replay_simple=True \
         --buffer_size=$BUFFER_SIZE \
