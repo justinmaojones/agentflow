@@ -429,6 +429,8 @@ def run(**cfg):
             log['action_history'].append(action)
             avg_action = np.mean(log['action_history'][-20:])
             pb_input.append(('avg_action', avg_action))
+            avg_train_ep_returns = np.mean(log['train_ep_returns'][-1:])
+            pb_input.append(('train_ep_returns', avg_train_ep_returns))
 
             if t % cfg['n_steps_per_eval'] == 0 or t==0:
                 test_ep_returns, test_ep_rewards, test_ep_dones, test_ep_actions = test_agent(test_env,agent)
@@ -442,9 +444,7 @@ def run(**cfg):
                 log['test_ep_actions'][t] = test_ep_actions
                 log['test_ep_steps'].append(t)
                 #log['test_duration_cumulative'].append(time.time()-start_time)
-                avg_train_ep_returns = np.mean(log['train_ep_returns'][-1:])
                 avg_test_ep_returns = np.mean(log['test_ep_returns'][-1:])
-                pb_input.append(('train_ep_returns', avg_train_ep_returns))
                 pb_input.append(('test_ep_returns', avg_test_ep_returns))
                 pb_input.append(('test_ep_length', test_ep_length))
                 pb_input.append(('test_ep_actions_entropy', test_ep_actions_entropy))
