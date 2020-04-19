@@ -2,7 +2,8 @@ import numpy as np
 
 class AppendEpisodeTimeState(object):
 
-    def __init__(self):
+    def __init__(self,log_transform=True):
+        self.log_transform = log_transform
         self.reset()
 
     def reset(self,frame=None,**kwargs):
@@ -22,7 +23,10 @@ class AppendEpisodeTimeState(object):
             self._time[reset_mask==1] = 0 
 
         self._frame = frame
-        self._state = np.log(1.+self._time,dtype='float32')
+        if self.log_transform:
+            self._state = np.log(1.+self._time,dtype='float32')
+        else:
+            self._state = self._time
 
         return self.state()
 
