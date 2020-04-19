@@ -8,14 +8,12 @@ export N_PREV_FRAMES=12
 export LEARNING_RATE_Q=1e-1
 export HIDDEN_DIMS=16
 export HIDDEN_LAYERS=2
-export N_CPUS=1
 
 export SAVEDIR=results/pong_ddpg_stable_debug/lrq${LEARNING_RATE_Q}_npf${N_PREV_FRAMES}_momentum0.2_nesterov_alpha2_prioritized_init_q5k_wd1e-3_hd${HIDDEN_DIMS}_hl${HIDDEN_LAYERS}
 
 for SEED in 1 #2 3 4 5 6 7 8 9 10
 do
     python examples/pong_ddpg_stable.py \
-        --n_cpus=$N_CPUS \
         --num_steps=$NUMSTEPS \
         --begin_learning_at_step=$BEGIN_LEARNING_AT_STEP \
         --n_update_steps=$N_UPDATE_STEPS \
