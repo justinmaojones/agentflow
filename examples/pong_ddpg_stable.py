@@ -320,6 +320,7 @@ def run(**cfg):
         T_beta = T if cfg['prioritized_replay_beta_iters'] is None else cfg['prioritized_replay_beta_iters']
         beta0 = cfg['prioritized_replay_beta0']
         pb = tf.keras.utils.Progbar(T,stateful_metrics=[
+            'train_ep_returns',
             'test_ep_returns',
             'test_ep_actions_entropy',
             'test_ep_length',
