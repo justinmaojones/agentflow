@@ -441,7 +441,9 @@ def run(**cfg):
                 log['test_ep_actions'][t] = test_ep_actions
                 log['test_ep_steps'].append(t)
                 #log['test_duration_cumulative'].append(time.time()-start_time)
+                avg_train_ep_returns = np.mean(log['train_ep_returns'][-1:])
                 avg_test_ep_returns = np.mean(log['test_ep_returns'][-1:])
+                pb_input.append(('train_ep_returns', avg_train_ep_returns))
                 pb_input.append(('test_ep_returns', avg_test_ep_returns))
                 pb_input.append(('test_ep_length', test_ep_length))
                 pb_input.append(('test_ep_actions_entropy', test_ep_actions_entropy))
