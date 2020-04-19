@@ -1,6 +1,28 @@
 import numpy as np
 from sklearn.linear_model import Ridge, LinearRegression
 
+class TrackEpisodeScore(object):
+
+    def __init__(self,gamma=1.):
+        self._gamma = gamma
+        self._prev_ep_scores = None
+        self._curr_ep_scores = None
+        self._curr_discounts = None
+
+    def get_prev_ep_scores(self):
+        assert self._prev_ep_scores is not None
+        return self._prev_ep_scores
+
+    def update(self,rewards,dones):
+        if self._curr_ep_scores is None:
+            self._prev_ep_scores = np.zeros_like(rewards)
+            self._curr_ep_scores = np.zeros_like(rewards)
+            self._curr_discounts = np.ones_like(rewards)
+        self._curr_ep_scores += rewards*self._curr_discounts
+        self._prev_ep_scores = self._prev_ep_scores*(1-dones) + self._curr_ep_scores*dones
+        self._curr_ep_scores *= 1-dones
+        self._curr_discounts = self._curr_discounts*self._gamma*(1-dones) + dones
+        return self.get_prev_ep_scores()
 
 class Logs(object):
 

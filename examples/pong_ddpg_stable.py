@@ -6,6 +6,7 @@ from agentflow.state import AddEpisodeTimeStateEnv
 from agentflow.state import ResizeImageStateEnv
 from agentflow.state import CvtRGB2GrayImageStateEnv
 from agentflow.numpy.ops import onehot
+from agentflow.numpy.models import TrackEpisodeScore
 from agentflow.tensorflow.nn import dense_net
 from agentflow.tensorflow.ops import normalize_ema, binarize
 from agentflow.utils import check_whats_connected
@@ -123,26 +124,6 @@ def noisy_action(action_softmax,eps=1.,clip=5e-2):
     u = np.random.rand(*logit_unscaled.shape)
     g = -np.log(-np.log(u))
     return (eps*g+logit_unscaled).argmax(axis=-1)
-
-class TrackEpisodeScore(object):
-
-    def __init__(self):
-        self._prev_ep_scores = None
-        self._curr_ep_scores = None
-
-    def get_prev_ep_scores(self):
-        assert self._prev_ep_scores is not None
-        return self._prev_ep_scores
-
-    def update(self,rewards,dones):
-        if self._curr_ep_scores is None:
-            self._prev_ep_scores = np.zeros_like(rewards) 
-            self._curr_ep_scores = np.zeros_like(rewards)
-        self._curr_ep_scores += rewards
-        self._prev_ep_scores = self._prev_ep_scores*(1-dones) + self._curr_ep_scores*dones
-        self._curr_ep_scores *= 1-dones
-        return self.get_prev_ep_scores()
-
 
 @click.command()
 @click.option('--num_steps', default=20000, type=int)
@@ -297,6 +278,7 @@ def run(**cfg):
         'test_ep_actions': {},
         'test_ep_length': [],
         'train_ep_returns': [],
+        'train_ep_returns_discounted': [],
         'step_duration_sec': [],
         'duration_cumulative': [],
         'beta': [],
@@ -307,7 +289,8 @@ def run(**cfg):
         'loss_Q_updates': [],
         'frames': [],
     }
-    track_train_ep_returns = TrackEpisodeScore()
+    track_train_ep_returns = TrackEpisodeScore(gamma=1.)
+    track_train_ep_returns_discounted = TrackEpisodeScore(gamma=cfg['gamma'])
 
     state = env.reset()
 
@@ -321,6 +304,7 @@ def run(**cfg):
         beta0 = cfg['prioritized_replay_beta0']
         pb = tf.keras.utils.Progbar(T,stateful_metrics=[
             'train_ep_returns',
+            'train_ep_returns_discounted',
             'test_ep_returns',
             'test_ep_actions_entropy',
             'test_ep_length',
@@ -347,6 +331,7 @@ def run(**cfg):
             log['frames'].append(len(state2))
             log['action_probs_history'].append(action_probs)
             log['train_ep_returns'].append(track_train_ep_returns.update(reward,done))
+            log['train_ep_returns_discounted'].append(track_train_ep_returns_discounted.update(reward,done))
 
             data = {
                 'state':state,
@@ -431,6 +416,8 @@ def run(**cfg):
             pb_input.append(('avg_action', avg_action))
             avg_train_ep_returns = np.mean(log['train_ep_returns'][-1:])
             pb_input.append(('train_ep_returns', avg_train_ep_returns))
+            avg_train_ep_returns_discounted = np.mean(log['train_ep_returns_discounted'][-1:])
+            pb_input.append(('train_ep_returns_discounted', avg_train_ep_returns_discounted))
 
             if t % cfg['n_steps_per_eval'] == 0 or t==0:
                 test_ep_returns, test_ep_rewards, test_ep_dones, test_ep_actions = test_agent(test_env,agent)
