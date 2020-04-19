@@ -7,7 +7,7 @@ from agentflow.state import ResizeImageStateEnv
 from agentflow.state import CvtRGB2GrayImageStateEnv
 from agentflow.numpy.ops import onehot
 from agentflow.tensorflow.nn import dense_net
-from agentflow.tensorflow.ops import normalize_ema
+from agentflow.tensorflow.ops import normalize_ema, binarize
 from agentflow.utils import check_whats_connected
 import tensorflow as tf
 import numpy as np
@@ -60,25 +60,31 @@ def build_conv_net_fn(hidden_dims,hidden_layers,output_dim,batchnorm,stop_gradie
         return h
     return conv_net_fn
 
-def build_policy_fn(hidden_dims,hidden_layers,output_dim,batchnorm,normalize_inputs=True,freeze_conv_net=False):
+def build_policy_fn(hidden_dims,hidden_layers,output_dim,batchnorm,normalize_inputs=True,freeze_conv_net=False,binarized=False):
     dense_net_fn = build_net_fn(hidden_dims,hidden_layers,output_dim,batchnorm)
     conv_net_fn = build_conv_net_fn(hidden_dims,hidden_layers,output_dim,batchnorm,freeze_conv_net)
     def policy_fn(state,training=False):
-        state = state/255. - 0.5
-        if normalize_inputs:
-            state, _ = normalize_ema(state,training)
+        if binarized:
+            state = binarize(state,8)
+        else:
+            state = state/255. - 0.5
+            if normalize_inputs:
+                state, _ = normalize_ema(state,training)
         h = conv_net_fn(state,training,)
         h = dense_net_fn(h,training)
         return tf.nn.softmax(h,axis=-1)
     return policy_fn
 
-def build_q_fn(hidden_dims,hidden_layers,output_dim,batchnorm,normalize_inputs=True,freeze_conv_net=False):
+def build_q_fn(hidden_dims,hidden_layers,output_dim,batchnorm,normalize_inputs=True,freeze_conv_net=False,binarized=False):
     dense_net_fn = build_net_fn(hidden_dims,hidden_layers,output_dim,batchnorm)
     conv_net_fn = build_conv_net_fn(hidden_dims,hidden_layers,hidden_dims,batchnorm,freeze_conv_net)
     def q_fn(state,action,training=False):
-        state = state/255. - 0.5
-        if normalize_inputs:
-            state, _ = normalize_ema(state,training)
+        if binarized:
+            state = binarize(state,8)
+        else:
+            state = state/255. - 0.5
+            if normalize_inputs:
+                state, _ = normalize_ema(state,training)
         h_state = conv_net_fn(state,training)
         h_action = tf.layers.dense(action,hidden_dims)
         h = tf.concat([h_state,h_action],axis=1)
@@ -148,6 +154,7 @@ class TrackEpisodeScore(object):
 @click.option('--ema_decay', default=0.99, type=float)
 @click.option('--hidden_dims', default=32)
 @click.option('--hidden_layers', default=2)
+@click.option('--binarized', default=False, type=bool)
 @click.option('--freeze_conv_net', default=False, type=bool)
 @click.option('--output_dim', default=6)
 @click.option('--normalize_inputs', default=True, type=bool)
@@ -233,6 +240,7 @@ def run(**cfg):
             cfg['batchnorm'],
             cfg['normalize_inputs'],
             cfg['freeze_conv_net'],
+            cfg['binarized'],
     )
 
     q_fn = build_q_fn(
@@ -242,6 +250,7 @@ def run(**cfg):
             cfg['batchnorm'],
             cfg['normalize_inputs'],
             cfg['freeze_conv_net'],
+            cfg['binarized'],
     )
 
     optimizer_q_kwargs = {}
@@ -262,6 +271,9 @@ def run(**cfg):
         opt_q_layerwise=cfg['opt_q_layerwise'],
         optimizer_q_kwargs=optimizer_q_kwargs,
     )
+
+    for v in tf.trainable_variables():
+        print(v)
 
     # Replay Buffer
     if cfg['buffer_type'] == 'prioritized':
