@@ -276,6 +276,7 @@ def run(**cfg):
         'test_ep_dones': {},
         'test_ep_actions': {},
         'test_ep_length': [],
+        'train_ep_lengths': [],
         'train_ep_returns': [],
         'train_ep_returns_discounted': [],
         'step_duration_sec': [],
