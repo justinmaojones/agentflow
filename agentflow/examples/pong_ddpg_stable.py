@@ -288,6 +288,7 @@ def run(**cfg):
         'loss_Q_updates': [],
         'frames': [],
     }
+    track_train_ep_lengths = TrackEpisodeScore(gamma=1.)
     track_train_ep_returns = TrackEpisodeScore(gamma=1.)
     track_train_ep_returns_discounted = TrackEpisodeScore(gamma=cfg['gamma'])
 
@@ -302,8 +303,8 @@ def run(**cfg):
         T_beta = T if cfg['prioritized_replay_beta_iters'] is None else cfg['prioritized_replay_beta_iters']
         beta0 = cfg['prioritized_replay_beta0']
         pb = tf.keras.utils.Progbar(T,stateful_metrics=[
+            'train_ep_lengths',
             'train_ep_returns',
-            'train_ep_returns_discounted',
             'test_ep_returns',
             'test_ep_actions_entropy',
             'test_ep_length',
@@ -329,6 +330,7 @@ def run(**cfg):
 
             log['frames'].append(len(state2))
             log['action_probs_history'].append(action_probs)
+            log['train_ep_lengths'].append(track_train_ep_returns.update(np.ones_like(reward),done))
             log['train_ep_returns'].append(track_train_ep_returns.update(reward,done))
             log['train_ep_returns_discounted'].append(track_train_ep_returns_discounted.update(reward,done))
 
@@ -413,6 +415,8 @@ def run(**cfg):
             log['action_history'].append(action)
             avg_action = np.mean(log['action_history'][-20:])
             pb_input.append(('avg_action', avg_action))
+            avg_train_ep_lengths = np.mean(log['train_ep_lengths'][-1:])
+            pb_input.append(('train_ep_lengths', avg_train_ep_lengths))
             avg_train_ep_returns = np.mean(log['train_ep_returns'][-1:])
             pb_input.append(('train_ep_returns', avg_train_ep_returns))
             avg_train_ep_returns_discounted = np.mean(log['train_ep_returns_discounted'][-1:])
