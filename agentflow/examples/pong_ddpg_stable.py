@@ -125,7 +125,6 @@ def noisy_action(action_softmax,eps=1.,clip=5e-2):
     g = -np.log(-np.log(u))
     return (eps*g+logit_unscaled).argmax(axis=-1)
 
-@click.command()
 @click.option('--num_steps', default=20000, type=int)
 @click.option('--n_envs', default=1)
 @click.option('--env_id', default='PongDeterministic-v4')
@@ -469,4 +468,4 @@ def run(**cfg):
                 f[k] = log[k]
 
 if __name__=='__main__':
-    run()
+    click.command()(run)()
