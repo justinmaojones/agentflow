@@ -331,7 +331,7 @@ def run(**cfg):
 
             log['frames'].append(len(state2))
             log['action_probs_history'].append(action_probs)
-            log['train_ep_lengths'].append(track_train_ep_returns.update(np.ones_like(reward),done))
+            log['train_ep_lengths'].append(track_train_ep_lengths.update(np.ones_like(reward),done))
             log['train_ep_returns'].append(track_train_ep_returns.update(reward,done))
             log['train_ep_returns_discounted'].append(track_train_ep_returns_discounted.update(reward,done))
 
@@ -420,10 +420,8 @@ def run(**cfg):
             pb_input.append(('train_ep_lengths', avg_train_ep_lengths))
             avg_train_ep_returns = np.mean(log['train_ep_returns'][-1:])
             pb_input.append(('train_ep_returns', avg_train_ep_returns))
-            avg_train_ep_returns_discounted = np.mean(log['train_ep_returns_discounted'][-1:])
-            pb_input.append(('train_ep_returns_discounted', avg_train_ep_returns_discounted))
 
-            if t % cfg['n_steps_per_eval'] == 0 or t==0:
+            if (t % cfg['n_steps_per_eval'] == 0 and t >= cfg['begin_learning_at_step']) or t==0:
                 test_ep_returns, test_ep_rewards, test_ep_dones, test_ep_actions = test_agent(test_env,agent)
                 test_ep_actions_entropy = entropy(test_ep_actions.ravel())
                 test_ep_length = len(test_ep_actions)
