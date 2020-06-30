@@ -24,10 +24,23 @@ class CircularSumTree(PrefixSumTree):
             self._full = True
         return dropped
 
+    def append_sequence(self,x):
+        seq_size = x.shape[-1] 
+        i1 = self._index
+        i2 = min(self._index + seq_size, self.time_dim_size)
+        segment_size = i2 - i1 
+        self[...,i1:i2] = x[...,:segment_size]
+        if not self._full and self._index + segment_size >= self.time_dim_size:
+            self._full = True
+        self._index = (self._index + segment_size) % self.time_dim_size 
+        if segment_size < seq_size:
+            self.append_sequence(x[...,segment_size:])
+
+
 class PrioritizedBufferMap(BufferMap):
 
-    def __init__(self,max_length=2**20,last_dim=True,alpha=0.6,eps=1e-4,wclip=32.,n_beta_annealing_steps=None):
-        super(PrioritizedBufferMap,self).__init__(max_length,last_dim)
+    def __init__(self,max_length=2**20,alpha=0.6,eps=1e-4,wclip=32.,n_beta_annealing_steps=None):
+        super(PrioritizedBufferMap,self).__init__(max_length)
 
         assert alpha >= 0
         self._alpha = alpha
@@ -59,6 +72,24 @@ class PrioritizedBufferMap(BufferMap):
         dropped = self._sum_tree.append(p)
         if dropped is not None:
             self._inv_sum -= (1./dropped).sum()
+
+    def append_sequence(self,data,priority=None):
+        super(PrioritizedBufferMap,self).append_sequence(data)
+
+        if priority is None:
+            t = list(data.values())[0].shape[-1]
+            priority = np.ones((self.first_dim_size,t))
+
+        if self._sum_tree is None:
+            self._sum_tree = CircularSumTree(self.first_dim_size,self.max_length)
+
+        p = self._smooth_and_warp_priority(priority)
+        self._inv_sum += (1./p).sum()
+        dropped = self._sum_tree.append_sequence(p)
+        if dropped is not None:
+            self._inv_sum -= (1./dropped).sum()
+
+        assert self._index == self._sum_tree._index, "index mismatch (%d, %d)" % (self._index, self._sum_tree._index)
 
     def extend(self,X,priorities):
         for x,p in zip(X,priorities):

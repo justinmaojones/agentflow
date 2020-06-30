@@ -1,10 +1,11 @@
 import numpy as np
+from .state_env import StateEnv
 
-class RewardForwardFilterEnv(object):
+class RewardForwardFilterEnv(StateEnv):
 
     def __init__(self,env,gamma=0.99,**kwargs):
-        self.env = env
         self.gamma = gamma
+        super(RewardForwardFilterEnv,self).__init__(env)
 
     def reset(self):
         self.state = self.env.reset()
@@ -23,7 +24,3 @@ class RewardForwardFilterEnv(object):
 
     def get_state(self):
         return self.state
-
-    def action_shape(self):
-        return self.env.action_shape()
-

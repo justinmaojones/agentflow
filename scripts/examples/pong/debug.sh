@@ -1,39 +1,50 @@
-export NUMSTEPS=1000
+export NUMSTEPS=100000
 export BUFFER_SIZE=50000
-export BEGIN_LEARNING_AT_STEP=100
+export BEGIN_LEARNING_AT_STEP=3000
 export N_UPDATE_STEPS=1
-export BATCHSIZE=8
+export BATCHSIZE=64
 export UPDATE_FREQ=1
 export N_PREV_FRAMES=12
 export LEARNING_RATE_Q=1e-1
+export CONV_DIMS=64
 export HIDDEN_DIMS=16
 export HIDDEN_LAYERS=2
 
-export SAVEDIR=results/pong_ddpg_stable_debug/lrq${LEARNING_RATE_Q}_npf${N_PREV_FRAMES}_momentum0.2_nesterov_alpha2_prioritized_init_q5k_wd1e-3_hd${HIDDEN_DIMS}_hl${HIDDEN_LAYERS}
+export SAVEDIR=results/pong_ddpg_stable_debug/lrq${LEARNING_RATE_Q}_npf${N_PREV_FRAMES}_momentum0.2_nesterov_alpha2_prioritized_init_q5k_wd1e-3_cd${CONV_DIMS}_hd${HIDDEN_DIMS}_hl${HIDDEN_LAYERS}
 
 for SEED in 1 #2 3 4 5 6 7 8 9 10
 do
-    python examples/pong_ddpg_stable.py \
+    python agentflow/examples/pong_ddpg_stable.py \
+        --freeze_conv_net=True \
         --num_steps=$NUMSTEPS \
         --begin_learning_at_step=$BEGIN_LEARNING_AT_STEP \
         --n_update_steps=$N_UPDATE_STEPS \
         --batchsize=$BATCHSIZE \
         --binarized=True \
+        --batchnorm=True \
+        --conv_dims=$CONV_DIMS \
         --hidden_dims=$HIDDEN_DIMS \
         --hidden_layers=$HIDDEN_LAYERS \
         --buffer_type=prioritized \
         --prioritized_replay_simple=True \
         --buffer_size=$BUFFER_SIZE \
+        --noisy_action_prob=0.1 \
+        --learning_rate=0.1 \
         --learning_rate_q=$LEARNING_RATE_Q \
-        --n_steps_train_only_q 10 \
+        --n_steps_train_only_q 1000 \
         --n_prev_frames=$N_PREV_FRAMES \
-        --weight_decay=0.001 \
+        --weight_decay=0.01 \
+        --ema_decay=0.9 \
         --optimizer_q=momentum \
         --optimizer_q_momentum=0.2 \
         --alpha=2 \
         --optimizer_q_use_nesterov=True \
+        --regularize_policy=True \
+        --activation=elu \
+        --straight_through_estimation=True \
+        --entropy_loss_weight=0.1 \
         --seed=$SEED \
         --savedir=$SAVEDIR \
         --update_freq=$UPDATE_FREQ \
-        --n_steps_per_eval=1000 
+        --n_steps_per_eval=500 
 done

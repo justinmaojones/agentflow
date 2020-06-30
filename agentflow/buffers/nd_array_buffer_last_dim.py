@@ -16,19 +16,55 @@ class NDArrayBufferLastDim(object):
         if self.buffer is None:
             shape = tuple(list(x.shape) + [self.max_length])
             self.buffer = np.zeros(shape,dtype=x.dtype)
-        ndim = self.buffer.ndim
         self.buffer[...,self._index] = x
         self._n = min(self._n+1,self.max_length)
         self._index = (self._index+1) % self.max_length
+
+    def append_sequence(self,x):
+        if self.buffer is None:
+            shape = tuple(list(x.shape)[:-1] + [self.max_length])
+            self.buffer = np.zeros(shape,dtype=x.dtype)
+        seq_size = x.shape[-1] 
+        i1 = self._index
+        i2 = min(self._index + seq_size, self.max_length)
+        segment_size = i2 - i1 
+        self.buffer[...,i1:i2] = x[...,:segment_size]
+        self._n = min(self._n + segment_size, self.max_length)
+        self._index = (self._index + segment_size) % self.max_length
+        if segment_size < seq_size:
+            self.append_sequence(x[...,segment_size:])
 
     def extend(self,X):
         for x in X:
             self.append(x)
 
-    def get_sequence_slices(self,i,seq_size):
-        assert i >= (seq_size-1)
-        assert i < self._n
-        j2 = self._index + i + 1
+    def _tail_slices(self,seq_size):
+        assert seq_size <= self._n
+        slices = []
+        i1 = max(0, self._index - seq_size)
+        i2 = self._index
+        slices.append(slice(i1,i2))
+        seq_size -= (i2-i1)
+        if seq_size > 0:
+            i1 = self._n - seq_size
+            i2 = self._n
+            slices.append(slice(i1,i2))
+            assert i2-i1 == seq_size
+        return list(reversed(slices))
+
+    def tail(self,seq_size,batch_idx=None):
+        slices = self._tail_slices(seq_size)
+        if batch_idx is None:
+            return np.concatenate([self.buffer[...,s] for s in slices],axis=-1)
+        else:
+            return np.concatenate([self.buffer[batch_idx,...,s] for s in slices],axis=-1)
+
+    def get_sequence_slices(self,t,seq_size):
+        # todo: this is wrong...doesn't work when t=self._index-1
+        # t is relative to self._index
+        assert t >= (seq_size-1)
+        assert t < self._n
+        j2 = self._index + t + 1
         j1 = j2 - seq_size
         n = self._n
         slices = []
@@ -44,13 +80,15 @@ class NDArrayBufferLastDim(object):
     def get(idx):
         idx = np.array(idx)
         if self._n == self.max_length:
-            idx += self._i
+            idx += self._index
         return self.buffer[...,idx % self._n]
 
-    def get_sequence(self,i,seq_size):
-        slices = self.get_sequence_slices(i,seq_size)
-        ndim = self.buffer.ndim
-        return np.concatenate([self.buffer[...,s] for s in slices],axis=-1)
+    def get_sequence(self,time_idx,seq_size,batch_idx=None):
+        slices = self.get_sequence_slices(time_idx,seq_size)
+        if batch_idx is None:
+            return np.concatenate([self.buffer[...,s] for s in slices],axis=-1)
+        else:
+            return np.concatenate([self.buffer[batch_idx,...,s] for s in slices],axis=-1)
 
     def sample(self,n=1,seq_size=1):
         assert n > 0
@@ -72,6 +110,51 @@ if __name__ == '__main__':
     import unittest
 
     class Test(unittest.TestCase):
+
+        def test_tail_slices(self):
+            n = 10
+            buf = NDArrayBufferLastDim(n)
+            for i in range(3):
+                buf.append(np.array([i]))
+
+            self.assertEqual(buf._tail_slices(2), [slice(1,3)])
+            self.assertEqual(buf._tail_slices(3), [slice(0,3)])
+
+            for i in range(3,13):
+                buf.append(np.array([i]))
+
+            self.assertEqual(buf._index, 3) 
+            self.assertEqual(buf._tail_slices(2), [slice(1,3)])
+            self.assertEqual(buf._tail_slices(3), [slice(0,3)])
+            self.assertEqual(buf._tail_slices(4), [slice(9,10),slice(0,3)])
+            self.assertEqual(buf._tail_slices(10), [slice(3,10),slice(0,3)])
+
+        def test_tail(self):
+            n = 3 
+            buf = NDArrayBufferLastDim(n)
+            buf.append(np.array([1,2]))
+            buf.append(np.array([3,4]))
+
+            # test tail prior to filling up buffer
+            self.assertTrue(np.all(buf.tail(1) == np.array([[3],[4]])))
+            self.assertTrue(np.all(buf.tail(2) == np.array([[1,3],[2,4]])))
+
+            buf.append(np.array([5,6]))
+
+            # test tail when buffer is full 
+            self.assertTrue(np.all(buf.tail(2) == np.array([[3,5],[4,6]])))
+
+            buf.append(np.array([7,8]))
+
+            # test tail when buffer is full and has been overwritten 
+            self.assertTrue(np.all(buf.tail(1) == np.array([[7],[8]])))
+            self.assertTrue(np.all(buf.tail(2) == np.array([[5,7],[6,8]])))
+            self.assertTrue(np.all(buf.tail(3) == np.array([[3,5,7],[4,6,8]])))
+
+            # test batch_idx
+            self.assertTrue(np.all(buf.tail(3,0) == np.array([[3,5,7]])))
+            self.assertTrue(np.all(buf.tail(3,[0]) == np.array([[3,5,7]])))
+            self.assertTrue(np.all(buf.tail(3,[1,0]) == np.array([[4,6,8],[3,5,7]])))
 
         def test_all(self):
             n = 10
@@ -104,5 +187,27 @@ if __name__ == '__main__':
             self.assertEqual(buf.sample(1,2).shape, (1,2,3,2))
             self.assertEqual(buf.sample(3,1).shape, (3,2,3,1))
             self.assertEqual(buf.sample(3,4).shape, (3,2,3,4))
+
+        def test_append_sequence(self):
+            n = 10
+            buf = NDArrayBufferLastDim(n)
+
+            x = np.arange(3)[None]
+            buf.append_sequence(x)
+            self.assertTrue(np.all(buf.buffer[...,:3] == x))
+            self.assertEqual(buf._index, 3)
+            self.assertEqual(buf._n, 3)
+
+            x = np.arange(3,3+10)[None]
+            buf.append_sequence(x)
+            self.assertTrue(np.all(buf.buffer == np.concatenate([x[...,7:],x[...,:7]],axis=-1)))
+            self.assertEqual(buf._index, 3)
+            self.assertEqual(buf._n, 10)
+
+            x = np.arange(13,13+13)[None]
+            buf.append_sequence(x)
+            self.assertTrue(np.all(buf.buffer == np.concatenate([x[...,13-6:],x[...,3:13-6]],axis=-1)))
+            self.assertEqual(buf._index, 6)
+            self.assertEqual(buf._n, 10)
 
     unittest.main()

@@ -1,4 +1,5 @@
 import numpy as np
+from .state_env import StateEnv
 
 class AppendEpisodeTimeState(object):
 
@@ -33,11 +34,11 @@ class AppendEpisodeTimeState(object):
     def state(self):
         return self._frame, self._state.copy()
 
-class AppendEpisodeTimeStateEnv(object):
+class AppendEpisodeTimeStateEnv(StateEnv):
 
     def __init__(self,env,**kwargs):
         self.state = AppendEpisodeTimeState(**kwargs)
-        self.env = env
+        super(AppendEpisodeTimeStateEnv,self).__init__(env)
 
     def reset(self):
         frame = self.env.reset()
@@ -52,7 +53,3 @@ class AppendEpisodeTimeStateEnv(object):
 
     def get_state(self):
         return self.state.state()
-
-    def action_shape(self):
-        return self.env.action_shape()
-

@@ -1,7 +1,8 @@
 import gym
 import numpy as np
+from .base_env import BaseEnv
 
-class VecGymEnv(object):
+class VecGymEnv(BaseEnv):
 
     def __init__(self,env_id,n_envs=4):
         self.env_id = env_id
@@ -22,6 +23,9 @@ class VecGymEnv(object):
 
     def action_space(self):
         return self.envs[0].action_space
+
+    def n_actions(self):
+        return self.action_space().n
 
     def action_shape(self):
         return tuple([self.n_envs]+list(self.envs[0].action_space.shape))

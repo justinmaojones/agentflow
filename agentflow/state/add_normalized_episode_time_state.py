@@ -1,4 +1,5 @@
 import numpy as np
+from .state_env import StateEnv
 
 class AddNormalizedEpisodeTimeState(object):
 
@@ -44,11 +45,11 @@ class AddNormalizedEpisodeTimeState(object):
             output = self._state
         return output.copy()
 
-class AddNormalizedEpisodeTimeStateEnv(object):
+class AddNormalizedEpisodeTimeStateEnv(StateEnv):
 
     def __init__(self,env,**kwargs):
         self.state = AddNormalizedEpisodeTimeState(**kwargs)
-        self.env = env
+        super(AddNormalizedEpisodeTimeStateEnv,self).__init__(env)
 
     def reset(self):
         frame = self.env.reset()
@@ -61,7 +62,3 @@ class AddNormalizedEpisodeTimeStateEnv(object):
 
     def get_state(self):
         return self.state.state()
-
-    def action_shape(self):
-        return self.env.action_shape()
-

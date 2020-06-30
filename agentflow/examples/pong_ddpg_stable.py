@@ -9,7 +9,7 @@ from agentflow.numpy.ops import onehot
 from agentflow.numpy.models import TrackEpisodeScore
 from agentflow.tensorflow.nn import dense_net
 from agentflow.tensorflow.ops import normalize_ema, binarize
-from agentflow.utils import check_whats_connected
+from agentflow.utils import check_whats_connected, LogsTFSummary
 import tensorflow as tf
 import numpy as np
 import h5py
@@ -22,73 +22,91 @@ import click
 # * modify preprocessing to include actions
 # * how to handle time state?  it converts to float64 :(
 
-def conv_net(x, conv_units, fc_units, fc_layers, batchnorm=True,activation=tf.nn.relu,training=False,**kwargs):
+def get_activation_fn(activation_choice_str):
+    if activation_choice_str == 'relu':
+        return tf.nn.relu
+    elif activation_choice_str == 'elu':
+        return tf.nn.elu
+    elif activation_choice_str == 'prelu':
+        return tf.nn.leaky_relu
+    else:
+        raise ValueError("unhandled activation type: %s" % activation_choice_str)
 
-    conv_layers = 3
+def conv_net(x, conv_units, batchnorm=True, activation=tf.nn.relu, training=False,**kwargs):
+
+    conv_layers = 4 
     assert isinstance(conv_layers,int) and conv_layers > 0, 'conv_layers should be a positive integer'
     assert isinstance(conv_units, int) and conv_units > 0, 'conv_units should be a positive integer'
-    assert isinstance(fc_layers,int) and fc_layers > 0, 'fc_layers should be a positive integer'
-    assert isinstance(fc_units, int) and fc_units > 0, 'fc_units should be a positive integer'
+
+    units = conv_units
 
     h = x
     for l in range(conv_layers):
         kernel_size = (3,3)
-        strides = (2,2)
-        h = tf.layers.conv2d(h,conv_units,kernel_size,strides)
+        strides = (1,1)
+        h = tf.layers.conv2d(h,units,kernel_size,strides)
         h = activation(h)
-        #h = tf.layers.max_pooling2d(h,(2,2),(2,2))
+        h = tf.layers.max_pooling2d(h,(2,2),(2,2))
 
         if batchnorm:
             BN = tf.layers.BatchNormalization()
             h = BN(h,training=training)
 
     h = tf.layers.flatten(h)
-    h = dense_net(h,fc_units,fc_layers,batchnorm,activation,training,**kwargs)
     return h
 
-def build_net_fn(hidden_dims,hidden_layers,output_dim,batchnorm):
+def build_net_fn(hidden_dims,hidden_layers,output_dim,batchnorm,activation_fn):
     def net_fn(h,training=False):
-        h = dense_net(h,hidden_dims,hidden_layers,batchnorm=batchnorm,training=training)
+        if batchnorm:
+            BN = tf.layers.BatchNormalization()
+            h = BN(h,training=training)
+        h = dense_net(h,hidden_dims,hidden_layers,
+                batchnorm=batchnorm,training=training,activation=activation_fn)
         return tf.layers.dense(h,output_dim)
     return net_fn
 
-def build_conv_net_fn(hidden_dims,hidden_layers,output_dim,batchnorm,stop_gradient=False):
+def build_conv_net_fn(conv_dims,batchnorm,activation_fn,stop_gradient=False):
     def conv_net_fn(h,training=False):
-        h = conv_net(h,hidden_dims,hidden_dims,hidden_layers,batchnorm=batchnorm,training=training)
-        h = tf.layers.dense(h,output_dim)
+        if stop_gradient:
+            _batchnorm = False
+        else:
+            _batchnorm = batchnorm
+        h = conv_net(h,conv_dims,_batchnorm,activation_fn,training)
         if stop_gradient:
             h = tf.stop_gradient(h)
         return h
     return conv_net_fn
 
-def build_policy_fn(hidden_dims,hidden_layers,output_dim,batchnorm,normalize_inputs=True,freeze_conv_net=False,binarized=False):
-    dense_net_fn = build_net_fn(hidden_dims,hidden_layers,output_dim,batchnorm)
-    conv_net_fn = build_conv_net_fn(hidden_dims,hidden_layers,output_dim,batchnorm,freeze_conv_net)
+def preprocess_image_state(state,binarized,normalize_inputs,training):
+    if binarized:
+        state = binarize(state,8)
+    else:
+        state = state/255. - 0.5
+        if normalize_inputs:
+            state, _ = normalize_ema(state,training)
+    return state
+
+def build_policy_fn(hidden_dims,hidden_layers,output_dim,batchnorm,activation,normalize_inputs=True,freeze_conv_net=False,binarized=False,conv_dims=None):
+    conv_dims = conv_dims if conv_dims is not None else hidden_dims
+    activation_fn = get_activation_fn(activation)
+    dense_net_fn = build_net_fn(hidden_dims,hidden_layers,output_dim,batchnorm,activation_fn)
+    conv_net_fn = build_conv_net_fn(conv_dims,batchnorm,activation_fn,freeze_conv_net)
     def policy_fn(state,training=False):
-        if binarized:
-            state = binarize(state,8)
-        else:
-            state = state/255. - 0.5
-            if normalize_inputs:
-                state, _ = normalize_ema(state,training)
-        h = conv_net_fn(state,training,)
-        h = dense_net_fn(h,training)
-        return tf.nn.softmax(h,axis=-1)
+        state = preprocess_image_state(state,binarized,normalize_inputs,training)
+        h_convnet = conv_net_fn(state,training)
+        logits = dense_net_fn(h_convnet,training)
+        return tf.nn.softmax(logits,axis=-1), logits, h_convnet 
     return policy_fn
 
-def build_q_fn(hidden_dims,hidden_layers,output_dim,batchnorm,normalize_inputs=True,freeze_conv_net=False,binarized=False):
-    dense_net_fn = build_net_fn(hidden_dims,hidden_layers,output_dim,batchnorm)
-    conv_net_fn = build_conv_net_fn(hidden_dims,hidden_layers,hidden_dims,batchnorm,freeze_conv_net)
+def build_q_fn(hidden_dims,hidden_layers,output_dim,batchnorm,activation,normalize_inputs=True,freeze_conv_net=False,binarized=False,conv_dims=None):
+    conv_dims = conv_dims if conv_dims is not None else hidden_dims
+    activation_fn = get_activation_fn(activation)
+    dense_net_fn = build_net_fn(hidden_dims,hidden_layers,output_dim,batchnorm,activation_fn)
+    conv_net_fn = build_conv_net_fn(conv_dims,batchnorm,activation_fn,freeze_conv_net)
     def q_fn(state,action,training=False):
-        if binarized:
-            state = binarize(state,8)
-        else:
-            state = state/255. - 0.5
-            if normalize_inputs:
-                state, _ = normalize_ema(state,training)
+        state = preprocess_image_state(state,binarized,normalize_inputs,training)
         h_state = conv_net_fn(state,training)
-        h_action = tf.layers.dense(action,hidden_dims)
-        h = tf.concat([h_state,h_action],axis=1)
+        h = tf.concat([h_state,action],axis=1)
         h = dense_net_fn(h,training)
         return h
     return q_fn
@@ -114,9 +132,15 @@ def test_agent(test_env,agent):
         actions.append(action)
     return rt, np.array(rewards), np.array(dones), np.array(actions)
 
-def entropy(a):
+def entropy(p,axis):
+    return -(p*np.log(p+1e-12)).sum(axis=axis)
+
+def empirical_entropy(a):
     p = (a[:,None] == np.unique(a)[None]).mean(axis=0)
-    return -(p*np.log(p)).sum()
+    return entropy(p,axis=None)
+
+def l2norm(x):
+    return np.sum(x**2)**0.5
 
 def noisy_action(action_softmax,eps=1.,clip=5e-2):
     action_softmax_clipped = np.clip(action_softmax,clip,1-clip)
@@ -125,6 +149,14 @@ def noisy_action(action_softmax,eps=1.,clip=5e-2):
     g = -np.log(-np.log(u))
     return (eps*g+logit_unscaled).argmax(axis=-1)
 
+def noisy_action(action_softmax,p=0.05):
+    argmax = action_softmax.argmax(axis=-1)
+    output_size = argmax.shape
+    random = np.random.choice(action_softmax.shape[-1],size=output_size)
+    eps = np.random.rand(*output_size)
+    z = eps <= p
+    return z*random + (1-z)*argmax
+
 @click.option('--num_steps', default=20000, type=int)
 @click.option('--n_envs', default=1)
 @click.option('--env_id', default='PongDeterministic-v4')
@@ -132,15 +164,18 @@ def noisy_action(action_softmax,eps=1.,clip=5e-2):
 @click.option('--dqda_clipping', default=1.)
 @click.option('--clip_norm', default=True, type=bool)
 @click.option('--ema_decay', default=0.99, type=float)
+@click.option('--conv_dims', default=None, type=int)
 @click.option('--hidden_dims', default=32)
 @click.option('--hidden_layers', default=2)
+@click.option('--activation', default='relu', type=click.Choice(['relu','elu','prelu']))
 @click.option('--binarized', default=False, type=bool)
 @click.option('--freeze_conv_net', default=False, type=bool)
 @click.option('--output_dim', default=6)
 @click.option('--normalize_inputs', default=True, type=bool)
+@click.option('--noisy_action_prob', default=0.05, type=float)
 @click.option('--batchnorm', default=False, type=bool)
 @click.option('--add_episode_time_state', default=False, type=bool)
-@click.option('--buffer_type', default='normal', type=click.Choice(['normal','prioritized']))
+@click.option('--buffer_type', default='normal', type=click.Choice(['normal','prioritized','delayed','delayed_prioritized']))
 @click.option('--buffer_size', default=2**11, type=int)
 @click.option('--prioritized_replay_alpha', default=0.6, type=float)
 @click.option('--prioritized_replay_beta0', default=0.4, type=float)
@@ -164,6 +199,9 @@ def noisy_action(action_softmax,eps=1.,clip=5e-2):
 @click.option('--beta', default=1.)
 @click.option('--gamma', default=0.99)
 @click.option('--weight_decay', default=0.0)
+@click.option('--regularize_policy', default=False, type=bool)
+@click.option('--straight_through_estimation', default=False, type=bool)
+@click.option('--entropy_loss_weight', default=0.0)
 @click.option('--n_update_steps', default=4, type=int)
 @click.option('--update_freq', default=1, type=int)
 @click.option('--n_steps_per_eval', default=100, type=int)
@@ -181,8 +219,8 @@ def run(**cfg):
         np.random.seed(cfg['seed'])
         tf.set_random_seed(int(10*cfg['seed']))
 
-    cfg_hash = str(hash(str(sorted(cfg))))
-    savedir = os.path.join(cfg['savedir'],'experiment' + cfg_hash)
+    ts = str(int(time.time()*1000))
+    savedir = os.path.join(cfg['savedir'],'experiment' + ts)
     print('SAVING TO: {savedir}'.format(**locals()))
     os.system('mkdir -p {savedir}'.format(**locals()))
 
@@ -218,9 +256,11 @@ def run(**cfg):
             cfg['hidden_layers'],
             cfg['output_dim'],
             cfg['batchnorm'],
+            cfg['activation'],
             cfg['normalize_inputs'],
             cfg['freeze_conv_net'],
             cfg['binarized'],
+            cfg['conv_dims'],
     )
 
     q_fn = build_q_fn(
@@ -228,9 +268,11 @@ def run(**cfg):
             cfg['hidden_layers'],
             1,
             cfg['batchnorm'],
+            cfg['activation'],
             cfg['normalize_inputs'],
             cfg['freeze_conv_net'],
             cfg['binarized'],
+            cfg['conv_dims'],
     )
 
     optimizer_q_kwargs = {}
@@ -250,6 +292,8 @@ def run(**cfg):
         optimizer_q=cfg['optimizer_q'],
         opt_q_layerwise=cfg['opt_q_layerwise'],
         optimizer_q_kwargs=optimizer_q_kwargs,
+        regularize_policy=cfg['regularize_policy'],
+        straight_through_estimation=cfg['straight_through_estimation'],
     )
 
     for v in tf.trainable_variables():
@@ -261,34 +305,17 @@ def run(**cfg):
                 cfg['buffer_size'],
                 alpha=cfg['prioritized_replay_alpha'],
                 eps=cfg['prioritized_replay_eps'])
+    elif cfg['buffer_type'] == 'delayed_prioritized':
+        replay_buffer = DelayedPrioritizedBufferMap(
+                max_length=cfg['buffer_size'],
+                alpha=cfg['prioritized_replay_alpha'],
+                eps=cfg['prioritized_replay_eps'])
+    elif cfg['buffer_type'] == 'delayed':
+        replay_buffer = DelayedBufferMap(cfg['buffer_size'])
     else:
         replay_buffer = BufferMap(cfg['buffer_size'])
 
-    log = {
-        'reward_history': [],
-        'done_history': [],
-        'action_history': [],
-        'action_probs_history': [],
-        'test_ep_returns': [],
-        'test_ep_actions_entropy': [],
-        'test_ep_steps': [],
-        'test_ep_rewards': {},
-        'test_ep_dones': {},
-        'test_ep_actions': {},
-        'test_ep_length': [],
-        'train_ep_lengths': [],
-        'train_ep_returns': [],
-        'train_ep_returns_discounted': [],
-        'step_duration_sec': [],
-        'duration_cumulative': [],
-        'beta': [],
-        'max_importance_weight': [],
-        'Q': [],
-        'loss_Q': [],
-        'Q_updates': [],
-        'loss_Q_updates': [],
-        'frames': [],
-    }
+    log = LogsTFSummary(savedir)
     track_train_ep_lengths = TrackEpisodeScore(gamma=1.)
     track_train_ep_returns = TrackEpisodeScore(gamma=1.)
     track_train_ep_returns_discounted = TrackEpisodeScore(gamma=cfg['gamma'])
@@ -297,7 +324,7 @@ def run(**cfg):
 
     start_time = time.time()
 
-    with tf.Session(config=tf.ConfigProto(allow_soft_placement=True, log_device_placement=True)) as sess:
+    with tf.Session(config=tf.ConfigProto(allow_soft_placement=True)) as sess:
         sess.run(tf.global_variables_initializer())
 
         T = cfg['num_steps']
@@ -314,6 +341,8 @@ def run(**cfg):
             'losses_Q'
         ])
         for t in range(T):
+            pb_input = []
+
             start_step_time = time.time()
 
             action_probs = agent.act(state)
@@ -323,17 +352,30 @@ def run(**cfg):
             #else:
             #    action = action.argmax(axis=1)
             if len(replay_buffer) >= cfg['begin_learning_at_step']:
-                action = noisy_action(action_probs)
+                action = noisy_action(action_probs,p=cfg['noisy_action_prob'])
             else:
                 action = np.random.choice(action_probs.shape[1],size=len(action_probs))
 
             state2, reward, done, info = env.step(action.astype('int').ravel())
 
-            log['frames'].append(len(state2))
-            log['action_probs_history'].append(action_probs)
-            log['train_ep_lengths'].append(track_train_ep_lengths.update(np.ones_like(reward),done))
-            log['train_ep_returns'].append(track_train_ep_returns.update(reward,done))
-            log['train_ep_returns_discounted'].append(track_train_ep_returns_discounted.update(reward,done))
+            # Bookkeeping
+            log.append('reward_history',reward)
+            log.append('done_history',done)
+            log.append('action_history',action)
+            avg_action = np.mean(log['action_history'][-20:])
+            pb_input.append(('avg_action', avg_action))
+            avg_train_ep_lengths = np.mean(log['train_ep_lengths'][-1:])
+            pb_input.append(('train_ep_lengths', avg_train_ep_lengths))
+            avg_train_ep_returns = np.mean(log['train_ep_returns'][-1:])
+            pb_input.append(('train_ep_returns', avg_train_ep_returns))
+
+            log.append('frames',len(state2))
+            log.append('action_probs_history',action_probs)
+            log.append('train_action_entropy',empirical_entropy(np.array(log['action_history'][-20:]).ravel()))
+            log.append('action_probs_entropy',entropy(action_probs,axis=1))
+            log.append('train_ep_lengths',track_train_ep_lengths.update(np.ones_like(reward),done))
+            log.append('train_ep_returns',track_train_ep_returns.update(reward,done))
+            log.append('train_ep_returns_discounted',track_train_ep_returns_discounted.update(reward,done))
 
             data = {
                 'state':state,
@@ -354,7 +396,6 @@ def run(**cfg):
                 replay_buffer.append(data)
             state = state2 
 
-            pb_input = []
             if t >= cfg['begin_learning_at_step'] and t % cfg['update_freq'] == 0:
                 Q_action_train_list = []
                 losses_Q_list = []
@@ -364,25 +405,34 @@ def run(**cfg):
                 else:
                     policy_learning_rate = 0.
 
+                log.append('learning_rate_policy',policy_learning_rate)
+                log.append('learning_rate_q',cfg['learning_rate_q'])
+
                 for i in range(cfg['n_update_steps']):
 
                     if cfg['buffer_type'] == 'prioritized':
 
                         beta = beta0 + (1.-beta0)*min(1.,float(t)/T_beta)
-                        log['beta'].append(beta)
+                        log.append('beta',beta)
 
                         sample = replay_buffer.sample(cfg['batchsize'],beta=beta)
                         if cfg['prioritized_replay_weights_uniform']:
                             sample['importance_weight'] = np.ones_like(sample['importance_weight'])
-                        log['max_importance_weight'].append(sample['importance_weight'].max())
+                        log.append('max_importance_weight',sample['importance_weight'].max())
 
-                        td_error, Q_action_train, losses_Q = agent.update(
+                        td_error, Q_action_train, losses_Q, pnorms_policy, pnorms_Q, policy_gradient, gnorm_policy, policy_convnet_h_train = agent.update(
                                 learning_rate=policy_learning_rate,
                                 learning_rate_q=cfg['learning_rate_q'],
                                 ema_decay=cfg['ema_decay'],
                                 gamma=cfg['gamma'],
                                 weight_decay=cfg['weight_decay'],
-                                outputs=['td_error','Q_action_train','losses_Q'],
+                                entropy_loss_weight=cfg['entropy_loss_weight'],
+                                outputs=[
+                                    'td_error','Q_action_train','losses_Q',
+                                    'pnorms_policy','pnorms_Q',
+                                    'policy_gradient','gnorm_policy',
+                                    'policy_convnet_h_train',
+                                    ],
                                 **sample)
 
                         if not cfg['prioritized_replay_simple']:
@@ -391,84 +441,72 @@ def run(**cfg):
 
                         sample = replay_buffer.sample(cfg['batchsize'])
 
-                        Q_action_train, losses_Q = agent.update(
+                        Q_action_train, losses_Q, pnorms_policy, pnorms_Q, policy_gradient, gnorm_policy, policy_convnet_h_train = agent.update(
                                 learning_rate=policy_learning_rate,
                                 learning_rate_q=cfg['learning_rate_q'],
                                 ema_decay=cfg['ema_decay'],
                                 gamma=cfg['gamma'],
                                 weight_decay=cfg['weight_decay'],
-                                outputs=['Q_action_train','losses_Q'],
+                                entropy_loss_weight=cfg['entropy_loss_weight'],
+                                outputs=[
+                                    'td_error','Q_action_train','losses_Q',
+                                    'pnorms_policy','pnorms_Q',
+                                    'policy_gradient','gnorm_policy',
+                                    'policy_convnet_h_train',
+                                    ],
                                 **sample)
                     Q_action_train_list.append(Q_action_train.mean())
                     losses_Q_list.append(losses_Q.mean())
-                    log['Q_updates'].append(Q_action_train_list[-1])
-                    log['loss_Q_updates'].append(losses_Q_list[-1])
+                    log.append('Q_updates',Q_action_train_list[-1])
+                    log.append('loss_Q_updates',losses_Q_list[-1])
+                    log.append('policy_convnet_h_train',policy_convnet_h_train)
+                    log.append('policy_gradient',policy_gradient)
+                log.append('policy_gradient_norm',l2norm(policy_gradient))
+                log.append('gnorm_policy',gnorm_policy)
+                for k in pnorms_policy:
+                    log.append('pnorms_policy: %s'%k,pnorms_policy[k])
+                for k in pnorms_Q:
+                    log.append('pnorms_Q: %s'%k,pnorms_Q[k])
                 Q_action_train_mean = np.mean(Q_action_train_list)
                 losses_Q_mean = np.mean(losses_Q_list)
                 pb_input.append(('Q_action_train', Q_action_train_mean))
                 pb_input.append(('loss_Q', losses_Q_mean))
-                log['Q'].append(Q_action_train_mean)
-                log['loss_Q'].append(losses_Q_mean)
+                log.append('Q',Q_action_train_mean)
+                log.append('loss_Q',losses_Q_mean)
 
-            # Bookkeeping
-            log['reward_history'].append(reward)
-            log['done_history'].append(done)
-            log['action_history'].append(action)
-            avg_action = np.mean(log['action_history'][-20:])
-            pb_input.append(('avg_action', avg_action))
-            avg_train_ep_lengths = np.mean(log['train_ep_lengths'][-1:])
-            pb_input.append(('train_ep_lengths', avg_train_ep_lengths))
-            avg_train_ep_returns = np.mean(log['train_ep_returns'][-1:])
-            pb_input.append(('train_ep_returns', avg_train_ep_returns))
 
             if (t % cfg['n_steps_per_eval'] == 0 and t >= cfg['begin_learning_at_step']) or t==0:
                 test_ep_returns, test_ep_rewards, test_ep_dones, test_ep_actions = test_agent(test_env,agent)
-                test_ep_actions_entropy = entropy(test_ep_actions.ravel())
+                test_ep_actions_entropy = empirical_entropy(test_ep_actions.ravel())
                 test_ep_length = len(test_ep_actions)
-                log['test_ep_returns'].append(test_ep_returns)
-                log['test_ep_length'].append(test_ep_length)
-                log['test_ep_actions_entropy'].append(test_ep_actions_entropy)
-                log['test_ep_rewards'][t] = test_ep_rewards
-                log['test_ep_dones'][t] = test_ep_dones
-                log['test_ep_actions'][t] = test_ep_actions
-                log['test_ep_steps'].append(t)
-                #log['test_duration_cumulative'].append(time.time()-start_time)
+                log.append('test_ep_returns',test_ep_returns)
+                log.append('test_ep_length',test_ep_length)
+                log.append('test_ep_actions_entropy',test_ep_actions_entropy)
+                log.append('test_ep_rewards',test_ep_rewards)
+                log.append('test_ep_dones',test_ep_dones)
+                log.append('test_ep_actions',test_ep_actions)
+                log.append('test_ep_steps',t)
+                #log.append('test_duration_cumulative',time.time()-start_time)
                 avg_test_ep_returns = np.mean(log['test_ep_returns'][-1:])
                 pb_input.append(('test_ep_returns', avg_test_ep_returns))
                 pb_input.append(('test_ep_length', test_ep_length))
                 pb_input.append(('test_ep_actions_entropy', test_ep_actions_entropy))
 
-            pb.add(1,pb_input)
             end_time = time.time()
-            log['step_duration_sec'].append(end_time-start_step_time)
-            log['duration_cumulative'].append(end_time-start_time)
+            log.append('step_duration_sec',end_time-start_step_time)
+            log.append('duration_cumulative',end_time-start_time)
 
+            pb.add(1,pb_input)
+            log.flush(step=t)
             if t % cfg['n_steps_per_eval'] == 0 and t > 0:
-                with h5py.File(os.path.join(savedir,'log_intermediate.h5'), 'w') as f:
-                    for k in log:
-                        if isinstance(log[k],dict):
-                            g = f.create_group(k)
-                            for k2 in log[k]:
-                                g[str(k2)] = log[k][k2]
-                        else:
-                            f[k] = log[k]
+                log.write(os.path.join(savedir,'log_intermediate.h5'),verbose=False)
 
 
     if cfg['buffer_type'] == 'prioritized':
-        log['priorities'] = replay_buffer.priorities()
-        log['sample_importance_weights'] = replay_buffer.sample(1000,beta=1.)['importance_weight']
+        log.append('priorities',replay_buffer.priorities())
+        log.append('sample_importance_weights',replay_buffer.sample(100,beta=1.)['importance_weight'])
 
-    with h5py.File(os.path.join(savedir,'log.h5'), 'w') as f:
-        print('SAVING TO: {savedir}'.format(**locals()))
-        print('writing to h5 file')
-        for k in log:
-            print('H5: %s'%k)
-            if isinstance(log[k],dict):
-                g = f.create_group(k)
-                for k2 in log[k]:
-                    g[str(k2)] = log[k][k2]
-            else:
-                f[k] = log[k]
+    log.write(os.path.join(savedir,'log.h5'))
 
 if __name__=='__main__':
     click.command()(run)()

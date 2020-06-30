@@ -1,4 +1,5 @@
 import numpy as np
+from .state_env import StateEnv
 
 def shift_and_update_state(state,frame):
     ndim = state.ndim
@@ -49,11 +50,11 @@ class NPrevFramesState(object):
             output = self._state
         return output.copy()
 
-class NPrevFramesStateEnv(object):
+class NPrevFramesStateEnv(StateEnv):
 
     def __init__(self,env,**kwargs):
         self.state = NPrevFramesState(**kwargs)
-        self.env = env
+        super(NPrevFramesStateEnv,self).__init__(env)
 
     def reset(self):
         frame = self.env.reset()
@@ -66,6 +67,3 @@ class NPrevFramesStateEnv(object):
 
     def get_state(self):
         return self.state.state()
-
-    def action_shape(self):
-        return self.env.action_shape()

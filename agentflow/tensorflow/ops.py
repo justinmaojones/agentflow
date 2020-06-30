@@ -34,6 +34,11 @@ def normalize_ema(input_tensor,training=True,auto_update=False,ema_decay=0.999,a
         normalized = BN(input_tensor,training=False)
     return normalized, BN.updates
 
+def get_connected_vars(var_list,objective):
+    grad_conn_check = tf.gradients(objective,var_list)
+    var_list = [v for g,v in zip(grad_conn_check,var_list) if g is not None]
+    return var_list
+
 def get_gradient_matrix_old(var_list,objective):
     def func(obj_i):
         grad_i = tf.gradients(obj_i,var_list)
@@ -46,8 +51,7 @@ def get_gradient_matrix_old(var_list,objective):
 
 def get_gradient_matrix(var_list,objective,filter_unconnected_vars=True):
     if filter_unconnected_vars:
-        grad_conn_check = tf.gradients(objective,var_list)
-        var_list = [v for g,v in zip(grad_conn_check,var_list) if g is not None]
+        var_list = get_connected_vars(var_list,objective)
     def func(obj_i):
         grad_i = tf.gradients(obj_i,var_list)
         if not filter_unconnected_vars:
@@ -105,3 +109,8 @@ def binarize(x,b):
         y.append(tf.mod(x, 2))
         x = x // 2
     return tf.concat(y,axis=-1)
+
+def entropy_loss(logits,axis=-1):
+    p = tf.nn.softmax(logits,axis=axis)
+    return tf.nn.softmax_cross_entropy_with_logits(labels=p,logits=logits)
+

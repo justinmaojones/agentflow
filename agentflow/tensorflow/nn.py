@@ -8,10 +8,10 @@ def dense_net(x,units,layers,batchnorm=True,activation=tf.nn.relu,training=False
     h = x
     for l in range(layers):
         h = tf.layers.dense(h,units,**kwargs)
-        h = activation(h)
-
         if batchnorm:
             BN = tf.layers.BatchNormalization()
             h = BN(h,training=training)
+        h = activation(h)
+
     return h
 

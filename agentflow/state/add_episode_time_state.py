@@ -1,5 +1,6 @@
 import numpy as np
 import agentflow.numpy.ops as np_ops
+from .state_env import StateEnv
 
 class AddEpisodeTimeState(object):
 
@@ -43,11 +44,11 @@ class AddEpisodeTimeState(object):
             output = self._state
         return output.copy()
 
-class AddEpisodeTimeStateEnv(object):
+class AddEpisodeTimeStateEnv(StateEnv):
 
     def __init__(self,env,**kwargs):
         self.state = AddEpisodeTimeState(**kwargs)
-        self.env = env
+        super(AddEpisodeTimeStateEnv,self).__init__(env)
 
     def reset(self):
         frame = self.env.reset()
@@ -60,7 +61,3 @@ class AddEpisodeTimeStateEnv(object):
 
     def get_state(self):
         return self.state.state()
-
-    def action_shape(self):
-        return self.env.action_shape()
-
