@@ -188,7 +188,9 @@ def noisy_action(action_softmax,p=0.05):
 @click.option('--prioritized_replay_simple_done_adder', default=16, type=float)
 @click.option('--begin_learning_at_step', default=1e4)
 @click.option('--learning_rate', default=1e-4)
+@click.option('--learning_rate_decay', default=1.)
 @click.option('--learning_rate_q', default=1.)
+@click.option('--learning_rate_q_decay', default=1.)
 @click.option('--n_steps_train_only_q', default=0)
 @click.option('--optimizer_q', type=str, default='gradient_descent')
 @click.option('--optimizer_q_decay', type=float, default=None)
@@ -401,12 +403,16 @@ def run(**cfg):
                 losses_Q_list = []
 
                 if t >= cfg['begin_learning_at_step'] + cfg['n_steps_train_only_q']:
-                    policy_learning_rate = cfg['learning_rate']
+                    t2 = t - (cfg['begin_learning_at_step'] + cfg['n_steps_train_only_q'])
+                    policy_learning_rate = cfg['learning_rate']*(cfg['learning_rate_decay']**t2)
                 else:
                     policy_learning_rate = 0.
 
+                tq = t - cfg['begin_learning_at_step']
+                learning_rate_q = cfg['learning_rate_q']*(cfg['learning_rate_q_decay']**tq)
+
                 log.append('learning_rate_policy',policy_learning_rate)
-                log.append('learning_rate_q',cfg['learning_rate_q'])
+                log.append('learning_rate_q',learning_rate_q)
 
                 for i in range(cfg['n_update_steps']):
 
@@ -422,7 +428,7 @@ def run(**cfg):
 
                         td_error, Q_action_train, losses_Q, pnorms_policy, pnorms_Q, policy_gradient, gnorm_policy, policy_convnet_h_train = agent.update(
                                 learning_rate=policy_learning_rate,
-                                learning_rate_q=cfg['learning_rate_q'],
+                                learning_rate_q=learning_rate_q,
                                 ema_decay=cfg['ema_decay'],
                                 gamma=cfg['gamma'],
                                 weight_decay=cfg['weight_decay'],
@@ -443,7 +449,7 @@ def run(**cfg):
 
                         Q_action_train, losses_Q, pnorms_policy, pnorms_Q, policy_gradient, gnorm_policy, policy_convnet_h_train = agent.update(
                                 learning_rate=policy_learning_rate,
-                                learning_rate_q=cfg['learning_rate_q'],
+                                learning_rate_q=learning_rate_q,
                                 ema_decay=cfg['ema_decay'],
                                 gamma=cfg['gamma'],
                                 weight_decay=cfg['weight_decay'],

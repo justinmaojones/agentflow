@@ -263,7 +263,7 @@ def run(**cfg):
             if t >= cfg['begin_learning_at_step'] and t % cfg['update_freq'] == 0:
 
                 if t >= cfg['begin_learning_at_step'] + cfg['n_steps_train_only_q']:
-                    t2 = t - cfg['begin_learning_at_step'] + cfg['n_steps_train_only_q']
+                    t2 = t - (cfg['begin_learning_at_step'] + cfg['n_steps_train_only_q'])
                     policy_learning_rate = cfg['learning_rate']*(cfg['learning_rate_decay']**t2)
                 else:
                     policy_learning_rate = 0.
