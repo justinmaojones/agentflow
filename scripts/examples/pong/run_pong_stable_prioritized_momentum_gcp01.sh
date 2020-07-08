@@ -23,6 +23,8 @@ do
         --buffer_type=prioritized \
         --prioritized_replay_simple=True \
         --buffer_size=$BUFFER_SIZE \
+        --enable_n_step_return_publisher=True \
+        --n_step_return=16 \
         --learning_rate=0.001 \
         --learning_rate_decay=0.9999 \
         --learning_rate_q=$LEARNING_RATE_Q \

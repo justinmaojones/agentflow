@@ -1,6 +1,6 @@
 from agentflow.env import VecGymEnv
 from agentflow.agents import StableDDPG
-from agentflow.buffers import BufferMap, DelayedBufferMap, PrioritizedBufferMap, DelayedPrioritizedBufferMap
+from agentflow.buffers import BufferMap, DelayedBufferMap, PrioritizedBufferMap, DelayedPrioritizedBufferMap, NStepReturnPublisher
 from agentflow.state import NPrevFramesStateEnv, AddEpisodeTimeStateEnv
 from agentflow.numpy.ops import onehot
 from agentflow.tensorflow.nn import dense_net
@@ -80,6 +80,8 @@ def noisy_action(action_softmax,eps=1.,clip=5e-2):
 @click.option('--buffer_type', default='normal', type=click.Choice(['normal','prioritized','delayed','delayed_prioritized']))
 @click.option('--buffer_size', default=2**11, type=int)
 @click.option('--sample_backwards', default=False, type=bool)
+@click.option('--enable_n_step_return_publisher', default=False, type=bool)
+@click.option('--n_step_return', default=1, type=int)
 @click.option('--prioritized_replay_alpha', default=0.6, type=float)
 @click.option('--prioritized_replay_beta0', default=0.4, type=float)
 @click.option('--prioritized_replay_beta_iters', default=None, type=int)
@@ -89,6 +91,7 @@ def noisy_action(action_softmax,eps=1.,clip=5e-2):
 @click.option('--prioritized_replay_simple', default=False, type=bool)
 @click.option('--prioritized_replay_simple_reward_adder', default=4, type=float)
 @click.option('--prioritized_replay_simple_done_adder', default=4, type=float)
+@click.option('--prioritized_replay_policy_gradient', default=False, type=bool)
 @click.option('--begin_learning_at_step', default=1e4)
 @click.option('--learning_rate', default=1e-4)
 @click.option('--learning_rate_decay', default=1.)
@@ -97,6 +100,7 @@ def noisy_action(action_softmax,eps=1.,clip=5e-2):
 @click.option('--opt_stable_q_online', default=False, type=bool)
 @click.option('--opt_stable_q_online_momentum', default=0.99)
 @click.option('--stable', default=True, type=bool)
+@click.option('--grad_norm_clipping', default=None, type=float)
 @click.option('--n_steps_train_only_q', default=0)
 @click.option('--optimizer_q', type=str, default='gradient_descent')
 @click.option('--optimizer_q_decay', type=float, default=None)
@@ -187,6 +191,7 @@ def run(**cfg):
         straight_through_estimation=cfg['straight_through_estimation'],
         add_return_loss=cfg['add_return_loss'],
         stable=cfg['stable'],
+        grad_norm_clipping=cfg['grad_norm_clipping'],
         opt_stable_q_online=cfg['opt_stable_q_online'],
         opt_stable_q_online_momentum=cfg['opt_stable_q_online_momentum'],
     )
@@ -210,6 +215,13 @@ def run(**cfg):
     else:
         replay_buffer = BufferMap(cfg['buffer_size'])
         assert cfg['add_return_loss']==False
+
+    if cfg['enable_n_step_return_publisher']:
+        replay_buffer = NStepReturnPublisher(
+            replay_buffer,
+            n_steps=cfg['n_step_return'],
+            gamma=cfg['gamma'],
+        )
 
     log = LogsTFSummary(savedir)
 
@@ -255,6 +267,9 @@ def run(**cfg):
                 priority += cfg['prioritized_replay_simple_reward_adder']*(data['reward']!=0)
                 priority += cfg['prioritized_replay_simple_done_adder']*data['done']
                 replay_buffer.append(data,priority=priority)
+            elif cfg['buffer_type'] == 'prioritized' and cfg['prioritized_replay_policy_gradient']:
+                priority = sess.run(agent.outputs['policy_gradient_norm'],agent.get_inputs(gamma=cfg['gamma'],**data))
+                replay_buffer.append(data,priority=priority)
             else:
                 replay_buffer.append(data)
             state = state2 
@@ -287,18 +302,21 @@ def run(**cfg):
                             sample['importance_weight'] = np.ones_like(sample['importance_weight'])
                         log.append('max_importance_weight',sample['importance_weight'].max())
 
-                        td_error, Q_ema_state2 = agent.update(
+                        td_error, Q_ema_state2, policy_gradient_norm = agent.update(
                                 learning_rate=policy_learning_rate,
                                 learning_rate_q=learning_rate_q,
                                 ema_decay=cfg['ema_decay'],
                                 gamma=cfg['gamma'],
                                 weight_decay=cfg['weight_decay'],
                                 entropy_loss_weight=cfg['entropy_loss_weight'],
-                                outputs=['td_error','Q_ema_state2'],
+                                outputs=['td_error','Q_ema_state2','policy_gradient_norm'],
                                 **sample)
 
                         if not cfg['prioritized_replay_simple']:
-                            replay_buffer.update_priorities(td_error)
+                            if cfg['prioritized_replay_policy_gradient']:
+                                replay_buffer.update_priorities(policy_gradient_norm)
+                            else:
+                                replay_buffer.update_priorities(td_error)
                     else:
 
                         if cfg['sample_backwards']:

@@ -67,6 +67,9 @@ class BufferMap(object):
     def tail(self,seq_size,batch_idx=None):
         return {k:self.buffers[k].tail(seq_size,batch_idx) for k in self.buffers}
 
+    def get(self,time_idx):
+        return {k:self.buffers[k].get(time_idx) for k in self.buffers}
+
     def get_sequence(self,time_idx,seq_size,batch_idx=None):
         return {k:self.buffers[k].get_sequence(time_idx,seq_size,batch_idx) for k in self.buffers}
 

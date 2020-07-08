@@ -51,7 +51,7 @@ def online_lstsq2(A,b,l2_regularizer):
         tf.add_to_collection(tf.GraphKeys.UPDATE_OPS,op)
     return v 
 
-def get_modified_gradients_pinv(var_list,y_pred,y2_pred,td_err,alpha,beta,vprev=None,fast=True,weight_decay=None,normalize_gradients=False,online=False,online_decay=0.99,online2=False):
+def get_modified_gradients_pinv(var_list,y_pred,y2_pred,td_err,alpha,beta,vprev=None,fast=True,weight_decay=None,normalize_gradients=False,grad_norm_clipping=None,online=False,online_decay=0.99,online2=False):
     var_list, gradients = get_gradient_matrix(var_list,y_pred)
     var_list2, gradients2 = get_gradient_matrix(var_list,y2_pred)
 
@@ -73,6 +73,12 @@ def get_modified_gradients_pinv(var_list,y_pred,y2_pred,td_err,alpha,beta,vprev=
         A_norm = tf.sqrt(tf.reduce_max(tf.reduce_sum(tf.square(A),axis=1)))
         A = A/A_norm
         b = b/A_norm
+
+    if grad_norm_clipping is not None:
+        A_norm = tf.sqrt(tf.reduce_max(tf.reduce_sum(tf.square(A),axis=1)))
+        multiplier = grad_norm_clipping/A_norm
+        A = tf.where(A_norm > grad_norm_clipping, A*multiplier, A)
+        b = tf.where(A_norm > grad_norm_clipping, b*multiplier, b)
 
     if online:
         modified_grad_flat = online_lstsq(A,b[:,None],alpha,online_decay)
@@ -108,7 +114,7 @@ class StableDDPG(object):
             clip_norm=False,discrete=False,episodic=True,beta=1,alpha=1,
             optimizer_q='gradient_descent',opt_q_layerwise=False,optimizer_q_kwargs=None,
             regularize_policy=True,straight_through_estimation=False,
-            add_return_loss=False,stable=True,
+            add_return_loss=False,stable=True,grad_norm_clipping=None,
             opt_stable_q_online=False,opt_stable_q_online_momentum=0.99,
         ):
         """Implements Deep Deterministic Policy Gradient with Tensorflow
@@ -150,6 +156,7 @@ class StableDDPG(object):
         self.straight_through_estimation = straight_through_estimation
         self.add_return_loss = add_return_loss
         self.stable = stable
+        self.grad_norm_clipping = grad_norm_clipping
         self.opt_stable_q_online = opt_stable_q_online
         self.opt_stable_q_online_momentum = opt_stable_q_online_momentum
 
@@ -306,6 +313,7 @@ class StableDDPG(object):
                                     alpha=self.alpha,
                                     beta=self.beta,
                                     weight_decay=inputs['weight_decay'],
+                                    grad_norm_clipping=self.grad_norm_clipping,
                                     online=self.opt_stable_q_online,
                                     online_decay=self.opt_stable_q_online_momentum,
                                 )
@@ -320,6 +328,7 @@ class StableDDPG(object):
                             alpha=self.alpha,
                             beta=self.beta,
                             weight_decay=inputs['weight_decay'],
+                            grad_norm_clipping=self.grad_norm_clipping,
                             online=self.opt_stable_q_online,
                             online_decay=self.opt_stable_q_online_momentum,
                         )
@@ -374,6 +383,8 @@ class StableDDPG(object):
             gradients_policy = tf.gradients(loss,self.var_list_policy)
             gnorm_policy = tf.linalg.global_norm(gradients_policy)
 
+            policy_gradient_norm = tf.norm(policy_gradient,ord=2,axis=1)
+
             # store attributes for later use
             self.outputs = {
                 'y': y,
@@ -395,6 +406,7 @@ class StableDDPG(object):
                 'R_ema': R_ema,
                 'reward_avg': reward_avg,
                 'policy_gradient': policy_gradient,
+                'policy_gradient_norm': policy_gradient_norm,
                 'pnorms_policy': pnorms_policy,
                 'pnorms_Q': pnorms_Q,
                 'pnorm_policy': pnorm_policy,

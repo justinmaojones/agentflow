@@ -1,6 +1,6 @@
 from agentflow.env import VecGymEnv
 from agentflow.agents import StableDDPG
-from agentflow.buffers import BufferMap, PrioritizedBufferMap
+from agentflow.buffers import BufferMap, PrioritizedBufferMap, NStepReturnPublisher
 from agentflow.state import NPrevFramesStateEnv
 from agentflow.state import AddEpisodeTimeStateEnv
 from agentflow.state import ResizeImageStateEnv
@@ -177,6 +177,8 @@ def noisy_action(action_softmax,p=0.05):
 @click.option('--add_episode_time_state', default=False, type=bool)
 @click.option('--buffer_type', default='normal', type=click.Choice(['normal','prioritized','delayed','delayed_prioritized']))
 @click.option('--buffer_size', default=2**11, type=int)
+@click.option('--enable_n_step_return_publisher', default=False, type=bool)
+@click.option('--n_step_return', default=1, type=int)
 @click.option('--prioritized_replay_alpha', default=0.6, type=float)
 @click.option('--prioritized_replay_beta0', default=0.4, type=float)
 @click.option('--prioritized_replay_beta_iters', default=None, type=int)
@@ -316,6 +318,13 @@ def run(**cfg):
         replay_buffer = DelayedBufferMap(cfg['buffer_size'])
     else:
         replay_buffer = BufferMap(cfg['buffer_size'])
+
+    if cfg['enable_n_step_return_publisher']:
+        replay_buffer = NStepReturnPublisher(
+            replay_buffer,
+            n_steps=cfg['n_step_return'],
+            gamma=cfg['gamma'],
+        )
 
     log = LogsTFSummary(savedir)
     track_train_ep_lengths = TrackEpisodeScore(gamma=1.)

@@ -62,6 +62,7 @@ class NDArrayBufferLastDim(object):
     def get_sequence_slices(self,t,seq_size):
         # todo: this is wrong...doesn't work when t=self._index-1
         # t is relative to self._index
+        assert False, "todo: this is wrong...doesn't work when t=self._index-1"
         assert t >= (seq_size-1)
         assert t < self._n
         j2 = self._index + t + 1
@@ -77,7 +78,7 @@ class NDArrayBufferLastDim(object):
             return [slice(j1,n),slice(0,j2)]
         return [slice(j1,j2)]
 
-    def get(idx):
+    def get(self,idx):
         idx = np.array(idx)
         if self._n == self.max_length:
             idx += self._index
