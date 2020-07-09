@@ -1,13 +1,13 @@
 export NUMSTEPS=1000
 export BUFFER_SIZE=10000
-export BEGIN_LEARNING_AT_STEP=0
+export BEGIN_LEARNING_AT_STEP=100
 export N_UPDATE_STEPS=4
 export BATCHSIZE=128
 export UPDATE_FREQ=1
 export N_PREV_FRAMES=12
 export LEARNING_RATE_Q=1e-1
 export CONV_DIMS=64
-export HIDDEN_DIMS=128
+export HIDDEN_DIMS=16
 export HIDDEN_LAYERS=2
 
 export SAVEDIR=results/pong_ddpg_stable_debug/lrq${LEARNING_RATE_Q}_npf${N_PREV_FRAMES}_momentum0.2_nesterov_alpha2_prioritized_init_q5k_wd1e-3_cd${CONV_DIMS}_hd${HIDDEN_DIMS}_hl${HIDDEN_LAYERS}
@@ -22,8 +22,8 @@ do
         --n_update_steps=$N_UPDATE_STEPS \
         --n_prev_frames=32 \
         --batchsize=$BATCHSIZE \
-        --binarized=True \
-        --batchnorm=True \
+        --binarized=False \
+        --batchnorm=False \
         --conv_dims=$CONV_DIMS \
         --hidden_dims=$HIDDEN_DIMS \
         --hidden_layers=$HIDDEN_LAYERS \

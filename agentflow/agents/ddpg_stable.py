@@ -295,7 +295,10 @@ class StableDDPG(object):
 
             # policy gradient
             policy_gradient = tf.gradients(losses_policy,policy_train)[0]
+            policy_gradient_logits = tf.gradients(losses_policy,policy_train_logits)[0]
+            policy_gradient_conv_h = tf.gradients(losses_policy,policy_convnet_h_train)[0]
             print('policy_gradient: ',policy_gradient)
+            print('policy_gradient_logits: ',policy_gradient_logits)
 
             with tf.variable_scope('Q') as scope_Q:
                 self.var_list_Q = tf.trainable_variables(scope=scope_Q.name)
@@ -384,6 +387,8 @@ class StableDDPG(object):
             gnorm_policy = tf.linalg.global_norm(gradients_policy)
 
             policy_gradient_norm = tf.norm(policy_gradient,ord=2,axis=1)
+            policy_gradient_logits_norm = tf.norm(policy_gradient_logits,ord=2,axis=1)
+            policy_gradient_conv_h_norm = tf.norm(policy_gradient_conv_h,ord=2,axis=1)
 
             # store attributes for later use
             self.outputs = {
@@ -407,6 +412,10 @@ class StableDDPG(object):
                 'reward_avg': reward_avg,
                 'policy_gradient': policy_gradient,
                 'policy_gradient_norm': policy_gradient_norm,
+                'policy_gradient_logits': policy_gradient_logits,
+                'policy_gradient_logits_norm': policy_gradient_logits_norm,
+                'policy_gradient_conv_h': policy_gradient_conv_h,
+                'policy_gradient_conv_h_norm': policy_gradient_conv_h_norm,
                 'pnorms_policy': pnorms_policy,
                 'pnorms_Q': pnorms_Q,
                 'pnorm_policy': pnorm_policy,
@@ -468,7 +477,7 @@ class StableDDPG(object):
         if self.add_return_loss:
             inputs[self.inputs['returns']] = returns
         my_outputs, _ = session.run(
-            [[self.outputs[k] for k in outputs],self.update_ops],
+            [{k:self.outputs[k] for k in outputs},self.update_ops],
             inputs
         )
         return my_outputs

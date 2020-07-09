@@ -433,7 +433,7 @@ def run(**cfg):
                             sample['importance_weight'] = np.ones_like(sample['importance_weight'])
                         log.append('max_importance_weight',sample['importance_weight'].max())
 
-                        td_error, Q_action_train, losses_Q, pnorms_policy, pnorms_Q, policy_gradient, gnorm_policy, policy_convnet_h_train = agent.update(
+                        update_outputs = agent.update(
                                 learning_rate=policy_learning_rate,
                                 learning_rate_q=learning_rate_q,
                                 ema_decay=cfg['ema_decay'],
@@ -443,7 +443,10 @@ def run(**cfg):
                                 outputs=[
                                     'td_error','Q_action_train','losses_Q',
                                     'pnorms_policy','pnorms_Q',
-                                    'policy_gradient','gnorm_policy',
+                                    'policy_gradient','policy_gradient_norm',
+                                    'policy_gradient_logits','policy_gradient_logits_norm',
+                                    'policy_gradient_conv_h','policy_gradient_conv_h_norm',
+                                    'gnorm_policy',
                                     'policy_convnet_h_train',
                                     ],
                                 **sample)
@@ -454,7 +457,7 @@ def run(**cfg):
 
                         sample = replay_buffer.sample(cfg['batchsize'])
 
-                        Q_action_train, losses_Q, pnorms_policy, pnorms_Q, policy_gradient, gnorm_policy, policy_convnet_h_train = agent.update(
+                        update_outputs = agent.update(
                                 learning_rate=policy_learning_rate,
                                 learning_rate_q=learning_rate_q,
                                 ema_decay=cfg['ema_decay'],
@@ -464,28 +467,52 @@ def run(**cfg):
                                 outputs=[
                                     'td_error','Q_action_train','losses_Q',
                                     'pnorms_policy','pnorms_Q',
-                                    'policy_gradient','gnorm_policy',
+                                    'policy_gradient','policy_gradient_norm',
+                                    'policy_gradient_logits','policy_gradient_logits_norm',
+                                    'policy_gradient_conv_h','policy_gradient_conv_h_norm',
+                                    'gnorm_policy',
                                     'policy_convnet_h_train',
                                     ],
                                 **sample)
+
+                    td_error = update_outputs['td_error']
+                    Q_action_train = update_outputs['Q_action_train']
+                    losses_Q = update_outputs['losses_Q']
+                    pnorms_policy = update_outputs['pnorms_policy']
+                    pnorms_Q = update_outputs['pnorms_Q']
+                    policy_gradient = update_outputs['policy_gradient']
+                    policy_gradient_norm = update_outputs['policy_gradient_norm']
+                    policy_gradient_logits = update_outputs['policy_gradient_logits']
+                    policy_gradient_logits_norm = update_outputs['policy_gradient_logits_norm']
+                    policy_gradient_conv_h = update_outputs['policy_gradient_conv_h']
+                    policy_gradient_conv_h_norm = update_outputs['policy_gradient_conv_h_norm']
+                    gnorm_policy = update_outputs['gnorm_policy']
+                    policy_convnet_h_train = update_outputs['policy_convnet_h_train']
+
                     Q_action_train_list.append(Q_action_train.mean())
                     losses_Q_list.append(losses_Q.mean())
                     log.append('Q_updates',Q_action_train_list[-1])
                     log.append('loss_Q_updates',losses_Q_list[-1])
                     log.append('policy_convnet_h_train',policy_convnet_h_train)
                     log.append('policy_gradient',policy_gradient)
-                log.append('policy_gradient_norm',l2norm(policy_gradient))
-                log.append('gnorm_policy',gnorm_policy)
-                for k in pnorms_policy:
-                    log.append('pnorms_policy: %s'%k,pnorms_policy[k])
-                for k in pnorms_Q:
-                    log.append('pnorms_Q: %s'%k,pnorms_Q[k])
-                Q_action_train_mean = np.mean(Q_action_train_list)
-                losses_Q_mean = np.mean(losses_Q_list)
-                pb_input.append(('Q_action_train', Q_action_train_mean))
-                pb_input.append(('loss_Q', losses_Q_mean))
-                log.append('Q',Q_action_train_mean)
-                log.append('loss_Q',losses_Q_mean)
+                    log.append('policy_gradient_norm',policy_gradient_norm)
+                    log.append('policy_gradient_logits',policy_gradient_logits)
+                    log.append('policy_gradient_logits_norm',policy_gradient_logits_norm)
+                    log.append('policy_gradient_conv_h',policy_gradient_conv_h)
+                    log.append('policy_gradient_conv_h_norm',policy_gradient_conv_h_norm)
+                    log.append('gnorm_policy',gnorm_policy)
+
+                    for k in pnorms_policy:
+                        log.append('pnorms_policy: %s'%k,pnorms_policy[k])
+                    for k in pnorms_Q:
+                        log.append('pnorms_Q: %s'%k,pnorms_Q[k])
+
+                    Q_action_train_mean = np.mean(Q_action_train_list)
+                    losses_Q_mean = np.mean(losses_Q_list)
+                    pb_input.append(('Q_action_train', Q_action_train_mean))
+                    pb_input.append(('loss_Q', losses_Q_mean))
+                    log.append('Q',Q_action_train_mean)
+                    log.append('loss_Q',losses_Q_mean)
 
 
             if (t % cfg['n_steps_per_eval'] == 0 and t >= cfg['begin_learning_at_step']) or t==0:
