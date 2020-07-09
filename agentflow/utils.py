@@ -21,19 +21,32 @@ class LogsTFSummary(object):
         self.savedir = savedir
         self.summary_writer = tf.summary.FileWriter(savedir)
         self.summary = tf.Summary()
+        self._other_array_metrics = {
+            'min': np.min,
+            'max': np.max,
+            'l2norm': lambda x: np.sqrt(np.sum(np.square(x)))
+        }
 
     def __getitem__(self, key):
         if key not in self.logs:
             self.logs[key] = []
         return self.logs[key]
 
-    def append(self,key,val):
+    def _append(self,key,val):
         if key not in self.logs:
             self.logs[key] = []
         self.logs[key].append(val)
         self.summary.value.add(
                 tag=key,
                 simple_value=np.mean(val))
+
+    def append(self,key,val):
+        self._append(key,val)
+        if np.size(val) > 1:
+            for m in self._other_array_metrics:
+                k2 = key + '/' + m
+                v2 = self._other_array_metrics[m](val)
+                self._append(k2,v2)
 
     def append_dict(self,inp):
         for k in inp:
