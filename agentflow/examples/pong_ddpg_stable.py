@@ -7,7 +7,7 @@ from agentflow.state import ResizeImageStateEnv
 from agentflow.state import CvtRGB2GrayImageStateEnv
 from agentflow.numpy.ops import onehot
 from agentflow.numpy.models import TrackEpisodeScore
-from agentflow.tensorflow.nn import dense_net
+from agentflow.tensorflow.nn import dense_net, layernorm
 from agentflow.tensorflow.ops import normalize_ema, binarize
 from agentflow.utils import check_whats_connected, LogsTFSummary
 import tensorflow as tf
@@ -57,8 +57,14 @@ def build_net_fn(hidden_dims,hidden_layers,output_dim,batchnorm,activation_fn):
         if batchnorm:
             BN = tf.layers.BatchNormalization()
             h = BN(h,training=training)
-        h = dense_net(h,hidden_dims,hidden_layers,
-                batchnorm=batchnorm,training=training,activation=activation_fn)
+        h = dense_net(
+            h,
+            hidden_dims,
+            hidden_layers,
+            batchnorm=batchnorm,
+            training=training,
+            activation=activation_fn,
+        )
         return tf.layers.dense(h,output_dim)
     return net_fn
 
@@ -83,7 +89,7 @@ def preprocess_image_state(state,binarized,normalize_inputs,training):
             state, _ = normalize_ema(state,training)
     return state
 
-def build_policy_fn(hidden_dims,hidden_layers,output_dim,batchnorm,activation,normalize_inputs=True,freeze_conv_net=False,binarized=False,conv_dims=None,logit_clipping=5):
+def build_policy_fn(hidden_dims,hidden_layers,output_dim,batchnorm,activation,normalize_inputs=True,freeze_conv_net=False,binarized=False,conv_dims=None,logit_clipping=5,layernorm=False):
     conv_dims = conv_dims if conv_dims is not None else hidden_dims
     activation_fn = get_activation_fn(activation)
     dense_net_fn = build_net_fn(hidden_dims,hidden_layers,output_dim,batchnorm,activation_fn)
@@ -91,7 +97,11 @@ def build_policy_fn(hidden_dims,hidden_layers,output_dim,batchnorm,activation,no
     def policy_fn(state,training=False):
         state = preprocess_image_state(state,binarized,normalize_inputs,training)
         h_convnet = conv_net_fn(state,training)
+        if layernorm:
+            h_convnet = layernorm(h_convnet)
         logits = dense_net_fn(h_convnet,training)
+        if layernorm:
+            logits = layernorm(logits)
         logits = tf.clip_by_value(logits,-logit_clipping,logit_clipping)
         return tf.nn.softmax(logits,axis=-1), logits, h_convnet 
     return policy_fn
@@ -173,6 +183,7 @@ def noisy_action(action_softmax,p=0.05):
 @click.option('--normalize_inputs', default=True, type=bool)
 @click.option('--noisy_action_prob', default=0.05, type=float)
 @click.option('--batchnorm', default=False, type=bool)
+@click.option('--layernorm_policy', default=False, type=bool)
 @click.option('--add_episode_time_state', default=False, type=bool)
 @click.option('--buffer_type', default='normal', type=click.Choice(['normal','prioritized','delayed','delayed_prioritized']))
 @click.option('--buffer_size', default=2**11, type=int)
@@ -265,6 +276,7 @@ def run(**cfg):
             cfg['binarized'],
             cfg['conv_dims'],
             logit_clipping=cfg['policy_logit_clipping'],
+            layernorm=cfg['layernorm_policy'],
     )
 
     q_fn = build_q_fn(
