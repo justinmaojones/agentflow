@@ -83,7 +83,7 @@ def preprocess_image_state(state,binarized,normalize_inputs,training):
             state, _ = normalize_ema(state,training)
     return state
 
-def build_policy_fn(hidden_dims,hidden_layers,output_dim,batchnorm,activation,normalize_inputs=True,freeze_conv_net=False,binarized=False,conv_dims=None):
+def build_policy_fn(hidden_dims,hidden_layers,output_dim,batchnorm,activation,normalize_inputs=True,freeze_conv_net=False,binarized=False,conv_dims=None,logit_clipping=5):
     conv_dims = conv_dims if conv_dims is not None else hidden_dims
     activation_fn = get_activation_fn(activation)
     dense_net_fn = build_net_fn(hidden_dims,hidden_layers,output_dim,batchnorm,activation_fn)
@@ -92,7 +92,7 @@ def build_policy_fn(hidden_dims,hidden_layers,output_dim,batchnorm,activation,no
         state = preprocess_image_state(state,binarized,normalize_inputs,training)
         h_convnet = conv_net_fn(state,training)
         logits = dense_net_fn(h_convnet,training)
-        logits = tf.clip_by_value(logits,-5,5)
+        logits = tf.clip_by_value(logits,-logit_clipping,logit_clipping)
         return tf.nn.softmax(logits,axis=-1), logits, h_convnet 
     return policy_fn
 
@@ -167,6 +167,7 @@ def noisy_action(action_softmax,p=0.05):
 @click.option('--hidden_layers', default=2)
 @click.option('--activation', default='relu', type=click.Choice(['relu','elu','prelu']))
 @click.option('--binarized', default=False, type=bool)
+@click.option('--policy_logit_clipping', default=5.0, type=float)
 @click.option('--freeze_conv_net', default=False, type=bool)
 @click.option('--output_dim', default=6)
 @click.option('--normalize_inputs', default=True, type=bool)
@@ -263,6 +264,7 @@ def run(**cfg):
             cfg['freeze_conv_net'],
             cfg['binarized'],
             cfg['conv_dims'],
+            logit_clipping=cfg['policy_logit_clipping'],
     )
 
     q_fn = build_q_fn(
