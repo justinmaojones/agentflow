@@ -17,6 +17,7 @@ import os
 import yaml 
 import time
 import click
+import gc
 
 def get_activation_fn(activation_choice_str):
     if activation_choice_str == 'relu':
@@ -512,6 +513,7 @@ def run(**cfg):
             log.flush(step=t)
             if t % cfg['n_steps_per_eval'] == 0 and t > 0:
                 log.write(os.path.join(savedir,'log_intermediate.h5'),verbose=False)
+                gc.collect()
 
 
     if cfg['buffer_type'] == 'prioritized':
