@@ -7,7 +7,7 @@ from agentflow.state import ResizeImageStateEnv
 from agentflow.state import CvtRGB2GrayImageStateEnv
 from agentflow.numpy.ops import onehot
 from agentflow.numpy.models import TrackEpisodeScore
-from agentflow.tensorflow.nn import dense_net, layernorm
+from agentflow.tensorflow.nn import dense_net, layer_normalization
 from agentflow.tensorflow.ops import normalize_ema, binarize
 from agentflow.utils import check_whats_connected, LogsTFSummary
 import tensorflow as tf
@@ -98,10 +98,10 @@ def build_policy_fn(hidden_dims,hidden_layers,output_dim,batchnorm,activation,no
         state = preprocess_image_state(state,binarized,normalize_inputs,training)
         h_convnet = conv_net_fn(state,training)
         if layernorm:
-            h_convnet = layernorm(h_convnet)
+            h_convnet = layer_normalization(h_convnet)
         logits = dense_net_fn(h_convnet,training)
         if layernorm:
-            logits = layernorm(logits)
+            logits = layer_normalization(logits)
         logits = tf.clip_by_value(logits,-logit_clipping,logit_clipping)
         return tf.nn.softmax(logits,axis=-1), logits, h_convnet 
     return policy_fn

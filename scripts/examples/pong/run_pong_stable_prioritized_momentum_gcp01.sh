@@ -20,6 +20,7 @@ do
         --begin_learning_at_step=$BEGIN_LEARNING_AT_STEP \
         --n_update_steps=$N_UPDATE_STEPS \
         --batchsize=$BATCHSIZE \
+        --layernorm_policy=True \
         --policy_logit_clipping=3.0 \
         --entropy_loss_weight=1.0 \
         --buffer_type=prioritized \
