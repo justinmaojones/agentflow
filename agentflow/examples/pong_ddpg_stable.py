@@ -18,10 +18,6 @@ import yaml
 import time
 import click
 
-# TODO
-# * modify preprocessing to include actions
-# * how to handle time state?  it converts to float64 :(
-
 def get_activation_fn(activation_choice_str):
     if activation_choice_str == 'relu':
         return tf.nn.relu

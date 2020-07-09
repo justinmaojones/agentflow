@@ -20,16 +20,18 @@ do
         --begin_learning_at_step=$BEGIN_LEARNING_AT_STEP \
         --n_update_steps=$N_UPDATE_STEPS \
         --batchsize=$BATCHSIZE \
+        --entropy_loss_weight=1.0 \
         --buffer_type=prioritized \
         --prioritized_replay_simple=True \
         --buffer_size=$BUFFER_SIZE \
         --enable_n_step_return_publisher=True \
-        --n_step_return=32 \
+        --n_step_return=64 \
         --learning_rate=0.001 \
         --learning_rate_decay=0.9999 \
         --learning_rate_q=$LEARNING_RATE_Q \
         --learning_rate_q_decay=0.99995 \
         --n_steps_train_only_q 0 \
+        --binarized=True \
         --n_prev_frames=$N_PREV_FRAMES \
         --freeze_conv_net=False \
         --hidden_dims=$HIDDEN_DIMS \
