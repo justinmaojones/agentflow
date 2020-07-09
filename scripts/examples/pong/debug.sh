@@ -50,6 +50,6 @@ do
         --seed=$SEED \
         --savedir=$SAVEDIR \
         --update_freq=$UPDATE_FREQ \
-        --n_steps_per_eval=500 
+        --n_steps_per_eval=5 
         
 done
