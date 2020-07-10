@@ -302,6 +302,7 @@ class StableDDPG(object):
 
             with tf.variable_scope('Q') as scope_Q:
                 self.var_list_Q = tf.trainable_variables(scope=scope_Q.name)
+                self.moving_avg_var_list_Q = tf.moving_average_variables(scope=scope_Q.name)
                 if self.stable:
                     # stable gradients for parameters of Q
                     if self.opt_q_layerwise:
@@ -356,6 +357,7 @@ class StableDDPG(object):
             # gradient update for parameters of policy
             with tf.variable_scope('policy') as scope_policy:
                 self.var_list_policy = tf.trainable_variables(scope=scope_policy.name)
+                self.moving_avg_var_list_policy = tf.moving_average_variables(scope=scope_policy.name)
             self.optimizer = tf.train.RMSPropOptimizer(inputs['learning_rate']) 
 
             # weight decay for policy loss
@@ -383,12 +385,20 @@ class StableDDPG(object):
             pnorm_policy = tf.linalg.global_norm(self.var_list_policy)
             pnorm_Q = tf.linalg.global_norm(self.var_list_Q)
 
+            pnorms_mv_avg_policy = {v.name: tf.sqrt(tf.reduce_mean(tf.square(v))) for v in self.var_list_policy}
+            pnorms_mv_avg_Q = {v.name: tf.sqrt(tf.reduce_mean(tf.square(v))) for v in self.var_list_Q}
+            pnorm_mv_avg_policy = tf.linalg.global_norm(self.moving_avg_var_list_policy)
+            pnorm_mv_avg_Q = tf.linalg.global_norm(self.moving_avg_var_list_Q)
+
             gradients_policy = tf.gradients(loss,self.var_list_policy)
             gnorm_policy = tf.linalg.global_norm(gradients_policy)
 
             policy_gradient_norm = tf.norm(policy_gradient,ord=2,axis=1)
             policy_gradient_logits_norm = tf.norm(policy_gradient_logits,ord=2,axis=1)
             policy_gradient_conv_h_norm = tf.norm(policy_gradient_conv_h,ord=2,axis=1)
+
+            import pdb
+            pdb.set_trace()
 
             # store attributes for later use
             self.outputs = {
@@ -420,6 +430,10 @@ class StableDDPG(object):
                 'pnorms_Q': pnorms_Q,
                 'pnorm_policy': pnorm_policy,
                 'pnorm_Q': pnorm_Q,
+                'pnorms_mv_avg_policy': pnorms_mv_avg_policy,
+                'pnorms_mv_avg_Q': pnorms_mv_avg_Q,
+                'pnorm_mv_avg_policy': pnorm_mv_avg_policy,
+                'pnorm_mv_avg_Q': pnorm_mv_avg_Q,
                 'gnorm_policy': gnorm_policy,
                 'gradients_policy': gradients_policy,
                 'policy_convnet_h_train': policy_convnet_h_train,

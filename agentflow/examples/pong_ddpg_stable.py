@@ -457,6 +457,7 @@ def run(**cfg):
                                 outputs=[
                                     'td_error','Q_action_train','losses_Q',
                                     'pnorms_policy','pnorms_Q',
+                                    'pnorms_mv_avg_policy','pnorms_mv_avg_Q',
                                     'policy_gradient','policy_gradient_norm',
                                     'policy_gradient_logits','policy_gradient_logits_norm',
                                     'policy_gradient_conv_h','policy_gradient_conv_h_norm',
@@ -481,6 +482,7 @@ def run(**cfg):
                                 outputs=[
                                     'td_error','Q_action_train','losses_Q',
                                     'pnorms_policy','pnorms_Q',
+                                    'pnorms_mv_avg_policy','pnorms_mv_avg_Q',
                                     'policy_gradient','policy_gradient_norm',
                                     'policy_gradient_logits','policy_gradient_logits_norm',
                                     'policy_gradient_conv_h','policy_gradient_conv_h_norm',
@@ -494,6 +496,8 @@ def run(**cfg):
                     losses_Q = update_outputs['losses_Q']
                     pnorms_policy = update_outputs['pnorms_policy']
                     pnorms_Q = update_outputs['pnorms_Q']
+                    pnorms_mv_avg_policy = update_outputs['pnorms_mv_avg_policy']
+                    pnorms_mv_avg_Q = update_outputs['pnorms_mv_avg_Q']
                     policy_gradient = update_outputs['policy_gradient']
                     policy_gradient_norm = update_outputs['policy_gradient_norm']
                     policy_gradient_logits = update_outputs['policy_gradient_logits']
@@ -520,6 +524,10 @@ def run(**cfg):
                         log.append('pnorms_policy: %s'%k,pnorms_policy[k])
                     for k in pnorms_Q:
                         log.append('pnorms_Q: %s'%k,pnorms_Q[k])
+                    for k in pnorms_mv_avg_policy:
+                        log.append('pnorms_mv_avg_policy: %s'%k,pnorms_mv_avg_policy[k])
+                    for k in pnorms_mv_avg_Q:
+                        log.append('pnorms_mv_avg_Q: %s'%k,pnorms_mv_avg_Q[k])
 
                     Q_action_train_mean = np.mean(Q_action_train_list)
                     losses_Q_mean = np.mean(losses_Q_list)
