@@ -15,7 +15,7 @@ export SAVEDIR=results/pong_ddpg_stable_debug/lrq${LEARNING_RATE_Q}_npf${N_PREV_
 for SEED in 1 #2 3 4 5 6 7 8 9 10
 do
     python agentflow/examples/pong_ddpg_stable.py \
-        --freeze_conv_net=True \
+        --freeze_conv_net=False \
         --n_envs=10 \
         --num_steps=$NUMSTEPS \
         --begin_learning_at_step=$BEGIN_LEARNING_AT_STEP \
@@ -23,7 +23,9 @@ do
         --n_prev_frames=32 \
         --batchsize=$BATCHSIZE \
         --binarized=False \
-        --batchnorm=False \
+        --batchnorm_q=False \
+        --batchnorm_policy=True \
+        --layernorm_policy=False \
         --conv_dims=$CONV_DIMS \
         --hidden_dims=$HIDDEN_DIMS \
         --hidden_layers=$HIDDEN_LAYERS \

@@ -113,8 +113,8 @@ def build_q_fn(hidden_dims,hidden_layers,output_dim,batchnorm,activation,normali
     def q_fn(state,action,training=False):
         state = preprocess_image_state(state,binarized,normalize_inputs,training)
         h_state = conv_net_fn(state,training)
-        h = tf.concat([h_state,action],axis=1)
-        h = dense_net_fn(h,training)
+        h_state = dense_net_fn(h_state,training)
+        h = tf.reduce_sum(h_state*action,axis=-1,keepdims=True)
         return h
     return q_fn
 
@@ -282,7 +282,7 @@ def run(**cfg):
     q_fn = build_q_fn(
             cfg['hidden_dims'],
             cfg['hidden_layers'],
-            1,
+            cfg['output_dim'],
             cfg['batchnorm_q'],
             cfg['activation'],
             cfg['normalize_inputs'],
