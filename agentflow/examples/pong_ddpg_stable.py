@@ -98,10 +98,12 @@ def build_policy_fn(hidden_dims,hidden_layers,output_dim,batchnorm,activation,no
         state = preprocess_image_state(state,binarized,normalize_inputs,training)
         h_convnet = conv_net_fn(state,training)
         if layernorm:
-            h_convnet = layer_normalization(h_convnet)
+            with tf.variable_scope("h_convnet"):
+                h_convnet = layer_normalization(h_convnet)
         logits = dense_net_fn(h_convnet,training)
         if layernorm:
-            logits = layer_normalization(logits)
+            with tf.variable_scope("logits"):
+                logits = layer_normalization(logits)
         logits = tf.clip_by_value(logits,-logit_clipping,logit_clipping)
         return tf.nn.softmax(logits,axis=-1), logits, h_convnet 
     return policy_fn

@@ -1,7 +1,16 @@
 import tensorflow as tf
 
-def layer_normalization(x,axis=-1):
-    return tf.keras.layers.LayerNormalization(axis)(x)
+def layer_normalization(x, axis=-1, epsilon=1e-5):
+    """Normalize to mean = 0, std = 1, then do a diagonal affine transform."""
+    with tf.variable_scope('layer_normalization'):
+        n_state = x.shape[axis].value
+        g = tf.get_variable('g', [n_state], initializer=tf.constant_initializer(1))
+        b = tf.get_variable('b', [n_state], initializer=tf.constant_initializer(0))
+        u = tf.reduce_mean(x, axis=axis, keepdims=True)
+        s = tf.reduce_mean(tf.square(x-u), axis=axis, keepdims=True)
+        x = (x - u) * tf.rsqrt(s + epsilon)
+        x = x*g + b
+        return x
 
 def dense_net(x,units,layers,batchnorm=False,activation=tf.nn.relu,training=False,layernorm=False,**kwargs):
 
