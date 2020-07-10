@@ -397,9 +397,6 @@ class StableDDPG(object):
             policy_gradient_logits_norm = tf.norm(policy_gradient_logits,ord=2,axis=1)
             policy_gradient_conv_h_norm = tf.norm(policy_gradient_conv_h,ord=2,axis=1)
 
-            import pdb
-            pdb.set_trace()
-
             # store attributes for later use
             self.outputs = {
                 'y': y,
