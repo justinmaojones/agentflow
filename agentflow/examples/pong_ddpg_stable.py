@@ -42,21 +42,17 @@ def conv_net(x, conv_units, batchnorm=True, activation=tf.nn.relu, training=Fals
         kernel_size = (3,3)
         strides = (1,1)
         h = tf.layers.conv2d(h,units,kernel_size,strides)
-        h = activation(h)
-        h = tf.layers.max_pooling2d(h,(2,2),(2,2))
-
         if batchnorm:
             BN = tf.layers.BatchNormalization()
             h = BN(h,training=training)
+        h = activation(h)
+        h = tf.layers.max_pooling2d(h,(2,2),(2,2))
 
     h = tf.layers.flatten(h)
     return h
 
-def build_net_fn(hidden_dims,hidden_layers,output_dim,batchnorm,activation_fn):
+def build_net_fn(hidden_dims,hidden_layers,output_dim,batchnorm,activation_fn,layernorm):
     def net_fn(h,training=False):
-        if batchnorm:
-            BN = tf.layers.BatchNormalization()
-            h = BN(h,training=training)
         h = dense_net(
             h,
             hidden_dims,
@@ -64,6 +60,7 @@ def build_net_fn(hidden_dims,hidden_layers,output_dim,batchnorm,activation_fn):
             batchnorm=batchnorm,
             training=training,
             activation=activation_fn,
+            layernorm=layernorm,
         )
         return tf.layers.dense(h,output_dim)
     return net_fn
@@ -92,7 +89,7 @@ def preprocess_image_state(state,binarized,normalize_inputs,training):
 def build_policy_fn(hidden_dims,hidden_layers,output_dim,batchnorm,activation,normalize_inputs=True,freeze_conv_net=False,binarized=False,conv_dims=None,logit_clipping=5,layernorm=False):
     conv_dims = conv_dims if conv_dims is not None else hidden_dims
     activation_fn = get_activation_fn(activation)
-    dense_net_fn = build_net_fn(hidden_dims,hidden_layers,output_dim,batchnorm,activation_fn)
+    dense_net_fn = build_net_fn(hidden_dims,hidden_layers,output_dim,batchnorm,activation_fn,layernorm=layernorm)
     conv_net_fn = build_conv_net_fn(conv_dims,batchnorm,activation_fn,freeze_conv_net)
     def policy_fn(state,training=False):
         state = preprocess_image_state(state,binarized,normalize_inputs,training)
@@ -111,7 +108,7 @@ def build_policy_fn(hidden_dims,hidden_layers,output_dim,batchnorm,activation,no
 def build_q_fn(hidden_dims,hidden_layers,output_dim,batchnorm,activation,normalize_inputs=True,freeze_conv_net=False,binarized=False,conv_dims=None):
     conv_dims = conv_dims if conv_dims is not None else hidden_dims
     activation_fn = get_activation_fn(activation)
-    dense_net_fn = build_net_fn(hidden_dims,hidden_layers,output_dim,batchnorm,activation_fn)
+    dense_net_fn = build_net_fn(hidden_dims,hidden_layers,output_dim,batchnorm,activation_fn,layernorm=False)
     conv_net_fn = build_conv_net_fn(conv_dims,batchnorm,activation_fn,freeze_conv_net)
     def q_fn(state,action,training=False):
         state = preprocess_image_state(state,binarized,normalize_inputs,training)
@@ -184,7 +181,8 @@ def noisy_action(action_softmax,p=0.05):
 @click.option('--output_dim', default=6)
 @click.option('--normalize_inputs', default=True, type=bool)
 @click.option('--noisy_action_prob', default=0.05, type=float)
-@click.option('--batchnorm', default=False, type=bool)
+@click.option('--batchnorm_policy', default=False, type=bool)
+@click.option('--batchnorm_q', default=False, type=bool)
 @click.option('--layernorm_policy', default=False, type=bool)
 @click.option('--add_episode_time_state', default=False, type=bool)
 @click.option('--buffer_type', default='normal', type=click.Choice(['normal','prioritized','delayed','delayed_prioritized']))
@@ -271,7 +269,7 @@ def run(**cfg):
             cfg['hidden_dims'],
             cfg['hidden_layers'],
             cfg['output_dim'],
-            cfg['batchnorm'],
+            cfg['batchnorm_policy'],
             cfg['activation'],
             cfg['normalize_inputs'],
             cfg['freeze_conv_net'],
@@ -285,7 +283,7 @@ def run(**cfg):
             cfg['hidden_dims'],
             cfg['hidden_layers'],
             1,
-            cfg['batchnorm'],
+            cfg['batchnorm_q'],
             cfg['activation'],
             cfg['normalize_inputs'],
             cfg['freeze_conv_net'],
