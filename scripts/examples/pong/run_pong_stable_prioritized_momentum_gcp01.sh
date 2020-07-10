@@ -40,7 +40,7 @@ do
         --hidden_layers=$HIDDEN_LAYERS \
         --weight_decay=0.0001 \
         --ema_decay=0.99 \
-        --regularize_policy=False \
+        --regularize_policy=True \
         --optimizer_q=momentum \
         --optimizer_q_momentum=0.05 \
         --alpha=2 \
