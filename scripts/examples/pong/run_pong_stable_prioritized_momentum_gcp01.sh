@@ -23,6 +23,7 @@ do
         --batchnorm_q=False \
         --batchnorm_policy=True \
         --layernorm_policy=False \
+        --normalize_inputs=True \
         --policy_logit_clipping=3.0 \
         --entropy_loss_weight=1.0 \
         --buffer_type=prioritized \
