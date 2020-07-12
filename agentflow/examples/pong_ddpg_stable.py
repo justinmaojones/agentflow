@@ -216,6 +216,7 @@ def noisy_action(action_softmax,p=0.05):
 @click.option('--regularize_policy', default=False, type=bool)
 @click.option('--straight_through_estimation', default=False, type=bool)
 @click.option('--entropy_loss_weight', default=0.0)
+@click.option('--entropy_loss_weight_decay', default=0.99995)
 @click.option('--n_update_steps', default=4, type=int)
 @click.option('--update_freq', default=1, type=int)
 @click.option('--n_steps_per_eval', default=100, type=int)
@@ -426,13 +427,16 @@ def run(**cfg):
                 if t >= cfg['begin_learning_at_step'] + cfg['n_steps_train_only_q']:
                     t2 = t - (cfg['begin_learning_at_step'] + cfg['n_steps_train_only_q'])
                     policy_learning_rate = cfg['learning_rate']*(cfg['learning_rate_decay']**t2)
+                    entropy_loss_weight = cfg['entropy_loss_weight']*(cfg['entropy_loss_weight_decay']**t2)
                 else:
                     policy_learning_rate = 0.
+                    entropy_loss_weight = cfg['entropy_loss_weight']
 
                 tq = t - cfg['begin_learning_at_step']
                 learning_rate_q = cfg['learning_rate_q']*(cfg['learning_rate_q_decay']**tq)
 
                 log.append('learning_rate_policy',policy_learning_rate)
+                log.append('entropy_loss_weight',entropy_loss_weight)
                 log.append('learning_rate_q',learning_rate_q)
 
                 for i in range(cfg['n_update_steps']):
@@ -453,7 +457,7 @@ def run(**cfg):
                                 ema_decay=cfg['ema_decay'],
                                 gamma=cfg['gamma'],
                                 weight_decay=cfg['weight_decay'],
-                                entropy_loss_weight=cfg['entropy_loss_weight'],
+                                entropy_loss_weight=entropy_loss_weight,
                                 outputs=[
                                     'td_error','Q_action_train','losses_Q',
                                     'pnorms_policy','pnorms_Q',
@@ -463,6 +467,7 @@ def run(**cfg):
                                     'policy_gradient_conv_h','policy_gradient_conv_h_norm',
                                     'gnorm_policy',
                                     'policy_convnet_h_train',
+                                    'policy_eval','policy_train','policy_train_input',
                                     ],
                                 **sample)
 
@@ -478,7 +483,7 @@ def run(**cfg):
                                 ema_decay=cfg['ema_decay'],
                                 gamma=cfg['gamma'],
                                 weight_decay=cfg['weight_decay'],
-                                entropy_loss_weight=cfg['entropy_loss_weight'],
+                                entropy_loss_weight=entropy_loss_weight,
                                 outputs=[
                                     'td_error','Q_action_train','losses_Q',
                                     'pnorms_policy','pnorms_Q',
@@ -488,53 +493,22 @@ def run(**cfg):
                                     'policy_gradient_conv_h','policy_gradient_conv_h_norm',
                                     'gnorm_policy',
                                     'policy_convnet_h_train',
+                                    'policy_eval','policy_train','policy_train_input',
                                     ],
                                 **sample)
 
-                    td_error = update_outputs['td_error']
-                    Q_action_train = update_outputs['Q_action_train']
-                    losses_Q = update_outputs['losses_Q']
-                    pnorms_policy = update_outputs['pnorms_policy']
-                    pnorms_Q = update_outputs['pnorms_Q']
-                    pnorms_mv_avg_policy = update_outputs['pnorms_mv_avg_policy']
-                    pnorms_mv_avg_Q = update_outputs['pnorms_mv_avg_Q']
-                    policy_gradient = update_outputs['policy_gradient']
-                    policy_gradient_norm = update_outputs['policy_gradient_norm']
-                    policy_gradient_logits = update_outputs['policy_gradient_logits']
-                    policy_gradient_logits_norm = update_outputs['policy_gradient_logits_norm']
-                    policy_gradient_conv_h = update_outputs['policy_gradient_conv_h']
-                    policy_gradient_conv_h_norm = update_outputs['policy_gradient_conv_h_norm']
-                    gnorm_policy = update_outputs['gnorm_policy']
-                    policy_convnet_h_train = update_outputs['policy_convnet_h_train']
 
-                    Q_action_train_list.append(Q_action_train.mean())
-                    losses_Q_list.append(losses_Q.mean())
-                    log.append('Q_updates',Q_action_train_list[-1])
-                    log.append('loss_Q_updates',losses_Q_list[-1])
-                    log.append('policy_convnet_h_train',policy_convnet_h_train)
-                    log.append('policy_gradient',policy_gradient)
-                    log.append('policy_gradient_norm',policy_gradient_norm)
-                    log.append('policy_gradient_logits',policy_gradient_logits)
-                    log.append('policy_gradient_logits_norm',policy_gradient_logits_norm)
-                    log.append('policy_gradient_conv_h',policy_gradient_conv_h)
-                    log.append('policy_gradient_conv_h_norm',policy_gradient_conv_h_norm)
-                    log.append('gnorm_policy',gnorm_policy)
+                    def append_outputs_to_log(outputs,prefix=[]):
+                        for k in outputs:
+                            key = prefix + [k]
+                            if isinstance(outputs[k],dict):
+                                append_outputs_to_log(outputs[k],prefix=key)
+                            else:
+                                log.append(': '.join(key),outputs[k])
 
-                    for k in pnorms_policy:
-                        log.append('pnorms_policy: %s'%k,pnorms_policy[k])
-                    for k in pnorms_Q:
-                        log.append('pnorms_Q: %s'%k,pnorms_Q[k])
-                    for k in pnorms_mv_avg_policy:
-                        log.append('pnorms_mv_avg_policy: %s'%k,pnorms_mv_avg_policy[k])
-                    for k in pnorms_mv_avg_Q:
-                        log.append('pnorms_mv_avg_Q: %s'%k,pnorms_mv_avg_Q[k])
-
-                    Q_action_train_mean = np.mean(Q_action_train_list)
-                    losses_Q_mean = np.mean(losses_Q_list)
-                    pb_input.append(('Q_action_train', Q_action_train_mean))
-                    pb_input.append(('loss_Q', losses_Q_mean))
-                    log.append('Q',Q_action_train_mean)
-                    log.append('loss_Q',losses_Q_mean)
+                    append_outputs_to_log(update_outputs)
+                    pb_input.append(('Q_action_train', np.mean(update_outputs['Q_action_train'])))
+                    pb_input.append(('loss_Q', np.mean(update_outputs['losses_Q'])))
 
 
             if (t % cfg['n_steps_per_eval'] == 0 and t >= cfg['begin_learning_at_step']) or t==0:
