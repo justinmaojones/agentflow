@@ -35,7 +35,7 @@ do
         --learning_rate_decay=0.9999 \
         --learning_rate_q=$LEARNING_RATE_Q \
         --learning_rate_q_decay=0.99995 \
-        --n_steps_train_only_q 2000 \
+        --n_steps_train_only_q 0 \
         --binarized=False \
         --n_prev_frames=$N_PREV_FRAMES \
         --freeze_conv_net=False \
