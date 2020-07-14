@@ -294,6 +294,7 @@ class StableDDPG(object):
             loss = tf.reduce_mean(self.inputs['importance_weight']*losses_policy)
 
             # policy gradient
+            policy_gradient_raw = tf.gradients(Q_policy_train,policy_train_input)[0]
             policy_gradient = tf.gradients(losses_policy,policy_train)[0]
             policy_gradient_logits = tf.gradients(losses_policy,policy_train_logits)[0]
             policy_gradient_conv_h = tf.gradients(losses_policy,policy_convnet_h_train)[0]
@@ -417,6 +418,7 @@ class StableDDPG(object):
                 'R_action_train': R_action_train,
                 'R_ema': R_ema,
                 'reward_avg': reward_avg,
+                'policy_gradient_raw': policy_gradient_raw,
                 'policy_gradient': policy_gradient,
                 'policy_gradient_norm': policy_gradient_norm,
                 'policy_gradient_logits': policy_gradient_logits,

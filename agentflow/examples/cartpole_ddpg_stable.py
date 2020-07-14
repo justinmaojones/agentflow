@@ -114,6 +114,7 @@ def noisy_action(action_softmax,eps=1.,clip=5e-2):
 @click.option('--regularize_policy', default=False, type=bool)
 @click.option('--straight_through_estimation', default=False, type=bool)
 @click.option('--entropy_loss_weight', default=0.0)
+@click.option('--entropy_loss_weight_decay', default=0.99995)
 @click.option('--n_update_steps', default=4, type=int)
 @click.option('--update_freq', default=1, type=int)
 @click.option('--n_steps_per_eval', default=100, type=int)
@@ -280,8 +281,10 @@ def run(**cfg):
                 if t >= cfg['begin_learning_at_step'] + cfg['n_steps_train_only_q']:
                     t2 = t - (cfg['begin_learning_at_step'] + cfg['n_steps_train_only_q'])
                     policy_learning_rate = cfg['learning_rate']*(cfg['learning_rate_decay']**t2)
+                    entropy_loss_weight = cfg['entropy_loss_weight']*(cfg['entropy_loss_weight_decay']**t2)
                 else:
                     policy_learning_rate = 0.
+                    entropy_loss_weight = cfg['entropy_loss_weight']
 
                 tq = t - cfg['begin_learning_at_step']
                 learning_rate_q = cfg['learning_rate_q']*(cfg['learning_rate_q_decay']**tq)
@@ -302,21 +305,21 @@ def run(**cfg):
                             sample['importance_weight'] = np.ones_like(sample['importance_weight'])
                         log.append('max_importance_weight',sample['importance_weight'].max())
 
-                        td_error, Q_ema_state2, policy_gradient_norm = agent.update(
+                        update_outputs = agent.update(
                                 learning_rate=policy_learning_rate,
                                 learning_rate_q=learning_rate_q,
                                 ema_decay=cfg['ema_decay'],
                                 gamma=cfg['gamma'],
                                 weight_decay=cfg['weight_decay'],
-                                entropy_loss_weight=cfg['entropy_loss_weight'],
+                                entropy_loss_weight=entropy_loss_weight,
                                 outputs=['td_error','Q_ema_state2','policy_gradient_norm'],
                                 **sample)
 
                         if not cfg['prioritized_replay_simple']:
                             if cfg['prioritized_replay_policy_gradient']:
-                                replay_buffer.update_priorities(policy_gradient_norm)
+                                replay_buffer.update_priorities(update_outputs['policy_gradient_norm'])
                             else:
-                                replay_buffer.update_priorities(td_error)
+                                replay_buffer.update_priorities(update_outputs['td_error'])
                     else:
 
                         if cfg['sample_backwards']:
@@ -324,17 +327,17 @@ def run(**cfg):
                         else:
                             sample = replay_buffer.sample(cfg['batchsize'])
 
-                        Q_ema_state2, = agent.update(
+                        update_outputs = agent.update(
                                 learning_rate=policy_learning_rate,
                                 learning_rate_q=learning_rate_q,
                                 ema_decay=cfg['ema_decay'],
                                 gamma=cfg['gamma'],
                                 weight_decay=cfg['weight_decay'],
-                                entropy_loss_weight=cfg['entropy_loss_weight'],
+                                entropy_loss_weight=entropy_loss_weight,
                                 outputs=['Q_ema_state2'],
                                 **sample)
-                pb_input.append(('Q_ema_state2', Q_ema_state2.mean()))
-                log.append('Q',Q_ema_state2.mean())
+                pb_input.append(('Q_ema_state2', update_outputs['Q_ema_state2'].mean()))
+                log.append('Q',update_outputs['Q_ema_state2'].mean())
 
             # Bookkeeping
             log.append('reward_history',reward)
