@@ -37,7 +37,7 @@ do
         --learning_rate_q=$LEARNING_RATE_Q \
         --learning_rate_q_decay=0.99995 \
         --n_steps_train_only_q 0 \
-        --binarized=False \
+        --binarized=True \
         --n_prev_frames=$N_PREV_FRAMES \
         --freeze_conv_net=False \
         --hidden_dims=$HIDDEN_DIMS \
