@@ -25,8 +25,8 @@ do
         --layernorm_policy=False \
         --normalize_inputs=True \
         --policy_logit_clipping=3.0 \
-        --entropy_loss_weight=30.0 \
-        --dqda_clipping=0.1 \
+        --entropy_loss_weight=300.0 \
+        --dqda_clipping=0.5 \
         --buffer_type=prioritized \
         --prioritized_replay_simple=True \
         --buffer_size=$BUFFER_SIZE \
