@@ -29,6 +29,22 @@ def get_activation_fn(activation_choice_str):
     else:
         raise ValueError("unhandled activation type: %s" % activation_choice_str)
 
+def nature_cnn(x, conv_units=32, batchnorm=None, activation=tf.nn.relu, training=False, **kwargs):
+    """
+    CNN from Nature paper.
+    :param scaled_images: (TensorFlow Tensor) Image input placeholder
+    :param kwargs: (dict) Extra keywords parameters for the convolutional layers of the CNN
+    :return: (TensorFlow Tensor) The CNN output layer
+    """
+    activ = activation 
+    conv = tf.layers.conv2d
+    initializer = lambda: tf.compat.v1.keras.initializers.orthogonal(np.sqrt(2))
+    layer_1 = activ(conv(x, filters=conv_units, kernel_size=8, strides=4, kernel_initializer=initializer(), **kwargs))
+    layer_2 = activ(conv(layer_1, filters=conv_units*2, kernel_size=4, strides=2, kernel_initializer=initializer(), **kwargs))
+    layer_3 = activ(conv(layer_2, filters=conv_units*2, kernel_size=3, strides=1, kernel_initializer=initializer(), **kwargs))
+    layer_3 = tf.layers.flatten(layer_3)
+    return layer_3
+
 def conv_net(x, conv_units, batchnorm=True, activation=tf.nn.relu, training=False,**kwargs):
 
     conv_layers = 4 
@@ -65,13 +81,16 @@ def build_net_fn(hidden_dims,hidden_layers,output_dim,batchnorm,activation_fn,la
         return tf.layers.dense(h,output_dim)
     return net_fn
 
-def build_conv_net_fn(conv_dims,batchnorm,activation_fn,stop_gradient=False):
+def build_conv_net_fn(conv_dims,batchnorm,activation_fn,stop_gradient=False,nature=False):
     def conv_net_fn(h,training=False):
         if stop_gradient:
             _batchnorm = False
         else:
             _batchnorm = batchnorm
-        h = conv_net(h,conv_dims,_batchnorm,activation_fn,training)
+        if nature:
+            h = nature_cnn(h,conv_dims,_batchnorm,activation_fn,training)
+        else:
+            h = conv_net(h,conv_dims,_batchnorm,activation_fn,training)
         if stop_gradient:
             h = tf.stop_gradient(h)
         return h
@@ -86,11 +105,11 @@ def preprocess_image_state(state,binarized,normalize_inputs,training):
             state, _ = normalize_ema(state,training)
     return state
 
-def build_policy_fn(hidden_dims,hidden_layers,output_dim,batchnorm,activation,normalize_inputs=True,freeze_conv_net=False,binarized=False,conv_dims=None,logit_clipping=5,layernorm=False):
+def build_policy_fn(hidden_dims,hidden_layers,output_dim,batchnorm,activation,normalize_inputs=True,freeze_conv_net=False,binarized=False,conv_dims=None,logit_clipping=5,layernorm=False,nature=False):
     conv_dims = conv_dims if conv_dims is not None else hidden_dims
     activation_fn = get_activation_fn(activation)
     dense_net_fn = build_net_fn(hidden_dims,hidden_layers,output_dim,batchnorm,activation_fn,layernorm=layernorm)
-    conv_net_fn = build_conv_net_fn(conv_dims,batchnorm,activation_fn,freeze_conv_net)
+    conv_net_fn = build_conv_net_fn(conv_dims,batchnorm,activation_fn,freeze_conv_net,nature)
     def policy_fn(state,training=False):
         state = preprocess_image_state(state,binarized,normalize_inputs,training)
         h_convnet = conv_net_fn(state,training)
@@ -105,18 +124,46 @@ def build_policy_fn(hidden_dims,hidden_layers,output_dim,batchnorm,activation,no
         return tf.nn.softmax(logits,axis=-1), logits, h_convnet 
     return policy_fn
 
-def build_q_fn(hidden_dims,hidden_layers,output_dim,batchnorm,activation,normalize_inputs=True,freeze_conv_net=False,binarized=False,conv_dims=None):
+def build_q_fn(hidden_dims,hidden_layers,output_dim,batchnorm,activation,normalize_inputs=True,freeze_conv_net=False,binarized=False,conv_dims=None,nature=False):
     conv_dims = conv_dims if conv_dims is not None else hidden_dims
     activation_fn = get_activation_fn(activation)
     dense_net_fn = build_net_fn(hidden_dims,hidden_layers,output_dim,batchnorm,activation_fn,layernorm=False)
-    conv_net_fn = build_conv_net_fn(conv_dims,batchnorm,activation_fn,freeze_conv_net)
-    def q_fn(state,action,training=False):
+    conv_net_fn = build_conv_net_fn(conv_dims,batchnorm,activation_fn,freeze_conv_net,nature)
+    def q_fn(state,action,training=False,q_normalized=None):
+        state = preprocess_image_state(state,binarized,normalize_inputs,training)
+        h_state = conv_net_fn(state,training)
+        h = tf.concat([h_state,action],axis=1)
+        h = dense_net_fn(h,training)
+        return h
+    return q_fn
+
+def build_q_fn_attn(hidden_dims,hidden_layers,output_dim,batchnorm,activation,normalize_inputs=True,freeze_conv_net=False,binarized=False,conv_dims=None,nature=False):
+    conv_dims = conv_dims if conv_dims is not None else hidden_dims
+    activation_fn = get_activation_fn(activation)
+    dense_net_fn = build_net_fn(hidden_dims,hidden_layers,output_dim,batchnorm,activation_fn,layernorm=False)
+    conv_net_fn = build_conv_net_fn(conv_dims,batchnorm,activation_fn,freeze_conv_net,nature)
+    def q_fn(state,action,training=False,q_normalized=False):
         state = preprocess_image_state(state,binarized,normalize_inputs,training)
         h_state = conv_net_fn(state,training)
         h_state = dense_net_fn(h_state,training)
-        h = tf.reduce_sum(h_state*action,axis=-1,keepdims=True)
+        if q_normalized:
+            h_state_softmax = tf.nn.softmax(h_state,axis=-1)
+            losses = -tf.nn.softmax_cross_entropy_with_logits(labels=h_state_softmax,logits=action)
+            losses = tf.reshape(losses,[-1,1])
+            return losses
+        else:
+            return tf.reduce_sum(h_state*action,axis=-1,keepdims=True)
         return h
     return q_fn
+
+def compute_discounted_returns(rewards,gamma):
+    T = len(rewards)
+    discounted_returns = np.zeros(T)
+    R = 0
+    for t in range(T)[::-1]:
+        R = rewards[t] + gamma*R
+        discounted_returns[t] = R
+    return discounted_returns
 
 def test_agent(test_env,agent):
     state = test_env.reset()
@@ -125,8 +172,10 @@ def test_agent(test_env,agent):
     rewards = []
     dones = []
     actions = []
+    Q = []
     while np.mean(all_done) < 1:
-        action = agent.act(state).argmax(axis=-1).ravel()
+        action_probs, q = agent.act(state,addl_outputs=['Q_policy_eval'])
+        action = action_probs.argmax(axis=-1).ravel()
         state, reward, done, _ = test_env.step(action)
         if rt is None:
             rt = reward.copy()
@@ -137,7 +186,8 @@ def test_agent(test_env,agent):
         rewards.append(reward)
         dones.append(done)
         actions.append(action)
-    return rt, np.array(rewards), np.array(dones), np.array(actions)
+        Q.append(q)
+    return rt, np.array(rewards), np.array(dones), np.array(actions), np.array(Q)
 
 def entropy(p,axis):
     return -(p*np.log(p+1e-12)).sum(axis=axis)
@@ -167,6 +217,8 @@ def noisy_action(action_softmax,p=0.05):
 @click.option('--num_steps', default=20000, type=int)
 @click.option('--n_envs', default=1)
 @click.option('--env_id', default='PongDeterministic-v4')
+@click.option('--noops', default=28, type=int)
+@click.option('--fire_reset', default=True, type=bool)
 @click.option('--n_prev_frames', default=12, type=int)
 @click.option('--dqda_clipping', default=1.)
 @click.option('--clip_norm', default=True, type=bool)
@@ -179,6 +231,9 @@ def noisy_action(action_softmax,p=0.05):
 @click.option('--policy_logit_clipping', default=5.0, type=float)
 @click.option('--freeze_conv_net', default=False, type=bool)
 @click.option('--output_dim', default=6)
+@click.option('--q_attn', default=False, type=bool)
+@click.option('--nature_cnn', default=False, type=bool)
+@click.option('--discrete', default=True, type=bool)
 @click.option('--normalize_inputs', default=True, type=bool)
 @click.option('--noisy_action_prob', default=0.05, type=float)
 @click.option('--batchnorm_policy', default=False, type=bool)
@@ -228,8 +283,6 @@ def run(**cfg):
     for k in sorted(cfg):
         print('CONFIG: ',k,str(cfg[k]))
 
-    discrete = True
-
     if cfg['seed'] is not None:
         np.random.seed(cfg['seed'])
         tf.set_random_seed(int(10*cfg['seed']))
@@ -243,15 +296,15 @@ def run(**cfg):
         yaml.dump(cfg, f)
 
     # Environment
-    gym_env = VecGymEnv(cfg['env_id'],n_envs=cfg['n_envs'])
+    gym_env = VecGymEnv(cfg['env_id'],n_envs=cfg['n_envs'],noops=cfg['noops'],fire_reset=cfg['fire_reset'])
     env = gym_env
     env = CvtRGB2GrayImageStateEnv(env)
-    env = ResizeImageStateEnv(env,resized_shape=(64,64))
+    env = ResizeImageStateEnv(env,resized_shape=(84,84))
     env = NPrevFramesStateEnv(env,n_prev_frames=cfg['n_prev_frames'],flatten=False)
 
-    test_env = VecGymEnv(cfg['env_id'],n_envs=1)
+    test_env = VecGymEnv(cfg['env_id'],n_envs=1,noops=cfg['noops'],fire_reset=cfg['fire_reset'])
     test_env = CvtRGB2GrayImageStateEnv(test_env)
-    test_env = ResizeImageStateEnv(test_env,resized_shape=(64,64))
+    test_env = ResizeImageStateEnv(test_env,resized_shape=(84,84))
     test_env = NPrevFramesStateEnv(test_env,n_prev_frames=cfg['n_prev_frames'],flatten=False)
 
     if cfg['add_episode_time_state']:
@@ -278,9 +331,11 @@ def run(**cfg):
             cfg['conv_dims'],
             logit_clipping=cfg['policy_logit_clipping'],
             layernorm=cfg['layernorm_policy'],
+            nature=cfg['nature_cnn'],
     )
 
-    q_fn = build_q_fn(
+    if cfg['q_attn']:
+        q_fn = build_q_fn_attn(
             cfg['hidden_dims'],
             cfg['hidden_layers'],
             cfg['output_dim'],
@@ -290,7 +345,21 @@ def run(**cfg):
             cfg['freeze_conv_net'],
             cfg['binarized'],
             cfg['conv_dims'],
-    )
+            nature=cfg['nature_cnn'],
+        )
+    else:
+        q_fn = build_q_fn(
+            cfg['hidden_dims'],
+            cfg['hidden_layers'],
+            1,
+            cfg['batchnorm_q'],
+            cfg['activation'],
+            cfg['normalize_inputs'],
+            cfg['freeze_conv_net'],
+            cfg['binarized'],
+            cfg['conv_dims'],
+            nature=cfg['nature_cnn'],
+        )
 
     optimizer_q_kwargs = {}
     if cfg['optimizer_q_decay'] is not None:
@@ -303,7 +372,7 @@ def run(**cfg):
         state_shape[1:],[action_shape],policy_fn,q_fn,
         cfg['dqda_clipping'],
         cfg['clip_norm'],
-        discrete=discrete,
+        discrete=cfg['discrete'],
         alpha=cfg['alpha'],
         beta=cfg['beta'],
         optimizer_q=cfg['optimizer_q'],
@@ -311,6 +380,7 @@ def run(**cfg):
         optimizer_q_kwargs=optimizer_q_kwargs,
         regularize_policy=cfg['regularize_policy'],
         straight_through_estimation=cfg['straight_through_estimation'],
+        q_normalized=cfg['q_attn'],
     )
 
     for v in tf.trainable_variables():
@@ -339,7 +409,8 @@ def run(**cfg):
             gamma=cfg['gamma'],
         )
 
-    log = LogsTFSummary(savedir)
+    log = LogsTFSummary(savedir+'/main/')
+    log_test = LogsTFSummary(savedir+'/test/')
     track_train_ep_lengths = TrackEpisodeScore(gamma=1.)
     track_train_ep_returns = TrackEpisodeScore(gamma=1.)
     track_train_ep_returns_discounted = TrackEpisodeScore(gamma=cfg['gamma'])
@@ -361,9 +432,10 @@ def run(**cfg):
             'test_ep_actions_entropy',
             'test_ep_length',
             'avg_action',
-            'Q_action_train',
+            'Q_policy_eval',
             'losses_Q'
         ])
+        t_test = 0
         for t in range(T):
             pb_input = []
 
@@ -381,6 +453,16 @@ def run(**cfg):
                 action = np.random.choice(action_probs.shape[1],size=len(action_probs))
 
             state2, reward, done, info = env.step(action.astype('int').ravel())
+
+            # evaluate Q for each possible action given current state for first agent
+            if False:
+                infer_all_actions = agent.infer(
+                    outputs=['Q_action_train','Q_action_eval'],
+                    state=np.stack([state[0] for a in range(action_shape)]),
+                    action=np.eye(action_shape)
+                )
+                for k in infer_all_actions:
+                    log.append('all_actions/'+k,infer_all_actions[k])
 
             # Bookkeeping
             log.append('reward_history',reward)
@@ -421,8 +503,6 @@ def run(**cfg):
             state = state2 
 
             if t >= cfg['begin_learning_at_step'] and t % cfg['update_freq'] == 0:
-                Q_action_train_list = []
-                losses_Q_list = []
 
                 if t >= cfg['begin_learning_at_step'] + cfg['n_steps_train_only_q']:
                     t2 = t - (cfg['begin_learning_at_step'] + cfg['n_steps_train_only_q'])
@@ -460,6 +540,7 @@ def run(**cfg):
                                 entropy_loss_weight=entropy_loss_weight,
                                 outputs=[
                                     'td_error','Q_action_train','losses_Q',
+                                    'Q_action_eval','Q_policy_train','Q_policy_eval',
                                     'pnorms_policy','pnorms_Q',
                                     'pnorms_mv_avg_policy','pnorms_mv_avg_Q',
                                     'policy_gradient','policy_gradient_norm',
@@ -487,6 +568,7 @@ def run(**cfg):
                                 entropy_loss_weight=entropy_loss_weight,
                                 outputs=[
                                     'td_error','Q_action_train','losses_Q',
+                                    'Q_action_eval','Q_policy_train','Q_policy_eval',
                                     'pnorms_policy','pnorms_Q',
                                     'pnorms_mv_avg_policy','pnorms_mv_avg_Q',
                                     'policy_gradient','policy_gradient_norm',
@@ -499,8 +581,8 @@ def run(**cfg):
                                     ],
                                 **sample)
 
-
-                    def append_outputs_to_log(outputs,prefix=[]):
+                    def append_outputs_to_log(outputs,prefix=None):
+                        prefix = [] if prefix is None else prefix
                         for k in outputs:
                             key = prefix + [k]
                             if isinstance(outputs[k],dict):
@@ -509,12 +591,12 @@ def run(**cfg):
                                 log.append(': '.join(key),outputs[k])
 
                     append_outputs_to_log(update_outputs)
-                    pb_input.append(('Q_action_train', np.mean(update_outputs['Q_action_train'])))
+                    append_outputs_to_log(sample)
+                    pb_input.append(('Q_policy_eval', np.mean(update_outputs['Q_policy_eval'])))
                     pb_input.append(('loss_Q', np.mean(update_outputs['losses_Q'])))
 
-
             if (t % cfg['n_steps_per_eval'] == 0 and t >= cfg['begin_learning_at_step']) or t==0:
-                test_ep_returns, test_ep_rewards, test_ep_dones, test_ep_actions = test_agent(test_env,agent)
+                test_ep_returns, test_ep_rewards, test_ep_dones, test_ep_actions, test_q = test_agent(test_env,agent)
                 test_ep_actions_entropy = empirical_entropy(test_ep_actions.ravel())
                 test_ep_length = len(test_ep_actions)
                 log.append('test_ep_returns',test_ep_returns)
@@ -524,7 +606,15 @@ def run(**cfg):
                 log.append('test_ep_dones',test_ep_dones)
                 log.append('test_ep_actions',test_ep_actions)
                 log.append('test_ep_steps',t)
-                #log.append('test_duration_cumulative',time.time()-start_time)
+
+                test_ep_discounted_returns = compute_discounted_returns(test_ep_rewards[:,0],cfg['gamma'])
+                test_q = test_q.ravel()
+                for i in range(len(test_ep_discounted_returns)):
+                    t_test += 1 
+                    log_test.append('test_ep_Q',test_q[i])
+                    log_test.append('test_ep_discounted_returns',test_ep_discounted_returns[i])
+                    log_test.flush(step=t_test)
+
                 avg_test_ep_returns = np.mean(log['test_ep_returns'][-1:])
                 pb_input.append(('test_ep_returns', avg_test_ep_returns))
                 pb_input.append(('test_ep_length', test_ep_length))

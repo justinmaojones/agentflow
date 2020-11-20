@@ -1,6 +1,54 @@
 import numpy as np
 from sklearn.linear_model import Ridge, LinearRegression
 
+class ExponentialMovingAverage(object):
+
+    def __init__(self,decay=0.99,zero_debias=True):
+        self.decay = decay
+        self.value = 0
+        self.zero_debias = zero_debias
+        self._t = 0
+
+    def update(self,value):
+        self.value = self.decay*self.value + (1-self.decay)*value
+        self._t += 1
+
+    def infer(self):
+        if self.zero_debias:
+            return self.value / (1-self.decay**self._t)
+        else:
+            return self.value
+
+class NormalizationEMA(object):
+
+    def __init__(self,decay=0.99,eps=1e-10):
+        self.decay = decay
+        self._eps = eps
+        self._x = ExponentialMovingAverage(decay)
+        self._x2 = ExponentialMovingAverage(decay)
+
+    def update(self,x,weights=None):
+        if weights is None:
+            _x = np.mean(x)
+            _x2 = np.mean(x**2)
+        else:
+            _x = np.sum(x*weights)/np.sum(weights)
+            _x2 = np.sum((x**2)*weights)/np.sum(weights)
+        self._x.update(_x)
+        self._x2.update(_x2)
+
+    def infer(self):
+        x = self._x.infer()
+        x2 = self._x2.infer()
+        mean = x
+        variance = x2 - x**2
+        std = max(self._eps,variance)**0.5
+        return mean, std
+
+    def normalize(self,x):
+        mean, std = self.infer()
+        return (x-mean)/std
+
 class TrackEpisodeScore(object):
 
     def __init__(self,gamma=1.):

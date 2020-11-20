@@ -14,28 +14,48 @@ import yaml
 import time
 import click
 
-def build_net_fn(hidden_dims,hidden_layers,output_dim,batchnorm):
+def build_net_fn(hidden_dims,hidden_layers,output_dim,batchnorm,dropout=0.0):
     def net_fn(h,training=False):
-        h = dense_net(h,hidden_dims,hidden_layers,batchnorm=batchnorm,training=training)
+        h = dense_net(h,hidden_dims,hidden_layers,batchnorm=batchnorm,training=training,dropout=dropout)
         return tf.layers.dense(h,output_dim)
     return net_fn
 
-def build_policy_fn(hidden_dims,hidden_layers,output_dim,batchnorm,normalize_inputs=True):
+def build_policy_fn(hidden_dims,hidden_layers,output_dim,batchnorm,normalize_inputs=True,temp_eval=1.0):
     net_fn = build_net_fn(hidden_dims,hidden_layers,output_dim,batchnorm)
     def policy_fn(state,training=False):
         if normalize_inputs:
             state, _ = normalize_ema(state,training)
         logits = net_fn(state,training)
+        if not training:
+            logits *= temp_eval
         return tf.nn.softmax(logits,axis=-1), logits, state 
     return policy_fn
 
-def build_q_fn(hidden_dims,hidden_layers,output_dim,batchnorm,normalize_inputs=True):
-    net_fn = build_net_fn(hidden_dims,hidden_layers,output_dim,batchnorm)
-    def q_fn(state,action,training=False):
+def build_q_fn(hidden_dims,hidden_layers,output_dim,batchnorm,normalize_inputs=True,dropout=0.0):
+    net_fn = build_net_fn(hidden_dims,hidden_layers,output_dim,batchnorm,dropout)
+    def q_fn(state,action,training=False,q_normalized=False,**kwargs):
+        # q_normalized is a dummy kwarg
         if normalize_inputs:
             state, _ = normalize_ema(state,training)
         h = tf.concat([state,action],axis=1)
         return net_fn(h,training)
+    return q_fn
+
+def build_q_fn_attn(hidden_dims,hidden_layers,output_dim,batchnorm,normalize_inputs=True,temp_eval=1.0,dropout=0.0):
+    net_fn = build_net_fn(hidden_dims,hidden_layers,output_dim,batchnorm,dropout)
+    def q_fn(state,action,training=False,q_normalized=False,**kwargs):
+        if normalize_inputs:
+            state, _ = normalize_ema(state,training)
+        h_state = net_fn(state,training)
+        if q_normalized:
+            if not training:
+                h_state *= temp_eval
+            h_state_softmax = tf.nn.softmax(h_state,axis=-1)
+            losses = -tf.nn.softmax_cross_entropy_with_logits(labels=h_state_softmax,logits=action)
+            losses = tf.reshape(losses,[-1,1])
+            return losses
+        else:
+            return tf.reduce_sum(h_state*action,axis=-1,keepdims=True)
     return q_fn
 
 def test_agent(test_env,agent):
@@ -68,10 +88,15 @@ def noisy_action(action_softmax,eps=1.,clip=5e-2):
 @click.option('--dqda_clipping', default=1.)
 @click.option('--clip_norm', default=True, type=bool)
 @click.option('--ema_decay', default=0.99, type=float)
+@click.option('--dropout', default=0.0, type=float)
 @click.option('--hidden_dims', default=32)
 @click.option('--hidden_layers', default=2)
 @click.option('--output_dim', default=2)
+@click.option('--q_attn', default=False, type=bool)
 @click.option('--discrete', default=True, type=bool)
+@click.option('--policy_temp', default=1.0, type=float)
+@click.option('--q_temp', default=1.0, type=float)
+@click.option('--noisy_target', default=0.0, type=float)
 @click.option('--add_return_loss', default=False, type=bool)
 @click.option('--normalize_inputs', default=True, type=bool)
 @click.option('--batchnorm', default=False, type=bool)
@@ -161,16 +186,29 @@ def run(**cfg):
             cfg['hidden_layers'],
             cfg['output_dim'],
             cfg['batchnorm'],
-            cfg['normalize_inputs']
+            cfg['normalize_inputs'],
+            temp_eval=cfg['policy_temp'],
     )
 
-    q_fn = build_q_fn(
+    if cfg['q_attn']:
+        q_fn = build_q_fn_attn(
+            cfg['hidden_dims'],
+            cfg['hidden_layers'],
+            2,
+            cfg['batchnorm'],
+            cfg['normalize_inputs'],
+            temp_eval=cfg['q_temp'],
+            dropout=cfg['dropout'],
+        )
+    else:
+        q_fn = build_q_fn(
             cfg['hidden_dims'],
             cfg['hidden_layers'],
             1,
             cfg['batchnorm'],
-            cfg['normalize_inputs']
-    )
+            cfg['normalize_inputs'],
+            dropout=cfg['dropout'],
+        )
 
     optimizer_q_kwargs = {}
     if cfg['optimizer_q_decay'] is not None:
@@ -195,6 +233,8 @@ def run(**cfg):
         grad_norm_clipping=cfg['grad_norm_clipping'],
         opt_stable_q_online=cfg['opt_stable_q_online'],
         opt_stable_q_online_momentum=cfg['opt_stable_q_online_momentum'],
+        q_normalized=cfg['q_attn'],
+        noisy_target=cfg['noisy_target'],
     )
 
     # Replay Buffer

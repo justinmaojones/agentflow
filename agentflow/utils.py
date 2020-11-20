@@ -16,15 +16,16 @@ def check_whats_connected(output):
 
 class LogsTFSummary(object):
 
-    def __init__(self,savedir):
+    def __init__(self,savedir,**kwargs):
         self.logs = {}
         self.savedir = savedir
-        self.summary_writer = tf.summary.FileWriter(savedir)
+        self.summary_writer = tf.summary.FileWriter(savedir,**kwargs)
         self.summary = tf.Summary()
         self._other_array_metrics = {
             'min': np.min,
             'max': np.max,
-            'l2norm': lambda x: np.sqrt(np.sum(np.square(x)))
+            'l2norm': lambda x: np.sqrt(np.sum(np.square(x))),
+            'max-min': lambda x: np.max(x.astype(float)) - np.min(x.astype(float)),
         }
 
     def __getitem__(self, key):

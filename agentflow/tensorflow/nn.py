@@ -13,7 +13,7 @@ def layer_normalization(x, scope=None, axis=-1, epsilon=1e-5):
         x = x*g + b
         return x
 
-def dense_net(x,units,layers,batchnorm=False,activation=tf.nn.relu,training=False,layernorm=False,**kwargs):
+def dense_net(x,units,layers,batchnorm=False,activation=tf.nn.relu,training=False,layernorm=False,dropout=None,**kwargs):
 
     assert isinstance(layers,int) and layers > 0, 'layers should be a positive integer'
     assert isinstance(units,int) and units > 0, 'units should be a positive integer'
@@ -28,6 +28,8 @@ def dense_net(x,units,layers,batchnorm=False,activation=tf.nn.relu,training=Fals
         if layernorm:
             h = layer_normalization(h,scope='dense_%d/layer_normalization'%l)
         h = activation(h)
+        if dropout is not None and dropout > 0 and training:
+            h = tf.nn.dropout(h,rate=dropout)
 
     return h
 

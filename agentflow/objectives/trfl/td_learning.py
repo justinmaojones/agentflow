@@ -26,7 +26,7 @@ import collections
 import tensorflow as tf
 
 
-def td_learning(v_tm1, r_t, pcont_t, v_t, name="TDLearning"):
+def td_learning(v_tm1, r_t, pcont_t, v_t, loss='square', huber_delta=1.0, name="TDLearning"):
   """Implements the TD(0)-learning loss as a TensorFlow op.
   The TD loss is `0.5` times the squared difference between `v_tm1` and
   the target `r_t + pcont_t * v_t`.
@@ -55,5 +55,14 @@ def td_learning(v_tm1, r_t, pcont_t, v_t, name="TDLearning"):
     # Temporal difference error and loss.
     # Loss is MSE scaled by 0.5, so the gradient is equal to the TD error.
     td_error = v_tm1 - target
-    loss = 0.5 * tf.square(td_error)
+    if loss == 'square':
+        loss = 0.5 * tf.square(td_error)
+    elif loss == 'huber':
+        loss = tf.losses.huber_loss(
+            target, v_tm1, delta=huber_delta, scope=None,
+            loss_collection=tf.GraphKeys.LOSSES,
+            reduction=tf.compat.v1.losses.Reduction.NONE,
+        )
+    else:
+        raise NotImplementedError("invalid loss type: '%s'"%loss)
     return loss, target, td_error 

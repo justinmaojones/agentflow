@@ -18,3 +18,8 @@ def binarize(x,b):
         y.append(x % 2)
         x = x // 2
     return np.concatenate(y,axis=-1)
+
+def moving_average(a, n=3):
+    ret = np.cumsum(a, dtype=float)
+    ret[n:] = ret[n:] - ret[:-n]
+    return ret[n - 1:] / n
