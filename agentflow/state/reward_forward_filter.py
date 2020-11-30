@@ -5,7 +5,7 @@ class RewardForwardFilterEnv(StateEnv):
 
     def __init__(self,env,gamma=0.99,**kwargs):
         self.gamma = gamma
-        super(RewardForwardFilterEnv,self).__init__(env)
+        self.env = env
 
     def reset(self):
         self.state = self.env.reset()

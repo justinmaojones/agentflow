@@ -1,16 +1,15 @@
 import numpy as np
 import cv2
+
+from .base_state import BaseState
 from .state_env import StateEnv
 
-class ResizeImageState(object):
+class ResizeImageState(BaseState):
 
     def __init__(self,resized_shape,flatten=False):
         self.resized_shape = resized_shape
         self.flatten = flatten
         self.reset()
-
-    def reset(self,frame=None,**kwargs):
-        self._state = None
 
     def update(self,frame):
         n = len(frame)
@@ -31,17 +30,5 @@ class ResizeImageState(object):
 class ResizeImageStateEnv(StateEnv):
 
     def __init__(self,env,**kwargs):
-        self.state = ResizeImageState(**kwargs)
-        super(ResizeImageStateEnv,self).__init__(env)
-
-    def reset(self):
-        frame = self.env.reset()
-        self.state.reset()
-        return self.state.update(frame)
-
-    def step(self,*args,**kwargs):
-        frame, reward, done, info = self.env.step(*args,**kwargs)
-        return self.state.update(frame), reward, done, info
-
-    def get_state(self):
-        return self.state.state()
+        state = ResizeImageState(**kwargs)
+        super(ResizeImageStateEnv,self).__init__(env, state)

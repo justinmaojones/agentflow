@@ -1,14 +1,14 @@
 import numpy as np
 import cv2
 
-class CvtRGB2GrayImageState(object):
+from .base_state import BaseState
+from .state_env import StateEnv
+
+class CvtRGB2GrayImageState(BaseState):
 
     def __init__(self,flatten=False):
         self.flatten = flatten
         self.reset()
-
-    def reset(self,frame=None,**kwargs):
-        self._state = None
 
     def update(self,frame):
         n = len(frame)
@@ -29,20 +29,6 @@ class CvtRGB2GrayImageState(object):
 class CvtRGB2GrayImageStateEnv(object):
 
     def __init__(self,env,**kwargs):
-        self.state = CvtRGB2GrayImageState(**kwargs)
-        self.env = env
+        state = CvtRGB2GrayImageState(**kwargs)
+        super(AddNormalizedEpisodeTimeStateEnv,self).__init__(env, state)
 
-    def reset(self):
-        frame = self.env.reset()
-        self.state.reset()
-        return self.state.update(frame)
-
-    def step(self,*args,**kwargs):
-        frame, reward, done, info = self.env.step(*args,**kwargs)
-        return self.state.update(frame), reward, done, info
-
-    def get_state(self):
-        return self.state.state()
-
-    def action_shape(self):
-        return self.env.action_shape()

@@ -1,17 +1,18 @@
 import numpy as np
 import agentflow.numpy.ops as np_ops
+from .base_state import BaseState
 from .state_env import StateEnv
 
-class AddEpisodeTimeState(object):
+class AddEpisodeTimeState(BaseState):
 
-    def __init__(self,flatten=False,binarized=False):
+    def __init__(self, flatten=False, binarized=False):
         self.flatten = flatten
         self.binarized = binarized
-        self.reset()
+        super(AddEpisodeTimeState, self).__init__()
 
-    def reset(self,frame=None,**kwargs):
-        self._state = None
+    def reset(self, frame=None, **kwargs):
         self._time = None
+        super(AddEpisodeTimeState, self).reset(frame)
 
     def update(self,frame,reset_mask=None):
 
@@ -46,18 +47,6 @@ class AddEpisodeTimeState(object):
 
 class AddEpisodeTimeStateEnv(StateEnv):
 
-    def __init__(self,env,**kwargs):
-        self.state = AddEpisodeTimeState(**kwargs)
-        super(AddEpisodeTimeStateEnv,self).__init__(env)
-
-    def reset(self):
-        frame = self.env.reset()
-        self.state.reset()
-        return self.state.update(frame)
-
-    def step(self,*args,**kwargs):
-        frame, reward, done, info = self.env.step(*args,**kwargs)
-        return self.state.update(frame,done), reward, done, info
-
-    def get_state(self):
-        return self.state.state()
+    def __init__(self, env, **kwargs):
+        state = AddEpisodeTimeState(**kwargs)
+        super(AddEpisodeTimeStateEnv,self).__init__(env, state)
