@@ -4,49 +4,49 @@ import random
 class NDArrayBuffer(object):
     
     def __init__(self,max_length=1e6):
-        self.buffer = None
+        self._buffer = None
         self._index = 0
         self._n = 0
-        self.max_length = max_length 
+        self._max_length = max_length 
         
     def __len__(self):
         return self._n
 
     @property
     def shape(self):
-        if self.buffer is None:
+        if self._buffer is None:
             raise ValueError("buffer must have data before it can have a shape")
-        return tuple([len(self)] + list(self.buffer.shape[1:]))
+        return tuple([len(self)] + list(self._buffer.shape[1:]))
     
     def append(self,x):
         if not isinstance(x, np.ndarray):
             raise TypeError("x must be of type np.ndarray")
 
-        if self.buffer is None:
+        if self._buffer is None:
             # infer shape automatically
-            shape = [self.max_length] + list(x.shape)
-            self.buffer = np.zeros(shape, dtype=x.dtype)
+            shape = [self._max_length] + list(x.shape)
+            self._buffer = np.zeros(shape, dtype=x.dtype)
 
-        self.buffer[self._index] = x
-        self._n = min(self._n+1,self.max_length)
-        self._index = (self._index+1) % self.max_length
+        self._buffer[self._index] = x
+        self._n = min(self._n+1,self._max_length)
+        self._index = (self._index+1) % self._max_length
 
     def append_sequence(self, x):
         if not isinstance(x, np.ndarray):
             raise TypeError("x must be of type np.ndarray")
 
-        if self.buffer is None:
+        if self._buffer is None:
             # infer shape automatically
-            shape = [self.max_length] + list(x.shape)[1:]
-            self.buffer = np.zeros(shape, dtype=x.dtype)
+            shape = [self._max_length] + list(x.shape)[1:]
+            self._buffer = np.zeros(shape, dtype=x.dtype)
 
         seq_size = x.shape[0] 
         i1 = self._index
-        i2 = min(self._index + seq_size, self.max_length)
+        i2 = min(self._index + seq_size, self._max_length)
         segment_size = i2 - i1 
-        self.buffer[i1:i2] = x[:segment_size]
-        self._n = min(self._n + segment_size, self.max_length)
-        self._index = (self._index + segment_size) % self.max_length
+        self._buffer[i1:i2] = x[:segment_size]
+        self._n = min(self._n + segment_size, self._max_length)
+        self._index = (self._index + segment_size) % self._max_length
         if segment_size < seq_size:
             self.append_sequence(x[segment_size:])
 
@@ -78,9 +78,9 @@ class NDArrayBuffer(object):
     def tail(self,seq_size,batch_idx=None):
         slices = self._tail_slices(seq_size)
         if batch_idx is None:
-            return np.concatenate([self.buffer[s] for s in slices],axis=0)
+            return np.concatenate([self._buffer[s] for s in slices],axis=0)
         else:
-            return np.concatenate([self.buffer[s,batch_idx] for s in slices],axis=0)
+            return np.concatenate([self._buffer[s,batch_idx] for s in slices],axis=0)
 
     def get_sequence_slices(self,i,seq_size):
         # fetch sequence backwards, where i represents the last element in the sequence.
@@ -96,8 +96,8 @@ class NDArrayBuffer(object):
 
         i_start = i - (seq_size - 1)
 
-        j1 = (self._index + i_start) % self.max_length
-        j2 = min(j1 + seq_size, self.max_length)
+        j1 = (self._index + i_start) % self._max_length
+        j2 = min(j1 + seq_size, self._max_length)
         cur_seq_length = j2 - j1
 
         seq_slices = [slice(j1,j2)]
@@ -111,15 +111,18 @@ class NDArrayBuffer(object):
     def get_sequence(self,i,seq_size,batch_idx=None):
         slices = self.get_sequence_slices(i,seq_size)
         if batch_idx is None:
-            return np.concatenate([self.buffer[s] for s in slices],axis=0)
+            return np.concatenate([self._buffer[s] for s in slices],axis=0)
         else:
-            return np.concatenate([self.buffer[s, batch_idx] for s in slices],axis=0)
+            return np.concatenate([self._buffer[s, batch_idx] for s in slices],axis=0)
 
-    def get(idx):
-        idx = np.array(idx)
-        if self._n == self.max_length:
-            idx += self._i
-        return self.buffer[idx % self._n]
+    def get(self, time_idx, batch_idx=None):
+        time_idx = np.array(time_idx)
+        if self._n == self._max_length:
+            time_idx += self._index
+        if batch_idx is None:
+            return self._buffer[time_idx % self._n]
+        else:
+            return self._buffer[time_idx % self._n, batch_idx]
 
     def sample(self,n=1):
         if not (n > 0):
@@ -128,10 +131,10 @@ class NDArrayBuffer(object):
         if not (len(self) > 0):
             raise ValueError("cannot sample from buffer if it has no data appended")
 
-        batch_size = self.buffer.shape[1]
+        batch_size = self._buffer.shape[1]
         time_idx = np.random.randint(0,len(self),size=n)
         batch_idx = np.random.randint(0,batch_size,size=n)
-        return self.buffer[time_idx, batch_idx]
+        return self._buffer[time_idx, batch_idx]
 
     def sample_sequence(self,n=1,seq_size=1):
         if not (n > 0):
@@ -143,7 +146,7 @@ class NDArrayBuffer(object):
         if not (seq_size > 0):
             raise ValueError("seq_size must be greater than 0")
 
-        batch_size = self.buffer.shape[1]
+        batch_size = self._buffer.shape[1]
         output = []
         for i in range(n):
             time_idx = random.randint(seq_size,len(self)-1)
@@ -212,11 +215,25 @@ if __name__ == '__main__':
             for i in range(2*n-2):
                 x = np.arange(i,i+6).reshape(1,2,3)
                 buf.append(x)
-                np.testing.assert_array_equal(buf.buffer[i % n], x)
+                np.testing.assert_array_equal(buf._buffer[i % n], x)
                 self.assertEqual(len(buf), min(n,i+1))
                 self.assertEqual(buf._index, (i+1) % n)
 
-            self.assertEqual(buf.buffer.shape, (n,1,2,3))
+            self.assertEqual(buf._buffer.shape, (n,1,2,3))
+
+        def test_get(self):
+            n = 10
+            buf = NDArrayBuffer(n)
+            self.assertEqual(len(buf), 0)
+            for i in range(2*n-2):
+                x = np.arange(i,i+6).reshape(2,3)
+                buf.append(x)
+                np.testing.assert_array_equal(buf.get(min(i+1,n)-1), x)
+                np.testing.assert_array_equal(buf.get(min(i+1,n)-1,1), x[1])
+
+            np.testing.assert_array_equal(buf.get([0,2,4]), buf._buffer[[8,0,2]])
+            np.testing.assert_array_equal(buf.get([0,2,4],[1,0,0]), buf._buffer[[8,0,2],[1,0,0]])
+
 
         def test_get_sequence(self):
             n = 10
@@ -239,8 +256,8 @@ if __name__ == '__main__':
             self.assertEqual(buf.get_sequence_slices(n-1,2), [slice(buf._index-2,buf._index)])
 
             expected = np.concatenate([
-                    buf.buffer[buf._index:buf._index+2,:,:,:], 
-                    buf.buffer[:2,:,:,:]
+                    buf._buffer[buf._index:buf._index+2,:,:,:], 
+                    buf._buffer[:2,:,:,:]
                 ],axis=0)
             np.testing.assert_array_equal(buf.get_sequence(3,4), expected)
 
@@ -297,19 +314,19 @@ if __name__ == '__main__':
 
             x = np.arange(3)[:,None]
             buf.append_sequence(x)
-            np.testing.assert_array_equal(buf.buffer[:3], x)
+            np.testing.assert_array_equal(buf._buffer[:3], x)
             self.assertEqual(buf._index, 3)
             self.assertEqual(buf._n, 3)
 
             x = np.arange(3,3+10)[:,None]
             buf.append_sequence(x)
-            np.testing.assert_array_equal(buf.buffer, np.concatenate([x[7:],x[:7]],axis=0))
+            np.testing.assert_array_equal(buf._buffer, np.concatenate([x[7:],x[:7]],axis=0))
             self.assertEqual(buf._index, 3)
             self.assertEqual(buf._n, 10)
 
             x = np.arange(13,13+13)[:,None]
             buf.append_sequence(x)
-            np.testing.assert_array_equal(buf.buffer, np.concatenate([x[13-6:],x[3:13-6]],axis=0))
+            np.testing.assert_array_equal(buf._buffer, np.concatenate([x[13-6:],x[3:13-6]],axis=0))
             self.assertEqual(buf._index, 6)
             self.assertEqual(buf._n, 10)
 
@@ -327,5 +344,6 @@ if __name__ == '__main__':
             x = np.arange(30)[:,None]
             buf.append_sequence(x)
             self.assertEqual(buf.shape, (10,1))
+
 
     unittest.main()
