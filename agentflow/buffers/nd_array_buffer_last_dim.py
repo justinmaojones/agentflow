@@ -13,17 +13,27 @@ class NDArrayBufferLastDim(object):
         return self._n
     
     def append(self,x):
+        if not isinstance(x, np.ndarray):
+            raise TypeError("x must be of type np.ndarray")
+
         if self.buffer is None:
+            # infer shape automatically
             shape = tuple(list(x.shape) + [self.max_length])
             self.buffer = np.zeros(shape,dtype=x.dtype)
+
         self.buffer[...,self._index] = x
         self._n = min(self._n+1,self.max_length)
         self._index = (self._index+1) % self.max_length
 
     def append_sequence(self,x):
+        if not isinstance(x, np.ndarray):
+            raise TypeError("x must be of type np.ndarray")
+
         if self.buffer is None:
-            shape = tuple(list(x.shape)[:-1] + [self.max_length])
-            self.buffer = np.zeros(shape,dtype=x.dtype)
+            # infer shape automatically
+            shape = list(x.shape)[:-1] + [self.max_length]
+            self.buffer = np.zeros(shape, dtype=x.dtype)
+
         seq_size = x.shape[-1] 
         i1 = self._index
         i2 = min(self._index + seq_size, self.max_length)
@@ -35,8 +45,13 @@ class NDArrayBufferLastDim(object):
             self.append_sequence(x[...,segment_size:])
 
     def extend(self,X):
-        for x in X:
-            self.append(x)
+        if isinstance(X, list):
+            for x in X:
+                self.append(x)
+        elif isinstance(X, np.ndarray):
+            self.append_sequence(X)
+        else:
+            raise TypeError("X must be a list or np.ndarray")
 
     def _tail_slices(self,seq_size):
         assert seq_size <= self._n
@@ -78,18 +93,18 @@ class NDArrayBufferLastDim(object):
             return [slice(j1,n),slice(0,j2)]
         return [slice(j1,j2)]
 
-    def get(self,idx):
-        idx = np.array(idx)
-        if self._n == self.max_length:
-            idx += self._index
-        return self.buffer[...,idx % self._n]
-
     def get_sequence(self,time_idx,seq_size,batch_idx=None):
         slices = self.get_sequence_slices(time_idx,seq_size)
         if batch_idx is None:
             return np.concatenate([self.buffer[...,s] for s in slices],axis=-1)
         else:
             return np.concatenate([self.buffer[batch_idx,...,s] for s in slices],axis=-1)
+
+    def get(self,idx):
+        idx = np.array(idx)
+        if self._n == self.max_length:
+            idx += self._index
+        return self.buffer[...,idx % self._n]
 
     def sample(self,n=1,seq_size=1):
         assert n > 0
