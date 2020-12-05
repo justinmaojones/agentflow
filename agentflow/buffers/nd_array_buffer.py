@@ -11,6 +11,12 @@ class NDArrayBuffer(object):
         
     def __len__(self):
         return self._n
+
+    @property
+    def shape(self):
+        if self.buffer is None:
+            raise ValueError("buffer must have data before it can have a shape")
+        return tuple([len(self)] + list(self.buffer.shape[1:]))
     
     def append(self,x):
         if not isinstance(x, np.ndarray):
@@ -306,5 +312,20 @@ if __name__ == '__main__':
             np.testing.assert_array_equal(buf.buffer, np.concatenate([x[13-6:],x[3:13-6]],axis=0))
             self.assertEqual(buf._index, 6)
             self.assertEqual(buf._n, 10)
+
+        def test_shape(self):
+            n = 10
+            buf = NDArrayBuffer(n)
+
+            with self.assertRaises(ValueError):
+                buf.shape
+
+            x = np.arange(3)[:,None]
+            buf.append_sequence(x)
+            self.assertEqual(buf.shape, (3,1))
+
+            x = np.arange(30)[:,None]
+            buf.append_sequence(x)
+            self.assertEqual(buf.shape, (10,1))
 
     unittest.main()
