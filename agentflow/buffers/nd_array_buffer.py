@@ -18,6 +18,13 @@ class NDArrayBuffer(object):
             raise ValueError("buffer must have data before it can have a shape")
         return tuple([len(self)] + list(self._buffer.shape[1:]))
 
+    @property
+    def size(self):
+        if self._buffer is None:
+            raise ValueError("buffer must have data before it can have a shape")
+
+        return np.prod(self.shape)
+
     def _build_buffer(self, shape, dtype):
         self._buffer = np.zeros(shape, dtype=dtype)
     

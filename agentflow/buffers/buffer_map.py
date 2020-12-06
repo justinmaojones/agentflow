@@ -20,7 +20,7 @@ class BufferMap(object):
             for k in data:
                 self._buffers[k] = self._buffer_cls(self._max_length)
                 self._buffers[k].append(data[k])
-            shape = self.shape()
+            shape = self.shape
             assert len(set([v[0] for v in shape.values()])) == 1, 'first dim of all buffer elements must be the same'
             self.first_dim_size = list(shape.values())[0][0]
 
@@ -60,8 +60,9 @@ class BufferMap(object):
         for x in X:
             self.append(x)
 
+    @property
     def shape(self):
-        return {k:self._buffers[k].shape() for k in self._buffers}
+        return {k:self._buffers[k].shape for k in self._buffers}
 
     def tail(self,seq_size,batch_idx=None):
         return {k:self._buffers[k].tail(seq_size,batch_idx) for k in self._buffers}

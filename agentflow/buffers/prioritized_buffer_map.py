@@ -18,6 +18,9 @@ class PrioritizedSamplingBuffer(NDArrayBuffer):
 
         return self._buffer.sample(n)
 
+    def sum(self):
+        return self._buffer.sum()
+
 class PrioritizedBufferMap(BufferMap):
 
     def __init__(self,max_length=2**20,alpha=0.6,eps=1e-4,wclip=32.,n_beta_annealing_steps=None):
@@ -44,7 +47,7 @@ class PrioritizedBufferMap(BufferMap):
             priority = np.ones((self.first_dim_size,1),dtype=float)
 
         if self._sum_tree is None:
-            self._sum_tree = PrioritizedSamplingBuffer((self.max_length,self.first_dim_size), priority.dtype)
+            self._sum_tree = PrioritizedSamplingBuffer(self._max_length)
 
         p = self._smooth_and_warp_priority(priority)
         self._sum_tree.append(p)
@@ -57,7 +60,7 @@ class PrioritizedBufferMap(BufferMap):
             priority = np.ones((self.first_dim_size,t),dtype=float)
 
         if self._sum_tree is None:
-            self._sum_tree = PrioritizedSamplingBuffer((self.max_length,self.first_dim_size), priority.dtype)
+            self._sum_tree = PrioritizedSamplingBuffer(self._max_length)
 
         p = self._smooth_and_warp_priority(priority)
         self._sum_tree.append_sequence(p)
@@ -70,7 +73,7 @@ class PrioritizedBufferMap(BufferMap):
 
     def sample(self,nsamples,beta=None,normalized=True):
         idx_sample = self._sum_tree.sample(nsamples)
-        output = {k:self.buffers[k].get(*idx_sample) for k in self.buffers}
+        output = {k:self._buffers[k].get(*idx_sample) for k in self._buffers}
 
         # compute beta
         self._counter_for_beta += 1
@@ -102,7 +105,7 @@ class PrioritizedBufferMap(BufferMap):
 
         assert 'importance_weight' not in output
         if normalized:
-            output['importance_weight'] = w / w.sum()
+            output['importance_weight'] = w / w.mean()
         else:
             output['importance_weight'] = w
 
