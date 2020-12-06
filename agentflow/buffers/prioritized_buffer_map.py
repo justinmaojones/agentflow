@@ -1,41 +1,22 @@
 import numpy as np
-from .prefix_sum_tree import PrefixSumTree
+from starr import SumTreeArray
+
+from .nd_array_buffer import NDArrayBuffer
 from .buffer_map import BufferMap
 
-class CircularSumTree(PrefixSumTree):
+class PrioritizedSamplingBuffer(NDArrayBuffer):
 
-    def __new__(self,agent_dim_size,time_dim_size):
-        return PrefixSumTree((agent_dim_size,time_dim_size)).view(CircularSumTree)
+    def _build_buffer(self, shape, dtype):
+        self._buffer = SumTreeArray(shape, dtype=dtype)
 
-    def __init__(self,agent_dim_size,time_dim_size):
-        self._index = 0
-        self.agent_dim_size = agent_dim_size
-        self.time_dim_size = time_dim_size
-        self._full = False
-        
-    def append(self,val):
-        if self._full:
-            dropped = self[:,self._index]
-        else:
-            dropped = None
-        self[:,self._index] = val
-        self._index = (self._index + 1) % self.shape[1]
-        if self._index == 0:
-            self._full = True
-        return dropped
+    def sample(self, n=1):
+        if not (n > 0):
+            raise ValueError("sample size must be greater than 0")
 
-    def append_sequence(self,x):
-        seq_size = x.shape[-1] 
-        i1 = self._index
-        i2 = min(self._index + seq_size, self.time_dim_size)
-        segment_size = i2 - i1 
-        self[...,i1:i2] = x[...,:segment_size]
-        if not self._full and self._index + segment_size >= self.time_dim_size:
-            self._full = True
-        self._index = (self._index + segment_size) % self.time_dim_size 
-        if segment_size < seq_size:
-            self.append_sequence(x[...,segment_size:])
+        if not (len(self) > 0):
+            raise ValueError("cannot sample from buffer if it has no data appended")
 
+        return self._buffer.sample(n)
 
 class PrioritizedBufferMap(BufferMap):
 
@@ -49,45 +30,37 @@ class PrioritizedBufferMap(BufferMap):
         self._n_beta_annealing_steps = n_beta_annealing_steps
         self._counter_for_beta = 0
 
+        self._idx_sample = None 
         self._sum_tree = None 
-        self._inv_sum = 0.
 
     def _smooth_and_warp_priority(self,priority):
         p = (np.abs(priority)+self._eps)**self._alpha
-        #ip = np.minimum(1./p,self._wclip)
-        #p = 1./ip
         return p
 
     def append(self,data,priority=None):
         super(PrioritizedBufferMap,self).append(data)
 
         if priority is None:
-            priority = np.ones((self.first_dim_size,1))
+            priority = np.ones((self.first_dim_size,1),dtype=float)
 
         if self._sum_tree is None:
-            self._sum_tree = CircularSumTree(self.first_dim_size,self.max_length)
+            self._sum_tree = PrioritizedSamplingBuffer((self.max_length,self.first_dim_size), priority.dtype)
 
         p = self._smooth_and_warp_priority(priority)
-        self._inv_sum += (1./p).sum()
-        dropped = self._sum_tree.append(p)
-        if dropped is not None:
-            self._inv_sum -= (1./dropped).sum()
+        self._sum_tree.append(p)
 
     def append_sequence(self,data,priority=None):
         super(PrioritizedBufferMap,self).append_sequence(data)
 
         if priority is None:
             t = list(data.values())[0].shape[-1]
-            priority = np.ones((self.first_dim_size,t))
+            priority = np.ones((self.first_dim_size,t),dtype=float)
 
         if self._sum_tree is None:
-            self._sum_tree = CircularSumTree(self.first_dim_size,self.max_length)
+            self._sum_tree = PrioritizedSamplingBuffer((self.max_length,self.first_dim_size), priority.dtype)
 
         p = self._smooth_and_warp_priority(priority)
-        self._inv_sum += (1./p).sum()
-        dropped = self._sum_tree.append_sequence(p)
-        if dropped is not None:
-            self._inv_sum -= (1./dropped).sum()
+        self._sum_tree.append_sequence(p)
 
         assert self._index == self._sum_tree._index, "index mismatch (%d, %d)" % (self._index, self._sum_tree._index)
 
@@ -95,14 +68,9 @@ class PrioritizedBufferMap(BufferMap):
         for x,p in zip(X,priorities):
             self.append(x,p)
 
-    def sample(self,nsamples,beta=None):
-
-        # first dim = number of agents
-        # last dim = time
+    def sample(self,nsamples,beta=None,normalized=True):
         idx_sample = self._sum_tree.sample(nsamples)
-        idx_batch = idx_sample // self._sum_tree.time_dim_size
-        idx_time = idx_sample - (idx_batch * self._sum_tree.time_dim_size)
-        output = {k:self.buffers[k].buffer[idx_batch,...,idx_time] for k in self.buffers}
+        output = {k:self.buffers[k].get(*idx_sample) for k in self.buffers}
 
         # compute beta
         self._counter_for_beta += 1
@@ -115,7 +83,7 @@ class PrioritizedBufferMap(BufferMap):
             beta = 1.
 
         # sampled inverse priorities
-        ipr_sample = 1./self._sum_tree[idx_batch,idx_time]
+        ipr_sample = 1./self._sum_tree.get(*idx_sample)
 
         # importance weights
         N = self._sum_tree.size
@@ -133,23 +101,21 @@ class PrioritizedBufferMap(BufferMap):
         w = w ** beta
 
         assert 'importance_weight' not in output
-        output['importance_weight'] = w
+        if normalized:
+            output['importance_weight'] = w / w.sum()
+        else:
+            output['importance_weight'] = w
 
-        self._idx_batch = idx_batch
-        self._idx_time = idx_time
         self._idx_sample = idx_sample
 
         return output
 
     def update_priorities(self,priority):
+        if self._idx_sample is None:
+            raise ValueError("update_priorities must be called after sample")
         p = self._smooth_and_warp_priority(priority)
-        unique_indices = np.unique(self._idx_sample) # to update inv_sum, need unique values
-        dropped = self._sum_tree._flat_base[unique_indices]
-        self._sum_tree[self._idx_batch,self._idx_time] = p
-        p = self._sum_tree._flat_base[unique_indices]
-        self._inv_sum += (1./p).sum() - (1./dropped).sum()
-        self._idx_batch = None
-        self._idx_time = None
+        self._sum_tree[self._idx_sample] = p
+        self._idx_sample = None 
 
     def priorities(self):
         return self._sum_tree

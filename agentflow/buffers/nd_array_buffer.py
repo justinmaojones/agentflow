@@ -17,6 +17,9 @@ class NDArrayBuffer(object):
         if self._buffer is None:
             raise ValueError("buffer must have data before it can have a shape")
         return tuple([len(self)] + list(self._buffer.shape[1:]))
+
+    def _build_buffer(self, shape, dtype):
+        self._buffer = np.zeros(shape, dtype=dtype)
     
     def append(self,x):
         if not isinstance(x, np.ndarray):
@@ -25,7 +28,7 @@ class NDArrayBuffer(object):
         if self._buffer is None:
             # infer shape automatically
             shape = [self._max_length] + list(x.shape)
-            self._buffer = np.zeros(shape, dtype=x.dtype)
+            self._build_buffer(shape, x.dtype)
 
         self._buffer[self._index] = x
         self._n = min(self._n+1,self._max_length)
@@ -38,7 +41,7 @@ class NDArrayBuffer(object):
         if self._buffer is None:
             # infer shape automatically
             shape = [self._max_length] + list(x.shape)[1:]
-            self._buffer = np.zeros(shape, dtype=x.dtype)
+            self._build_buffer(shape, x.dtype)
 
         seq_size = x.shape[0] 
         i1 = self._index
