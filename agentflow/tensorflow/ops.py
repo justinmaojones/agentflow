@@ -114,3 +114,9 @@ def entropy_loss(logits,axis=-1):
     p = tf.nn.softmax(logits,axis=axis)
     return tf.nn.softmax_cross_entropy_with_logits(labels=p,logits=logits)
 
+def l2_loss(scope=None):
+    variables = []
+    for v in tf.trainable_variables(scope=scope):
+        variables.append(v)
+    return tf.reduce_sum([tf.nn.l2_loss(v) for v in variables])
+

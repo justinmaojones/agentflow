@@ -2,6 +2,8 @@ import tensorflow as tf
 import numpy as np
 from ..objectives import dpg, td_learning
 from ..tensorflow.ops import exponential_moving_average
+from ..tensorflow.ops import entropy_loss
+from ..tensorflow.ops import l2_loss
 
 class DDPG(object):
 
@@ -47,11 +49,13 @@ class DDPG(object):
                 'reward': tf.placeholder(tf.float32,shape=(None,)),
                 'done': tf.placeholder(tf.float32,shape=(None,)),
                 'state2': tf.placeholder(tf.float32,shape=tuple([None]+self.state_shape)),
-                'gamma': tf.placeholder(tf.float32),
-                'learning_rate': tf.placeholder(tf.float32),
-                'ema_decay': tf.placeholder(tf.float32),
+                'gamma': tf.placeholder(tf.float32,shape=()),
+                'learning_rate': tf.placeholder(tf.float32,shape=()),
+                'ema_decay': tf.placeholder(tf.float32,shape=()),
                 'importance_weight': tf.placeholder(tf.float32,shape=(None,)),
-                'weight_decay': tf.placeholder(tf.float32,shape=())
+                'weight_decay': tf.placeholder(tf.float32,shape=()),
+                'policy_loss_weight': tf.placeholder(tf.float32,shape=()),
+                'entropy_loss_weight': tf.placeholder(tf.float32,shape=(),name='entropy_loss_weight'),
             }
             self.inputs = inputs
 
@@ -60,11 +64,11 @@ class DDPG(object):
             # training network: policy
             # for input into Q_policy below
             with tf.variable_scope('policy'):
-                policy_train = self.policy_fn(inputs['state'],training=True)
+                policy_train, policy_train_logits, _ = self.policy_fn(inputs['state'],training=True)
             
             # for evaluation in the environment
             with tf.variable_scope('policy',reuse=True):
-                policy_eval = self.policy_fn(inputs['state'],training=False)
+                policy_eval, _, _ = self.policy_fn(inputs['state'],training=False)
 
             # training network: Q
             # for computing TD (time-delay) learning loss
@@ -80,14 +84,14 @@ class DDPG(object):
                     scope.name,decay=inputs['ema_decay'],zero_debias=True)
 
             with tf.variable_scope('policy',reuse=True,custom_getter=ema_vars_getter):
-                policy_ema = self.policy_fn(inputs['state'],training=False)
+                policy_ema, _, _ = self.policy_fn(inputs['state'],training=False)
                 if self.discrete:
                     pe_depth = self.action_shape[-1] 
                     pe_indices = tf.argmax(policy_ema,axis=-1)
                     policy_ema = tf.one_hot(pe_indices,pe_depth)
 
             with tf.variable_scope('policy',reuse=True,custom_getter=ema_vars_getter):
-                policy_ema_state2 = self.policy_fn(inputs['state2'],training=False)
+                policy_ema_state2, _, _ = self.policy_fn(inputs['state2'],training=False)
                 if self.discrete:
                     pe_depth = self.action_shape[-1] 
                     pe_indices = tf.argmax(policy_ema_state2,axis=-1)
@@ -105,22 +109,33 @@ class DDPG(object):
 
             # loss functions
             loss_Q, y, td_error = td_learning(
-                    Q_action_train,reward,inputs['gamma'],(1-done)*Q_ema_state2)
+                    Q_action_train,
+                    reward,
+                    inputs['gamma'],
+                    (1-done)*Q_ema_state2
+                )
             loss_policy = dpg(Q_policy_train,policy_train,self.dqda_clipping,self.clip_norm)
-            loss = tf.reduce_mean(self.inputs['importance_weight']*(loss_Q + loss_policy))
+            loss_entropy_reg = entropy_loss(policy_train_logits)
 
-            # policy gradient
-            policy_gradient = tf.gradients(loss_policy,policy_train)
+            assert loss_Q.shape.as_list() == [None]
+            assert loss_policy.shape.as_list() == [None]
+            assert loss_entropy_reg.shape.as_list() == [None]
+
+            # overall loss function (importance weighted)
+            loss = tf.reduce_mean(
+                self.inputs['importance_weight']*tf.add_n([
+                    loss_Q,
+                    inputs['policy_loss_weight']*loss_policy,
+                    inputs['entropy_loss_weight']*loss_entropy_reg,
+                ])
+            )
 
             # weight decay
-            variables = []
-            for v in tf.trainable_variables(scope=scope.name):
-                variables.append(v)
-            l2_reg = inputs['weight_decay']*tf.reduce_sum([tf.nn.l2_loss(v) for v in variables])
-            loss += l2_reg
+            loss += inputs['weight_decay']*l2_loss(scope.name)
+
 
             # gradient update for parameters of Q 
-            self.optimizer = tf.train.RMSPropOptimizer(inputs['learning_rate']) 
+            self.optimizer = tf.train.AdamOptimizer(inputs['learning_rate']) 
             with tf.control_dependencies(tf.get_collection(tf.GraphKeys.UPDATE_OPS,scope=scope.name)):
                 train_op = self.optimizer.minimize(loss)
 
@@ -129,6 +144,10 @@ class DDPG(object):
                 'ema': ema_op,
                 'train': train_op
             }
+
+            # policy gradient
+            policy_gradient = tf.gradients(loss_policy,policy_train)
+            policy_gradient_norm = tf.norm(policy_gradient,ord=2,axis=1)
 
             # store attributes for later use
             self.outputs = {
@@ -145,6 +164,7 @@ class DDPG(object):
                 'policy_ema_state2': policy_ema_state2,
                 'Q_ema_state2': Q_ema_state2,
                 'policy_gradient': policy_gradient,
+                'policy_gradient_norm': policy_gradient_norm,
             }
         
     def act(self,state,session=None):
@@ -158,23 +178,30 @@ class DDPG(object):
     def get_inputs(self,**inputs):
         return {self.inputs[k]: inputs[k] for k in inputs}
 
-    def update(self,state,action,reward,done,state2,gamma=0.99,learning_rate=1e-3,ema_decay=0.999,weight_decay=0.1,importance_weight=None,session=None,outputs=['td_error']):
+    def update(self,state,action,reward,done,state2,gamma=0.99,learning_rate=1e-3,ema_decay=0.999,weight_decay=0.1,importance_weight=None,entropy_loss_weight=1.0,policy_loss_weight=1.0,session=None,outputs=['td_error']):
         session = session or tf.get_default_session()
         if importance_weight is None:
             importance_weight = np.ones_like(reward)
+        inputs = {
+            self.inputs['state']:state,
+            self.inputs['action']:action,
+            self.inputs['reward']:reward,
+            self.inputs['done']:done,
+            self.inputs['state2']:state2,
+            self.inputs['gamma']:gamma,
+            self.inputs['learning_rate']:learning_rate,
+            self.inputs['ema_decay']:ema_decay,
+            self.inputs['weight_decay']:weight_decay,
+            self.inputs['importance_weight']:importance_weight,
+            self.inputs['policy_loss_weight']:policy_loss_weight,
+            self.inputs['entropy_loss_weight']:entropy_loss_weight,
+        }
+
         my_outputs, _ = session.run(
-            [[self.outputs[k] for k in outputs],self.update_ops],
-            {
-                self.inputs['state']:state,
-                self.inputs['action']:action,
-                self.inputs['reward']:reward,
-                self.inputs['done']:done,
-                self.inputs['state2']:state2,
-                self.inputs['gamma']:gamma,
-                self.inputs['learning_rate']:learning_rate,
-                self.inputs['ema_decay']:ema_decay,
-                self.inputs['weight_decay']:weight_decay,
-                self.inputs['importance_weight']:importance_weight,
-            }
+            [
+                {k:self.outputs[k] for k in outputs},
+                self.update_ops
+            ],
+            inputs
         )
         return my_outputs

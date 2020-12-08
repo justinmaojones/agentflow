@@ -13,6 +13,9 @@ class BufferMap(object):
     def __len__(self):
         return self._n
 
+    def __getitem__(self, key):
+        return self._buffers[key]
+
     def append(self,data):
 
         if not (isinstance(data, dict) and len(data) > 0):

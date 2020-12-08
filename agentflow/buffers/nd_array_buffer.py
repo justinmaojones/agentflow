@@ -12,6 +12,12 @@ class NDArrayBuffer(object):
     def __len__(self):
         return self._n
 
+    def __setitem__(self, idx, val):
+        self._buffer[idx] = val
+
+    def __getitem__(self, idx):
+        return self._buffer[idx]
+
     @property
     def shape(self):
         if self._buffer is None:

@@ -11,5 +11,5 @@ class IdentityStateEnv(StateEnv):
 
     def __init__(self,env,**kwargs):
         state = IdentityState(**kwargs)
-        super(IdentityStateEnv,self).__init__(env state)
+        super(IdentityStateEnv,self).__init__(env, state)
 

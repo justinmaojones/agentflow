@@ -21,11 +21,11 @@ class NPrevFramesState(BaseState):
     def __init__(self,n_prev_frames=4,flatten=False):
         self.n_prev_frames = n_prev_frames
         self.flatten = flatten
-        super(AddEpisodeTimeState, self).__init__()
+        super(NPrevFramesState, self).__init__()
 
     def reset(self,frame=None,**kwargs):
         self._new_shape = None
-        super(AddEpisodeTimeState, self).reset(frame)
+        super(NPrevFramesState, self).reset(frame)
 
     def update(self,frame,reset_mask=None):
 
@@ -55,4 +55,4 @@ class NPrevFramesStateEnv(StateEnv):
 
     def __init__(self,env,**kwargs):
         state = NPrevFramesState(**kwargs)
-        super(NPrevFramesStateEnv,self).__init__(env state)
+        super(NPrevFramesStateEnv,self).__init__(env, state)
