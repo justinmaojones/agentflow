@@ -4,28 +4,39 @@ from collections import deque
 
 class NStepReturnPublisher(object):
     
-    def __init__(self,buffer_map,n_steps=1,gamma=0.99,reward_key="reward",done_indicator_key="done"):
+    def __init__(self,
+            buffer_map,
+            n_steps=1,
+            gamma=0.99,
+            reward_key="reward",
+            done_indicator_key="done",
+            delayed_keys=['state2'],
+            ):
+
+        if not isinstance(buffer_map, BufferMap):
+            raise TypeError("buffer_map must be a type of BufferMap")
+
         self._buffer_map = buffer_map
         self._n_steps = n_steps
         self._gamma = gamma
         self._reward_key = reward_key
         self._done_indicator_key = done_indicator_key
+        self._delayed_keys = delayed_keys
         self._delayed_buffer = BufferMap(n_steps)
         self._kwargs_queue = deque()
         self._returns = None
         self._dones = None
-        self._delayed_keys = ['state2']
-        self._discounts = gamma**np.arange(n_steps)
+        self._discounts = gamma**np.arange(n_steps)[:,None]
 
     def compute_returns_and_dones(self):
-        rewards = self._delayed_buffer.buffers[self._reward_key].tail(self._n_steps)
-        dones = self._delayed_buffer.buffers[self._done_indicator_key].tail(self._n_steps)
-        dones_shift_right_one = np.roll(dones,1,axis=-1)
-        dones_shift_right_one[...,0] = 0
-        mask = (1-np.maximum.accumulate(dones_shift_right_one,axis=-1))
+        rewards = self._delayed_buffer._buffers[self._reward_key].tail(self._n_steps)
+        dones = self._delayed_buffer._buffers[self._done_indicator_key].tail(self._n_steps)
+        dones_shift_right_one = np.roll(dones,1,axis=0)
+        dones_shift_right_one[0] = 0
+        mask = (1-np.maximum.accumulate(dones_shift_right_one,axis=0))
         self.mask = mask
-        returns = np.sum(rewards*self._discounts*mask,axis=-1)
-        return_dones = dones.max(axis=-1)
+        returns = np.sum(rewards*self._discounts*mask,axis=0)
+        return_dones = dones.max(axis=0)
         return returns, return_dones
 
     def append(self,data,**kwargs):
@@ -39,19 +50,16 @@ class NStepReturnPublisher(object):
             }
             for k in data:
                 if k not in data_to_publish and k not in self._delayed_keys:
-                    data_to_publish[k] = self._delayed_buffer.buffers[k].get(0)
+                    data_to_publish[k] = self._delayed_buffer._buffers[k].get(0)
             for k in self._delayed_keys:
                 data_to_publish[k] = data[k] 
             delayed_kwargs = self._kwargs_queue.popleft()
             self._buffer_map.append(data_to_publish,**delayed_kwargs)
 
         elif len(self._delayed_buffer) >= self._n_steps:
-            raise NotImplementedError
+            raise Exception("should never get here") 
         else:
             pass # nothing to append
-
-    def append_sequence(self,data):
-        raise NotImplementedError
 
     def __len__(self):
         return len(self._buffer_map)
@@ -81,11 +89,11 @@ if __name__ == '__main__':
             pub = NStepReturnPublisher(buf,n_steps=NSTEPS,gamma=gamma)
 
             data = {
-                'state': np.random.randn(B,2,3,T),
-                'state2': np.random.randn(B,2,3,T),
-                'reward': np.random.randn(B,T),
-                'action': np.random.randn(B,T),
-                'done': np.random.choice(2,size=(B,T)),
+                'state': np.random.randn(T,B,2,3),
+                'state2': np.random.randn(T,B,2,3),
+                'reward': np.random.randn(T,B),
+                'action': np.random.randn(T,B),
+                'done': np.random.choice(2,size=(T,B)),
             }
 
             kwargs = []
@@ -96,7 +104,7 @@ if __name__ == '__main__':
                     kwargs.append({})
 
             for t in range(T):
-                x = {k: data[k][...,t] for k in data}
+                x = {k: data[k][t] for k in data}
                 pub.append(x,**kwargs[t])
                 if t + 1 < NSTEPS:
                     self.assertEqual(len(buf),0)
@@ -105,44 +113,44 @@ if __name__ == '__main__':
 
             done = data['done']
             reward = data['reward']
-            returns = buf.buffers['reward'].buffer[:len(buf)]
-            returns_dones = buf.buffers['done'].buffer[:len(buf)]
+            returns = buf._buffers['reward']._buffer[:len(buf)]
+            returns_dones = buf._buffers['done']._buffer[:len(buf)]
 
             state = data['state']
             state2 = data['state2']
             action = data['action']
-            buf_state = buf.buffers['state'].buffer[:len(buf)]
-            buf_state2 = buf.buffers['state2'].buffer[:len(buf)]
-            buf_action = buf.buffers['action'].buffer[:len(buf)]
+            buf_state = buf._buffers['state']._buffer[:len(buf)]
+            buf_state2 = buf._buffers['state2']._buffer[:len(buf)]
+            buf_action = buf._buffers['action']._buffer[:len(buf)]
             buf_priority = buf._sum_tree
             for t in range(len(buf)):
                 R = np.zeros(B)
                 D = np.zeros(B)
                 for s in range(NSTEPS)[::-1]:
-                    R = reward[...,t+s] + gamma*(1-done[...,t+s])*R
-                    D = np.maximum(D,done[...,t+s])
+                    R = reward[t+s] + gamma*(1-done[t+s])*R
+                    D = np.maximum(D,done[t+s])
                 self.assertAlmostEqual(
-                        np.abs(R-returns[...,t]).max(),
+                        np.abs(R-returns[t]).max(),
                         0,
                         places=4)
                 self.assertEqual(
-                        np.abs(D-returns_dones[...,t]).max(),
+                        np.abs(D-returns_dones[t]).max(),
                         0)
                 self.assertAlmostEqual(
-                        np.abs(action[...,t]-buf_action[...,t]).max(),
+                        np.abs(action[t]-buf_action[t]).max(),
                         0,
                         places=4)
                 self.assertAlmostEqual(
-                        np.abs(state[...,t]-buf_state[...,t]).max(),
+                        np.abs(state[t]-buf_state[t]).max(),
                         0,
                         places=4)
                 self.assertAlmostEqual(
-                        np.abs(state2[...,t+NSTEPS-1]-buf_state2[...,t]).max(),
+                        np.abs(state2[t+NSTEPS-1]-buf_state2[t]).max(),
                         0,
                         places=4)
                 priority = np.ones(B) if len(kwargs[t]) == 0 else kwargs[t]['priority']
                 self.assertAlmostEqual(
-                        np.abs(priority-buf_priority[...,t]).max(),
+                        np.abs(priority-buf_priority.get(t)).max(),
                         0,
                         places=4)
 
