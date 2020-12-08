@@ -5,7 +5,7 @@ from ..tensorflow.ops import exponential_moving_average
 
 class DDPG(object):
 
-    def __init__(self,state_shape,action_shape,policy_fn,q_fn,dqda_clipping=None,clip_norm=False,discrete=False,episodic=True):
+    def __init__(self,state_shape,action_shape,policy_fn,q_fn,dqda_clipping=None,clip_norm=False,discrete=False):
         """Implements Deep Deterministic Policy Gradient with Tensorflow
 
         This class builds a DDPG model with optimization update and action prediction steps.
@@ -25,7 +25,6 @@ class DDPG(object):
           clip_norm: Whether to perform dqda clipping on the vector norm of the last
             dimension, or component wise (default).
           discrete: Whether to treat policy as discrete or continuous.
-          episodic: W.
 
         """
         self.state_shape = list(state_shape)
@@ -35,7 +34,6 @@ class DDPG(object):
         self.dqda_clipping = dqda_clipping
         self.clip_norm = clip_norm
         self.discrete = discrete
-        self.episodic = episodic
         self.build_model()
 
     def build_model(self):
@@ -73,10 +71,6 @@ class DDPG(object):
             with tf.variable_scope('Q'):
                 Q_action_train = self.q_fn(inputs['state'],inputs['action'],training=True)
 
-            # training network: Reward
-            with tf.variable_scope('R'):
-                R_action_train = self.q_fn(inputs['state'],inputs['action'],training=True)
-
             # for computing policy gradient w.r.t. Q(state,policy)
             with tf.variable_scope('Q',reuse=True):
                 Q_policy_train = self.q_fn(inputs['state'],policy_train,training=False)
@@ -102,45 +96,18 @@ class DDPG(object):
             with tf.variable_scope('Q',reuse=True,custom_getter=ema_vars_getter):
                 Q_ema_state2 = self.q_fn(inputs['state2'],policy_ema_state2,training=False)
 
-            with tf.variable_scope('R',reuse=True,custom_getter=ema_vars_getter):
-                R_ema = self.q_fn(inputs['state'],policy_ema,training=False)
-
             # make sure inputs to loss functions are in the correct shape
             # (to avoid erroneous broadcasting)
             reward = tf.reshape(inputs['reward'],[-1])
             done = tf.reshape(inputs['done'],[-1])
             Q_action_train = tf.reshape(Q_action_train,[-1])
             Q_ema_state2 = tf.reshape(Q_ema_state2,[-1])
-            R_action_train = tf.reshape(R_action_train,[-1])
-            R_ema = tf.reshape(R_ema,[-1])
-
-            # average reward
-            reward_avg = tf.Variable(tf.zeros(1),dtype=tf.float32,name='avg_reward')
 
             # loss functions
-            if self.episodic:
-                loss_Q, y, td_error = td_learning(
-                        Q_action_train,reward,inputs['gamma'],(1-done)*Q_ema_state2)
-                loss_R = 1.
-            else:
-                reward_differential = tf.stop_gradient(reward) - reward_avg 
-#                loss_Q, y, td_error = td_learning(
-#                        Q_action_train,reward_differential,inputs['gamma'],Q_ema_state2)
-                if False:
-                    loss_Q, y, td_error = td_learning(
-                            Q_action_train,
-                            (1-inputs['gamma'])*tf.stop_gradient(reward) - reward_avg,
-                            inputs['gamma'],
-                            Q_ema_state2)
-                else:
-                    loss_Q, y, td_error = td_learning(
-                            Q_action_train,(1-inputs['gamma'])*reward,inputs['gamma'],Q_ema_state2)
-
-                #loss_R = 0.5*tf.square(R_action_train - reward)
-                loss_R = 0.5*tf.square(
-                        reward_differential+tf.stop_gradient(Q_ema_state2-Q_action_train))
+            loss_Q, y, td_error = td_learning(
+                    Q_action_train,reward,inputs['gamma'],(1-done)*Q_ema_state2)
             loss_policy = dpg(Q_policy_train,policy_train,self.dqda_clipping,self.clip_norm)
-            loss = tf.reduce_mean(self.inputs['importance_weight']*(loss_Q + loss_policy + loss_R))
+            loss = tf.reduce_mean(self.inputs['importance_weight']*(loss_Q + loss_policy))
 
             # policy gradient
             policy_gradient = tf.gradients(loss_policy,policy_train)
@@ -148,8 +115,7 @@ class DDPG(object):
             # weight decay
             variables = []
             for v in tf.trainable_variables(scope=scope.name):
-                if v != reward_avg:
-                    variables.append(v)
+                variables.append(v)
             l2_reg = inputs['weight_decay']*tf.reduce_sum([tf.nn.l2_loss(v) for v in variables])
             loss += l2_reg
 
@@ -178,14 +144,8 @@ class DDPG(object):
                 'policy_ema': policy_ema,
                 'policy_ema_state2': policy_ema_state2,
                 'Q_ema_state2': Q_ema_state2,
-                'R_action_train': R_action_train,
-                'R_ema': R_ema,
-                'reward_avg': reward_avg,
                 'policy_gradient': policy_gradient,
             }
-
-            if not self.episodic:
-                self.outputs['reward_differential'] = reward_differential
         
     def act(self,state,session=None):
         session = session or tf.get_default_session()
