@@ -9,6 +9,7 @@ numpy==1.16.4
 pandas
 pyyaml
 opencv-python
+scikit-learn
 seaborn
 starr
 tensorflow==1.15.0
