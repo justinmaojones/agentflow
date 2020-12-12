@@ -7,6 +7,15 @@ class BaseEnv(object):
     def step(self,action):
         raise NotImplementedError
 
+    def step_dict(self,action):
+        obs, rewards, dones, _ = self.step(action)
+        return {
+            'state': obs,
+            'rewards': rewards,
+            'dones': dones,
+        }
+
+
     def n_actions(self):
         raise NotImplementedError
 

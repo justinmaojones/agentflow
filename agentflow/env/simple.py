@@ -1,6 +1,8 @@
 import numpy as np
 
-class VecConcaveFuncEnv(object):
+from .base_env import BaseEnv
+
+class VecConcaveFuncEnv(BaseEnv):
 
     def __init__(self,n_dims=1,n_envs=4,max_steps=100,min_reward=-20,square_boundary_limit=None):
         self.n_dims = n_dims
@@ -50,9 +52,6 @@ class VecConcaveFuncEnv(object):
         self.apply_boundary()
 
         return self._state, rewards, dones, {}
-
-    def action_space(self):
-        return None
 
     def action_shape(self):
         return (self.n_envs, self.n_dims)
