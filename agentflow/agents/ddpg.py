@@ -108,31 +108,30 @@ class DDPG(object):
             Q_ema_state2 = tf.reshape(Q_ema_state2,[-1])
 
             # loss functions
-            loss_Q, y, td_error = td_learning(
-                    Q_action_train,
-                    reward,
-                    inputs['gamma'],
-                    (1-done)*Q_ema_state2
-                )
-            loss_policy = dpg(Q_policy_train,policy_train,self.dqda_clipping,self.clip_norm)
-            loss_entropy_reg = entropy_loss(policy_train_logits)
+            losses_Q, y, td_error = td_learning(
+                Q_action_train,
+                reward,
+                inputs['gamma'],
+                (1-done)*Q_ema_state2
+            )
+            losses_policy = dpg(Q_policy_train,policy_train,self.dqda_clipping,self.clip_norm)
+            losses_entropy_reg = entropy_loss(policy_train_logits)
 
-            assert loss_Q.shape.as_list() == [None]
-            assert loss_policy.shape.as_list() == [None]
-            assert loss_entropy_reg.shape.as_list() == [None]
+            assert losses_Q.shape.as_list() == [None]
+            assert losses_policy.shape.as_list() == [None]
+            assert losses_entropy_reg.shape.as_list() == [None]
 
             # overall loss function (importance weighted)
             loss = tf.reduce_mean(
                 self.inputs['importance_weight']*tf.add_n([
-                    loss_Q,
-                    inputs['policy_loss_weight']*loss_policy,
-                    inputs['entropy_loss_weight']*loss_entropy_reg,
+                    losses_Q,
+                    inputs['policy_loss_weight']*losses_policy,
+                    inputs['entropy_loss_weight']*losses_entropy_reg,
                 ])
             )
 
             # weight decay
             loss += inputs['weight_decay']*l2_loss(scope.name)
-
 
             # gradient update for parameters of Q 
             self.optimizer = tf.train.AdamOptimizer(inputs['learning_rate']) 
@@ -146,25 +145,26 @@ class DDPG(object):
             }
 
             # policy gradient
-            policy_gradient = tf.gradients(loss_policy,policy_train)
+            policy_gradient = tf.gradients(losses_policy,policy_train)
             policy_gradient_norm = tf.norm(policy_gradient,ord=2,axis=1)
 
             # store attributes for later use
             self.outputs = {
-                'y': y,
-                'td_error': td_error,
                 'loss': loss,
-                'loss_Q': loss_Q,
-                'loss_policy': loss_policy,
-                'policy_train': policy_train,
-                'policy_eval': policy_eval,
-                'Q_action_train': Q_action_train,
-                'Q_policy_train': Q_policy_train,
+                'losses_Q': losses_Q,
+                'losses_entropy_reg': losses_entropy_reg,
+                'losses_policy': losses_policy,
                 'policy_ema': policy_ema,
                 'policy_ema_state2': policy_ema_state2,
-                'Q_ema_state2': Q_ema_state2,
+                'policy_eval': policy_eval,
                 'policy_gradient': policy_gradient,
                 'policy_gradient_norm': policy_gradient_norm,
+                'policy_train': policy_train,
+                'Q_action_train': Q_action_train,
+                'Q_ema_state2': Q_ema_state2,
+                'Q_policy_train': Q_policy_train,
+                'td_error': td_error,
+                'y': y,
             }
         
     def act(self,state,session=None):
