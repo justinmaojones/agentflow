@@ -361,5 +361,4 @@ if __name__ == '__main__':
             buf.append_sequence(x)
             self.assertEqual(buf.shape, (10,1))
 
-
     unittest.main()
