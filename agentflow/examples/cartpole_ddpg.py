@@ -12,6 +12,7 @@ from agentflow.buffers import BufferMap
 from agentflow.buffers import PrioritizedBufferMap
 from agentflow.buffers import NStepReturnPublisher
 from agentflow.numpy.ops import onehot
+from agentflow.numpy.schedules import ExponentialDecaySchedule 
 from agentflow.numpy.schedules import LinearAnnealingSchedule
 from agentflow.state import NPrevFramesStateEnv
 from agentflow.tensorflow.nn import dense_net
@@ -203,6 +204,21 @@ def run(**cfg):
             gamma=cfg['gamma'],
         )
 
+    # Annealed parameters
+    learning_rate_schedule = ExponentialDecaySchedule(
+        initial_value = cfg['learning_rate'],
+        final_value = 0.0,
+        decay_rate = cfg['learning_rate_decay'],
+        begin_at_step = cfg['begin_learning_at_step']
+    )
+
+    entropy_loss_weight_schedule = ExponentialDecaySchedule(
+        initial_value = cfg['entropy_loss_weight'],
+        final_value = 0.0,
+        decay_rate = cfg['learning_rate_decay'],
+        begin_at_step = cfg['begin_learning_at_step']
+    )
+
     log = LogsTFSummary(savedir)
 
     state = env.reset()
@@ -240,48 +256,31 @@ def run(**cfg):
             pb_input = []
             if t >= cfg['begin_learning_at_step'] and t % cfg['update_freq'] == 0:
 
-                if t >= cfg['begin_learning_at_step']:
-                    t2 = t - cfg['begin_learning_at_step']
-                    learning_rate = cfg['learning_rate']*(cfg['learning_rate_decay']**t2)
-                    entropy_loss_weight = cfg['entropy_loss_weight']*(cfg['entropy_loss_weight_decay']**t2)
-                else:
-                    learning_rate = 0.
-                    entropy_loss_weight = cfg['entropy_loss_weight']
+                learning_rate = learning_rate_schedule(t)
+                entropy_loss_weight = entropy_loss_weight_schedule(t)
 
                 for i in range(cfg['n_update_steps']):
                     if cfg['buffer_type'] == 'prioritized':
-
                         beta = beta_schedule(t)
-                        log.append('beta',beta)
-
                         sample = replay_buffer.sample(cfg['batchsize'],beta=beta)
+                        log.append('beta',beta)
                         log.append('max_importance_weight',sample['importance_weight'].max())
-
-                        update_outputs = agent.update(
-                                learning_rate=learning_rate,
-                                ema_decay=cfg['ema_decay'],
-                                gamma=cfg['gamma'],
-                                weight_decay=cfg['weight_decay'],
-                                policy_loss_weight=cfg['policy_loss_weight'],
-                                entropy_loss_weight=entropy_loss_weight,
-                                outputs=['td_error','Q_ema_state2'],
-                                **sample)
-
-                        if not cfg['prioritized_replay_simple']:
-                            replay_buffer.update_priorities(update_outputs['td_error'])
                     else:
-
                         sample = replay_buffer.sample(cfg['batchsize'])
 
-                        update_outputs = agent.update(
-                                learning_rate=learning_rate,
-                                ema_decay=cfg['ema_decay'],
-                                gamma=cfg['gamma'],
-                                weight_decay=cfg['weight_decay'],
-                                policy_loss_weight=cfg['policy_loss_weight'],
-                                entropy_loss_weight=entropy_loss_weight,
-                                outputs=['Q_ema_state2'],
-                                **sample)
+                    update_outputs = agent.update(
+                            learning_rate=learning_rate,
+                            ema_decay=cfg['ema_decay'],
+                            gamma=cfg['gamma'],
+                            weight_decay=cfg['weight_decay'],
+                            policy_loss_weight=cfg['policy_loss_weight'],
+                            entropy_loss_weight=entropy_loss_weight,
+                            outputs=['td_error','Q_ema_state2'],
+                            **sample)
+
+                    if not cfg['prioritized_replay_simple']:
+                        replay_buffer.update_priorities(update_outputs['td_error'])
+
                 pb_input.append(('Q_ema_state2', update_outputs['Q_ema_state2'].mean()))
                 log.append('Q',update_outputs['Q_ema_state2'].mean())
 

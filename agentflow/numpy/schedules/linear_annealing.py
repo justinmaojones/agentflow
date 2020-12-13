@@ -1,3 +1,4 @@
+import numpy as np
 
 class LinearAnnealingSchedule(object):
 
@@ -8,14 +9,7 @@ class LinearAnnealingSchedule(object):
       annealing_steps,
       begin_at_step=0):
     """
-    Applies a linear annealing strategy. It is computed as:
-    ```python
-    def decayed_learning_rate(step):
-      step = min(max(0, step - begin_at_step), annealing_steps)
-      return initial_value + (final_value - initial_value) * (step / annealing_steps) 
-    ```
-
-    For example:
+    Applies a linear annealing strategy. For example:
     ```python
     >>> schedule = LinearAnnealingSchedule(initial_value = 0.0, final_value = 1.0, annealing_steps = 100)
     >>> print(schedule(step=1))
@@ -39,7 +33,7 @@ class LinearAnnealingSchedule(object):
     self.begin_at_step = begin_at_step
 
   def __call__(self, step):
-      step = float(min(max(0, step - self.begin_at_step), self.annealing_steps))
+      step = 1.0 * np.minimum(np.maximum(0, step - self.begin_at_step), self.annealing_steps)
       return self.initial_value + (self.final_value - self.initial_value) * (step / self.annealing_steps)
 
 if __name__ == '__main__':
