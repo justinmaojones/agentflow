@@ -1,19 +1,23 @@
+import click
+import h5py
+import numpy as np
+import os
+import tensorflow as tf
+import time
+import yaml 
+
 from agentflow.env import VecGymEnv
 from agentflow.agents import DDPG
-from agentflow.buffers import BufferMap, DelayedBufferMap, PrioritizedBufferMap, DelayedPrioritizedBufferMap, NStepReturnPublisher
-from agentflow.state import NPrevFramesStateEnv, AddEpisodeTimeStateEnv
+from agentflow.buffers import BufferMap
+from agentflow.buffers import PrioritizedBufferMap
+from agentflow.buffers import NStepReturnPublisher
 from agentflow.numpy.ops import onehot
 from agentflow.numpy.schedules import LinearAnnealingSchedule
+from agentflow.state import NPrevFramesStateEnv
 from agentflow.tensorflow.nn import dense_net
 from agentflow.tensorflow.ops import normalize_ema
-from agentflow.utils import check_whats_connected, LogsTFSummary
-import tensorflow as tf
-import numpy as np
-import h5py
-import os
-import yaml 
-import time
-import click
+from agentflow.utils import LogsTFSummary
+
 
 def build_net_fn(hidden_dims,hidden_layers,output_dim,batchnorm,dropout=0.0):
     def net_fn(h,training=False):
@@ -169,7 +173,7 @@ def run(**cfg):
 
     # Replay Buffer
     if cfg['buffer_type'] == 'prioritized':
-        # Prioritized Experience Replay
+        # prioritized experience replay
         replay_buffer = PrioritizedBufferMap(
             max_length = cfg['buffer_size'],
             alpha = cfg['prioritized_replay_alpha'],
