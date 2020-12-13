@@ -19,34 +19,6 @@ from agentflow.tensorflow.nn import dense_net
 from agentflow.tensorflow.ops import normalize_ema
 from agentflow.utils import LogsTFSummary
 
-
-def build_net_fn(hidden_dims,hidden_layers,output_dim,batchnorm,dropout=0.0):
-    def net_fn(h,training=False):
-        h = dense_net(h,hidden_dims,hidden_layers,batchnorm=batchnorm,training=training,dropout=dropout)
-        return tf.layers.dense(h,output_dim)
-    return net_fn
-
-def build_policy_fn(hidden_dims,hidden_layers,output_dim,batchnorm,normalize_inputs=True,temp_eval=1.0):
-    net_fn = build_net_fn(hidden_dims,hidden_layers,output_dim,batchnorm)
-    def policy_fn(state,training=False):
-        if normalize_inputs:
-            state, _ = normalize_ema(state,training)
-        logits = net_fn(state,training)
-        if not training:
-            logits *= temp_eval
-        return tf.nn.softmax(logits,axis=-1), logits, state 
-    return policy_fn
-
-def build_q_fn(hidden_dims,hidden_layers,output_dim,batchnorm,normalize_inputs=True,dropout=0.0):
-    net_fn = build_net_fn(hidden_dims,hidden_layers,output_dim,batchnorm,dropout)
-    def q_fn(state,action,training=False,q_normalized=False,**kwargs):
-        # q_normalized is a dummy kwarg
-        if normalize_inputs:
-            state, _ = normalize_ema(state,training)
-        h = tf.concat([state,action],axis=1)
-        return net_fn(h,training)
-    return q_fn
-
 def test_agent(test_env,agent):
     state = test_env.reset()
     rt = None
@@ -80,7 +52,6 @@ def noisy_action(action_softmax,eps=1.,clip=5e-2):
 @click.option('--dropout', default=0.0, type=float)
 @click.option('--hidden_dims', default=32)
 @click.option('--hidden_layers', default=2)
-@click.option('--output_dim', default=2)
 @click.option('--policy_temp', default=1.0, type=float)
 @click.option('--q_temp', default=1.0, type=float)
 @click.option('--noisy_target', default=0.0, type=float)
@@ -132,39 +103,49 @@ def run(**cfg):
     with open(os.path.join(savedir,'config.yaml'),'w') as f:
         yaml.dump(cfg, f)
 
-    # Environment
-    env = VecGymEnv(cfg['env_id'],n_envs=cfg['n_envs'])
-    env = NPrevFramesStateEnv(env,n_prev_frames=cfg['n_prev_frames'],flatten=True)
+    # environment
+    env = VecGymEnv('CartPole-v1', n_envs=cfg['n_envs'])
+    env = NPrevFramesStateEnv(env, n_prev_frames=cfg['n_prev_frames'], flatten=True)
+    test_env = VecGymEnv('CartPole-v1', n_envs=cfg['n_test_envs'])
+    test_env = NPrevFramesStateEnv(test_env, n_prev_frames=cfg['n_prev_frames'], flatten=True)
 
-    test_env = VecGymEnv(cfg['env_id'],n_envs=cfg['n_test_envs'])
-    test_env = NPrevFramesStateEnv(test_env,n_prev_frames=cfg['n_prev_frames'],flatten=True)
-
+    # state and action shapes
     state = env.reset()
     state_shape = state.shape
-    print('STATE SHAPE: ',state_shape)
+    print('STATE SHAPE: ', state_shape)
 
-    # Agent
-    policy_fn = build_policy_fn(
-        cfg['hidden_dims'],
-        cfg['hidden_layers'],
-        cfg['output_dim'],
-        cfg['batchnorm'],
-        cfg['normalize_inputs'],
-        temp_eval=cfg['policy_temp'],
-    )
+    action_shape = 2
+    print('ACTION SHAPE: ', action_shape)
 
-    q_fn = build_q_fn(
-        cfg['hidden_dims'],
-        cfg['hidden_layers'],
-        1,
-        cfg['batchnorm'],
-        cfg['normalize_inputs'],
-        dropout=cfg['dropout'],
-    )
+    # build agent
+    def policy_fn(state, training=False):
+        if cfg['normalize_inputs']:
+            state, _ = normalize_ema(state, training)
+        h = dense_net(
+            state, 
+            cfg['hidden_dims'],
+            cfg['hidden_layers'],
+            batchnorm = cfg['batchnorm'],
+            training = training
+        )
+        logits = tf.layers.dense(h, action_shape)
+        return tf.nn.softmax(logits,axis=-1), logits, state 
+
+    def q_fn(state, action, training=False, **kwargs):
+        if cfg['normalize_inputs']:
+            state, _ = normalize_ema(state, training)
+        h = dense_net(
+            tf.concat([state,action],axis=1),
+            cfg['hidden_dims'],
+            cfg['hidden_layers'],
+            batchnorm = cfg['batchnorm'],
+            training = training
+        )
+        return tf.layers.dense(h,1)
 
     agent = DDPG(
         state_shape=state_shape[1:],
-        action_shape=[2],
+        action_shape=[action_shape],
         policy_fn=policy_fn,
         q_fn=q_fn,
         dqda_clipping=cfg['dqda_clipping'],
@@ -278,7 +259,7 @@ def run(**cfg):
                             outputs=['td_error','Q_ema_state2'],
                             **sample)
 
-                    if not cfg['prioritized_replay_simple']:
+                    if cfg['buffer_type'] == 'prioritized' and not cfg['prioritized_replay_simple']:
                         replay_buffer.update_priorities(update_outputs['td_error'])
 
                 pb_input.append(('Q_ema_state2', update_outputs['Q_ema_state2'].mean()))
