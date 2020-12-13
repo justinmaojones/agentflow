@@ -3,6 +3,7 @@ from agentflow.agents import DDPG
 from agentflow.buffers import BufferMap, DelayedBufferMap, PrioritizedBufferMap, DelayedPrioritizedBufferMap, NStepReturnPublisher
 from agentflow.state import NPrevFramesStateEnv, AddEpisodeTimeStateEnv
 from agentflow.numpy.ops import onehot
+from agentflow.numpy.schedules import LinearAnnealingSchedule
 from agentflow.tensorflow.nn import dense_net
 from agentflow.tensorflow.ops import normalize_ema
 from agentflow.utils import check_whats_connected, LogsTFSummary
@@ -90,17 +91,13 @@ def noisy_action(action_softmax,eps=1.,clip=5e-2):
 @click.option('--prioritized_replay_beta0', default=0.4, type=float)
 @click.option('--prioritized_replay_beta_iters', default=None, type=int)
 @click.option('--prioritized_replay_eps', default=1e-6, type=float)
-@click.option('--prioritized_replay_weights_uniform', default=False, type=bool)
-@click.option('--prioritized_replay_compute_init', default=False, type=bool)
 @click.option('--prioritized_replay_simple', default=False, type=bool)
-@click.option('--prioritized_replay_simple_reward_adder', default=4, type=float)
-@click.option('--prioritized_replay_simple_done_adder', default=4, type=float)
-@click.option('--prioritized_replay_policy_gradient', default=False, type=bool)
+@click.option('--prioritized_replay_default_reward_priority', default=5, type=float)
+@click.option('--prioritized_replay_default_done_priority', default=5, type=float)
 @click.option('--begin_learning_at_step', default=1e4)
 @click.option('--learning_rate', default=1e-4)
 @click.option('--learning_rate_decay', default=1.)
 @click.option('--policy_loss_weight', default=1e-3)
-@click.option('--n_steps_train_only_q', default=0)
 @click.option('--gamma', default=0.99)
 @click.option('--weight_decay', default=0.0)
 @click.option('--regularize_policy', default=False, type=bool)
@@ -172,11 +169,25 @@ def run(**cfg):
 
     # Replay Buffer
     if cfg['buffer_type'] == 'prioritized':
+        # Prioritized Experience Replay
         replay_buffer = PrioritizedBufferMap(
-                cfg['buffer_size'],
-                alpha=cfg['prioritized_replay_alpha'],
-                eps=cfg['prioritized_replay_eps'])
+            max_length = cfg['buffer_size'],
+            alpha = cfg['prioritized_replay_alpha'],
+            eps = cfg['prioritized_replay_eps'],
+            default_priority = 1.0,
+            default_non_zero_reward_priority = cfg['prioritized_replay_default_reward_priority'],
+            default_done_priority = cfg['prioritized_replay_default_done_priority'],
+        )
+
+        beta_schedule = LinearAnnealingSchedule(
+            initial_value = cfg['prioritized_replay_beta0'],
+            final_value = 1.0,
+            annealing_steps = cfg['prioritized_replay_beta_iters'] or cfg['num_steps'],
+            begin_at_step = cfg['begin_learning_at_step'],
+        )
+
     else:
+        # Normal Buffer
         replay_buffer = BufferMap(cfg['buffer_size'])
 
     # Delays publishing of records to the underlying replay buffer for n steps
@@ -198,8 +209,7 @@ def run(**cfg):
         sess.run(tf.global_variables_initializer())
 
         T = cfg['num_steps']
-        T_beta = T if cfg['prioritized_replay_beta_iters'] is None else cfg['prioritized_replay_beta_iters']
-        beta0 = cfg['prioritized_replay_beta0']
+
         pb = tf.keras.utils.Progbar(T,stateful_metrics=['test_ep_returns','avg_action'])
         for t in range(T):
             start_step_time = time.time()
@@ -220,26 +230,14 @@ def run(**cfg):
                 'done':done,
                 'state2':state2
             }
-            if cfg['buffer_type'] == 'prioritized' and cfg['prioritized_replay_compute_init']:
-                priority = sess.run(agent.outputs['td_error'],agent.get_inputs(gamma=cfg['gamma'],**data))
-                replay_buffer.append(data,priority=priority)
-            elif cfg['buffer_type'] == 'prioritized' and cfg['prioritized_replay_simple']:
-                priority = np.ones_like(data['reward'])
-                priority += cfg['prioritized_replay_simple_reward_adder']*(data['reward']!=0)
-                priority += cfg['prioritized_replay_simple_done_adder']*data['done']
-                replay_buffer.append(data,priority=priority)
-            elif cfg['buffer_type'] == 'prioritized' and cfg['prioritized_replay_policy_gradient']:
-                priority = sess.run(agent.outputs['policy_gradient_norm'],agent.get_inputs(gamma=cfg['gamma'],**data))
-                replay_buffer.append(data,priority=priority)
-            else:
-                replay_buffer.append(data)
+            replay_buffer.append(data)
             state = state2 
 
             pb_input = []
             if t >= cfg['begin_learning_at_step'] and t % cfg['update_freq'] == 0:
 
-                if t >= cfg['begin_learning_at_step'] + cfg['n_steps_train_only_q']:
-                    t2 = t - (cfg['begin_learning_at_step'] + cfg['n_steps_train_only_q'])
+                if t >= cfg['begin_learning_at_step']:
+                    t2 = t - cfg['begin_learning_at_step']
                     learning_rate = cfg['learning_rate']*(cfg['learning_rate_decay']**t2)
                     entropy_loss_weight = cfg['entropy_loss_weight']*(cfg['entropy_loss_weight_decay']**t2)
                 else:
@@ -249,12 +247,10 @@ def run(**cfg):
                 for i in range(cfg['n_update_steps']):
                     if cfg['buffer_type'] == 'prioritized':
 
-                        beta = beta0 + (1.-beta0)*min(1.,float(t)/T_beta)
+                        beta = beta_schedule(t)
                         log.append('beta',beta)
 
                         sample = replay_buffer.sample(cfg['batchsize'],beta=beta)
-                        if cfg['prioritized_replay_weights_uniform']:
-                            sample['importance_weight'] = np.ones_like(sample['importance_weight'])
                         log.append('max_importance_weight',sample['importance_weight'].max())
 
                         update_outputs = agent.update(
@@ -264,14 +260,11 @@ def run(**cfg):
                                 weight_decay=cfg['weight_decay'],
                                 policy_loss_weight=cfg['policy_loss_weight'],
                                 entropy_loss_weight=entropy_loss_weight,
-                                outputs=['td_error','Q_ema_state2','policy_gradient_norm'],
+                                outputs=['td_error','Q_ema_state2'],
                                 **sample)
 
                         if not cfg['prioritized_replay_simple']:
-                            if cfg['prioritized_replay_policy_gradient']:
-                                replay_buffer.update_priorities(update_outputs['policy_gradient_norm'])
-                            else:
-                                replay_buffer.update_priorities(update_outputs['td_error'])
+                            replay_buffer.update_priorities(update_outputs['td_error'])
                     else:
 
                         sample = replay_buffer.sample(cfg['batchsize'])
