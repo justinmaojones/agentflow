@@ -28,7 +28,10 @@ def test_agent(test_env,agent):
     all_done = 0
     while np.mean(all_done) < 1:
         action = agent.act(state).argmax(axis=-1).ravel()
-        state, reward, done, _ = test_env.step(action)
+        step_output = test_env.step(action)
+        state = step_output['state']
+        reward = step_output['reward']
+        done = step_output['done']
         if rt is None:
             rt = reward.copy()
             all_done = done.copy()

@@ -18,8 +18,12 @@ class StateEnv(BaseEnv):
         return self.state.update(frame)
 
     def step(self,*args,**kwargs):
-        frame, reward, done, info = self.env.step(*args,**kwargs)
-        return self.state.update(frame,done), reward, done, info
+        prior_step_output = self.env.step(*args,**kwargs)
+        # copy non-state data from previous step output
+        output = {k: prior_step_output[k] for k in prior_step_output if k != 'state'}
+        # update state
+        output['state'] = self.state.update(prior_step_output['state'], prior_step_output['done'])
+        return output
 
     def get_state(self):
         return self.state.state()

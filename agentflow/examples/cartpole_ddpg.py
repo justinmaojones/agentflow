@@ -206,20 +206,21 @@ def run(**cfg):
                 else:
                     raise NotImplementedError("unknown noise type %s" % cfg['noise'])
             else:
-                action = np.random.choice(action_probs.shape[1],size=len(action_probs))
+                # completely random action choices
+                action = eps_greedy_noise(action_probs, eps=1.0)
 
-            state2, reward, done, info = env.step(action.astype('int').ravel())
+            step_output = env.step(action.astype('int').ravel())
 
             data = {
                 'state':state,
                 'action':onehot(action),
-                'reward':reward,
-                'done':done,
-                'state2':state2
+                'reward':step_output['reward'],
+                'done':step_output['done'],
+                'state2':step_output['state'],
             }
             log.append_dict(data)
             replay_buffer.append(data)
-            state = state2 
+            state = data['state2']
 
             pb_input = []
             if t >= cfg['begin_learning_at_step'] and t % cfg['update_freq'] == 0:
