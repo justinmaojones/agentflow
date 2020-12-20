@@ -37,7 +37,12 @@ class VecGymEnv(BaseEnv):
         for i,(done,env) in enumerate(zip(dones,self.envs)):
             if done:
                 obs[i] = self.reset_single_env(env)
-        return np.stack(obs), np.stack(rewards), np.stack(dones), infos
+        return {
+            'state': np.stack(obs), 
+            'reward': np.stack(rewards), 
+            'done': np.stack(dones),
+            'info': infos,
+        }
 
     def action_space(self):
         return self.envs[0].action_space

@@ -10,4 +10,9 @@ class VecBinaryPendulumEnv(VecGymEnv):
     def step(self,action):
         obs, rewards, dones, infos = super(VecBinaryPendulumEnv,self).step(action)
         rewards = 2*((rewards) >= self.reward_threshold).astype(float) - 1
-        return obs, rewards, dones, infos
+        return {
+            'state': obs, 
+            'reward': rewards, 
+            'done': dones, 
+            'info': infos,
+        }

@@ -51,7 +51,12 @@ class VecConcaveFuncEnv(BaseEnv):
 
         self.apply_boundary()
 
-        return self._state, rewards, dones, {}
+        return {
+            'state': self._state, 
+            'reward': rewards, 
+            'done': dones, 
+            'info': {},
+        }
 
     def action_shape(self):
         return (self.n_envs, self.n_dims)
