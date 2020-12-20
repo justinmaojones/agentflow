@@ -10,7 +10,7 @@ class CvtRGB2GrayImageState(BaseState):
         self.flatten = flatten
         self.reset()
 
-    def update(self,frame):
+    def update(self,frame,reset_mask=None):
         n = len(frame)
         self._state = np.concatenate(
             [cv2.cvtColor(frame[i],cv2.COLOR_RGB2GRAY)[None,:,:,None] for i in range(n)],
@@ -26,9 +26,9 @@ class CvtRGB2GrayImageState(BaseState):
             output = self._state
         return output.copy()
 
-class CvtRGB2GrayImageStateEnv(object):
+class CvtRGB2GrayImageStateEnv(StateEnv):
 
     def __init__(self,env,**kwargs):
         state = CvtRGB2GrayImageState(**kwargs)
-        super(AddNormalizedEpisodeTimeStateEnv,self).__init__(env, state)
+        super(CvtRGB2GrayImageStateEnv, self).__init__(env, state)
 
