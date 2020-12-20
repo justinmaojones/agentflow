@@ -79,6 +79,9 @@ class DDPG(object):
             with tf.variable_scope('Q',reuse=True):
                 Q_policy_train = self.q_fn(inputs['state'],policy_train,training=False)
 
+            with tf.variable_scope('Q',reuse=True):
+                Q_policy_eval = self.q_fn(inputs['state'],policy_eval,training=False)
+
             # target networks
             ema, ema_op, ema_vars_getter = exponential_moving_average(
                     scope.name,decay=inputs['ema_decay'],zero_debias=True)
@@ -162,6 +165,7 @@ class DDPG(object):
                 'policy_train': policy_train,
                 'Q_action_train': Q_action_train,
                 'Q_ema_state2': Q_ema_state2,
+                'Q_policy_eval': Q_policy_eval,
                 'Q_policy_train': Q_policy_train,
                 'td_error': td_error,
                 'y': y,
