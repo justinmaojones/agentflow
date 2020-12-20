@@ -8,10 +8,13 @@ import yaml
 
 from agentflow.env import VecGymEnv
 from agentflow.agents import DDPG
+from agentflow.agents.utils import test_agent
 from agentflow.buffers import BufferMap
 from agentflow.buffers import PrioritizedBufferMap
 from agentflow.buffers import NStepReturnPublisher
 from agentflow.numpy.ops import onehot
+from agentflow.numpy.ops import eps_greedy_noise
+from agentflow.numpy.ops import gumbel_softmax_noise
 from agentflow.numpy.schedules import ExponentialDecaySchedule 
 from agentflow.numpy.schedules import LinearAnnealingSchedule
 from agentflow.state import NPrevFramesStateEnv
@@ -19,37 +22,15 @@ from agentflow.tensorflow.nn import dense_net
 from agentflow.tensorflow.ops import normalize_ema
 from agentflow.utils import LogsTFSummary
 
-def test_agent(test_env,agent):
-    state = test_env.reset()
-    rt = None
-    all_done = 0
-    while np.mean(all_done) < 1:
-        action = agent.act(state).argmax(axis=-1).ravel()
-        state, reward, done, _ = test_env.step(action)
-        if rt is None:
-            rt = reward.copy()
-            all_done = done.copy()
-        else:
-            rt += reward*(1-all_done)
-            all_done = np.maximum(done,all_done)
-    return rt
-
-def noisy_action(action_softmax,eps=1.,clip=5e-2):
-    action_softmax_clipped = np.clip(action_softmax,clip,1-clip)
-    logit_unscaled = np.log(action_softmax_clipped)
-    u = np.random.rand(*logit_unscaled.shape)
-    g = -np.log(-np.log(u))
-    return (eps*g+logit_unscaled).argmax(axis=-1)
-
 @click.option('--num_steps', default=20000, type=int)
 @click.option('--n_envs', default=10)
-@click.option('--n_test_envs', default=10)
 @click.option('--n_prev_frames', default=4)
-@click.option('--env_id', default='CartPole-v1')
 @click.option('--dqda_clipping', default=1.)
 @click.option('--clip_norm', default=True, type=bool)
 @click.option('--ema_decay', default=0.99, type=float)
-@click.option('--dropout', default=0.0, type=float)
+@click.option('--noise', default='eps_greedy', type=click.Choice(['eps_greedy','gumbel_softmax']))
+@click.option('--noise_eps', default=0.05, type=float)
+@click.option('--noise_temperature', default=1.0, type=float)
 @click.option('--hidden_dims', default=32)
 @click.option('--hidden_layers', default=2)
 @click.option('--policy_temp', default=1.0, type=float)
@@ -106,7 +87,7 @@ def run(**cfg):
     # environment
     env = VecGymEnv('CartPole-v1', n_envs=cfg['n_envs'])
     env = NPrevFramesStateEnv(env, n_prev_frames=cfg['n_prev_frames'], flatten=True)
-    test_env = VecGymEnv('CartPole-v1', n_envs=cfg['n_test_envs'])
+    test_env = VecGymEnv('CartPole-v1', n_envs=1)
     test_env = NPrevFramesStateEnv(test_env, n_prev_frames=cfg['n_prev_frames'], flatten=True)
 
     # state and action shapes
@@ -211,16 +192,21 @@ def run(**cfg):
 
         T = cfg['num_steps']
 
-        pb = tf.keras.utils.Progbar(T,stateful_metrics=['test_ep_returns','avg_action'])
+        pb = tf.keras.utils.Progbar(T,stateful_metrics=['test_ep_returns'])
         for t in range(T):
             start_step_time = time.time()
 
-            action = agent.act(state)
+            action_probs = agent.act(state)
 
             if len(replay_buffer) >= cfg['begin_learning_at_step']:
-                action = noisy_action(action)
+                if cfg['noise'] == 'eps_greedy':
+                    action = eps_greedy_noise(action_probs, eps=cfg['noise_eps'])
+                elif cfg['noise'] == 'gumbel_softmax':
+                    action = gumbel_softmax_noise(action_probs, temperature=cfg['noise_temperature'])
+                else:
+                    raise NotImplementedError("unknown noise type %s" % cfg['noise'])
             else:
-                action = np.random.choice(action.shape[1],size=len(action))
+                action = np.random.choice(action_probs.shape[1],size=len(action_probs))
 
             state2, reward, done, info = env.step(action.astype('int').ravel())
 
@@ -231,6 +217,7 @@ def run(**cfg):
                 'done':done,
                 'state2':state2
             }
+            log.append_dict(data)
             replay_buffer.append(data)
             state = state2 
 
@@ -256,24 +243,17 @@ def run(**cfg):
                             weight_decay=cfg['weight_decay'],
                             policy_loss_weight=cfg['policy_loss_weight'],
                             entropy_loss_weight=entropy_loss_weight,
-                            outputs=['td_error','Q_ema_state2'],
+                            outputs=['td_error','Q_policy_eval'],
                             **sample)
 
                     if cfg['buffer_type'] == 'prioritized' and not cfg['prioritized_replay_simple']:
                         replay_buffer.update_priorities(update_outputs['td_error'])
 
-                pb_input.append(('Q_ema_state2', update_outputs['Q_ema_state2'].mean()))
-                log.append('Q',update_outputs['Q_ema_state2'].mean())
+                log.append_dict(update_outputs)
 
-            # Bookkeeping
-            log.append('reward_history',reward)
-            log.append('action_history',action)
-            avg_action = np.mean(log['action_history'][-20:])
-            pb_input.append(('avg_action', avg_action))
             if t % cfg['n_steps_per_eval'] == 0 and t > 0:
                 log.append('test_ep_returns',test_agent(test_env,agent))
                 log.append('test_ep_steps',t)
-                #log.append('test_duration_cumulative',time.time()-start_time)
                 avg_test_ep_returns = np.mean(log['test_ep_returns'][-1:])
                 pb_input.append(('test_ep_returns', avg_test_ep_returns))
             end_time = time.time()
