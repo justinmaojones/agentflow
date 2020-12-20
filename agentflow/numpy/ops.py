@@ -32,13 +32,15 @@ def clip(x,clip_to_min=None,clip_to_max=None):
     return x
 
 def eps_greedy_noise(action_probs,eps=0.05):
-    if np.random.rand() < eps:
-        if action_probs.ndim == 1:
-            return np.random.choice(action_probs.shape[-1])
-        else:
-            return np.random.choice(action_probs.shape[-1],size=action_probs.shape[:-1])
+    if action_probs.ndim == 1:
+        random_action = np.random.choice(action_probs.shape[-1])
+        noise = np.random.randn()
     else:
-        return action_probs.argmax(axis=-1)
+        random_action = np.random.choice(action_probs.shape[-1],size=action_probs.shape[:-1])
+        noise = np.random.randn(*random_action.shape)
+    best_action = action_probs.argmax(axis=-1)
+    choose_random = noise < eps
+    return choose_random*random_action + (1-choose_random)*best_action
 
 def gumbel_softmax_noise(action_probs,temperature=1.0,eps=1e-4):
     action_probs = clip(action_probs,eps,1-eps)
