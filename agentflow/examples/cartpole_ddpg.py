@@ -7,7 +7,7 @@ import time
 import yaml 
 
 from agentflow.env import VecGymEnv
-from agentflow.agents import DDPG
+from agentflow.agents import DiscreteDDPG
 from agentflow.agents.utils import test_agent
 from agentflow.buffers import BufferMap
 from agentflow.buffers import PrioritizedBufferMap
@@ -110,7 +110,7 @@ def run(**cfg):
             training = training
         )
         logits = tf.layers.dense(h, action_shape)
-        return tf.nn.softmax(logits,axis=-1), logits, state 
+        return logits
 
     def q_fn(state, action, training=False, **kwargs):
         if cfg['normalize_inputs']:
@@ -124,14 +124,13 @@ def run(**cfg):
         )
         return tf.layers.dense(h,1)
 
-    agent = DDPG(
+    agent = DiscreteDDPG(
         state_shape=state_shape[1:],
-        action_shape=[action_shape],
+        num_actions=action_shape,
         policy_fn=policy_fn,
         q_fn=q_fn,
         dqda_clipping=cfg['dqda_clipping'],
         clip_norm=cfg['clip_norm'],
-        discrete=True,
     )
 
     # Replay Buffer
@@ -196,7 +195,7 @@ def run(**cfg):
         for t in range(T):
             start_step_time = time.time()
 
-            action_probs = agent.act(state)
+            action_probs = agent.act_probs(state)
 
             if len(replay_buffer) >= cfg['begin_learning_at_step']:
                 if cfg['noise'] == 'eps_greedy':

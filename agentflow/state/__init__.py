@@ -6,3 +6,4 @@ from .identity_state import IdentityStateEnv
 from .n_prev_frames_state import NPrevFramesStateEnv
 from .resize_image_state import ResizeImageStateEnv
 from .reward_forward_filter import RewardForwardFilterEnv
+from .tanh_action_env import TanhActionEnv

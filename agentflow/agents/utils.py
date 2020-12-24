@@ -22,12 +22,12 @@ def build_nested_feed_dict(inputs, placeholders):
     func(inputs,placeholders)
     return feed_dict
 
-def test_agent(test_env,agent):
+def test_agent(test_env, agent):
     state = test_env.reset()
     rt = None
     all_done = 0
     while np.mean(all_done) < 1:
-        action = agent.act(state).argmax(axis=-1).ravel()
+        action = agent.act(state)
         step_output = test_env.step(action)
         state = step_output['state']
         reward = step_output['reward']
