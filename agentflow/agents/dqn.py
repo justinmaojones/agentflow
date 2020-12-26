@@ -11,7 +11,7 @@ from ..tensorflow.ops import onehot_argmax
 class DQN(object):
 
     def __init__(self,state_shape,num_actions,q_fn,double_q=False):
-        """Implements Deep Deterministic Policy Gradient with Tensorflow
+        """Implements Deep Q Networks [1] with Tensorflow 
 
         This class builds a DDPG model with optimization update and action prediction steps.
 
@@ -23,11 +23,13 @@ class DQN(object):
             i.e. "one of `num_actions`".
           q_fn: a function that takes as input two tensors: the state and action,
             and outputs an estimate Q(state,action)
-          double_q: boolean, when true uses "double q-learning" from [1]. Otherwise uses
+          double_q: boolean, when true uses "double q-learning" from [2]. Otherwise uses
             standard q-learning.
             
         References:
-        [1] Van Hasselt, Hado, Arthur Guez, and David Silver. "Deep reinforcement learning 
+        [1] Mnih, Volodymyr, et al. "Playing atari with deep reinforcement learning." 
+            arXiv preprint arXiv:1312.5602 (2013).
+        [2] Van Hasselt, Hado, Arthur Guez, and David Silver. "Deep reinforcement learning 
             with double q-learning." arXiv preprint arXiv:1509.06461 (2015).
         """
         self.state_shape = list(state_shape)
