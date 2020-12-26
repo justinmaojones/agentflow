@@ -7,7 +7,7 @@ import time
 import yaml 
 
 from agentflow.env import VecGymEnv
-from agentflow.agents import DiscreteDDPG
+from agentflow.agents import DQN
 from agentflow.agents.utils import test_agent
 from agentflow.buffers import BufferMap
 from agentflow.buffers import PrioritizedBufferMap
@@ -25,12 +25,10 @@ from agentflow.utils import LogsTFSummary
 @click.option('--num_steps', default=30000, type=int)
 @click.option('--n_envs', default=1)
 @click.option('--n_prev_frames', default=16)
-@click.option('--dqda_clipping', default=1.)
-@click.option('--clip_norm', default=True, type=bool)
 @click.option('--ema_decay', default=0.95, type=float)
-@click.option('--noise', default='gumbel_softmax', type=click.Choice(['eps_greedy','gumbel_softmax']))
+@click.option('--noise', default='eps_greedy', type=click.Choice(['eps_greedy','gumbel_softmax']))
 @click.option('--noise_eps', default=0.05, type=float)
-@click.option('--noise_temperature', default=0.5, type=float)
+@click.option('--noise_temperature', default=1.0, type=float)
 @click.option('--hidden_dims', default=64)
 @click.option('--hidden_layers', default=4)
 @click.option('--policy_temp', default=1.0, type=float)
@@ -39,26 +37,24 @@ from agentflow.utils import LogsTFSummary
 @click.option('--normalize_inputs', default=True, type=bool)
 @click.option('--batchnorm', default=False, type=bool)
 @click.option('--binarized_time_state', default=False, type=bool)
-@click.option('--buffer_type', default='prioritized', type=click.Choice(['normal','prioritized','delayed','delayed_prioritized']))
+@click.option('--buffer_type', default='normal', type=click.Choice(['normal','prioritized','delayed','delayed_prioritized']))
 @click.option('--buffer_size', default=30000, type=int)
 @click.option('--sample_backwards', default=False, type=bool)
 @click.option('--enable_n_step_return_publisher', default=True, type=bool)
-@click.option('--n_step_return', default=4, type=int)
-@click.option('--prioritized_replay_alpha', default=0.25, type=float)
-@click.option('--prioritized_replay_beta0', default=0.5, type=float)
-@click.option('--prioritized_replay_beta_iters', default=10000, type=int)
+@click.option('--n_step_return', default=8, type=int)
+@click.option('--prioritized_replay_alpha', default=0.6, type=float)
+@click.option('--prioritized_replay_beta0', default=0.4, type=float)
+@click.option('--prioritized_replay_beta_iters', default=None, type=int)
 @click.option('--prioritized_replay_eps', default=1e-6, type=float)
-@click.option('--prioritized_replay_simple', default=False, type=bool)
+@click.option('--prioritized_replay_simple', default=True, type=bool)
 @click.option('--prioritized_replay_default_reward_priority', default=5, type=float)
 @click.option('--prioritized_replay_default_done_priority', default=5, type=float)
 @click.option('--begin_learning_at_step', default=200)
-@click.option('--learning_rate', default=0.005)
-@click.option('--learning_rate_decay', default=0.999)
-@click.option('--policy_loss_weight', default=2.0)
+@click.option('--learning_rate', default=5e-4)
+@click.option('--learning_rate_decay', default=0.9995)
 @click.option('--gamma', default=0.99)
-@click.option('--weight_decay', default=1e-3)
-@click.option('--regularize_policy', default=False, type=bool)
-@click.option('--entropy_loss_weight', default=1e-4)
+@click.option('--weight_decay', default=1e-5)
+@click.option('--entropy_loss_weight', default=0, type=float)
 @click.option('--entropy_loss_weight_decay', default=0.99995)
 @click.option('--n_update_steps', default=4, type=int)
 @click.option('--update_freq', default=1, type=int)
@@ -75,8 +71,10 @@ def run(**cfg):
         np.random.seed(cfg['seed'])
         tf.set_random_seed(int(10*cfg['seed']))
 
+     
     ts = str(int(time.time()*1000))
-    savedir = os.path.join(cfg['savedir'],'experiment' + ts)
+    suff = str(np.random.choice(np.iinfo(np.int64).max))
+    savedir = os.path.join(cfg['savedir'],'experiment' + ts + '_' + suff)
     print('SAVING TO: {savedir}'.format(**locals()))
     os.system('mkdir -p {savedir}'.format(**locals()))
 
@@ -98,38 +96,22 @@ def run(**cfg):
     print('ACTION SHAPE: ', action_shape)
 
     # build agent
-    def policy_fn(state, training=False):
+    def q_fn(state, training=False, **kwargs):
         if cfg['normalize_inputs']:
             state, _ = normalize_ema(state, training)
         h = dense_net(
-            state, 
+            state,
             cfg['hidden_dims'],
             cfg['hidden_layers'],
             batchnorm = cfg['batchnorm'],
             training = training
         )
-        logits = tf.layers.dense(h, action_shape)
-        return logits
+        return tf.layers.dense(h,action_shape)
 
-    def q_fn(state, action, training=False, **kwargs):
-        if cfg['normalize_inputs']:
-            state, _ = normalize_ema(state, training)
-        h = dense_net(
-            tf.concat([state,action],axis=1),
-            cfg['hidden_dims'],
-            cfg['hidden_layers'],
-            batchnorm = cfg['batchnorm'],
-            training = training
-        )
-        return tf.layers.dense(h,1)
-
-    agent = DiscreteDDPG(
+    agent = DQN(
         state_shape=state_shape[1:],
         num_actions=action_shape,
-        policy_fn=policy_fn,
         q_fn=q_fn,
-        dqda_clipping=cfg['dqda_clipping'],
-        clip_norm=cfg['clip_norm'],
     )
 
     # Replay Buffer
@@ -240,7 +222,6 @@ def run(**cfg):
                             ema_decay=cfg['ema_decay'],
                             gamma=cfg['gamma'],
                             weight_decay=cfg['weight_decay'],
-                            policy_loss_weight=cfg['policy_loss_weight'],
                             entropy_loss_weight=entropy_loss_weight,
                             outputs=['td_error','Q_policy_eval'],
                             **sample)
