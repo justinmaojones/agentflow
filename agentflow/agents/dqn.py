@@ -6,10 +6,11 @@ from ..objectives import td_learning
 from ..tensorflow.ops import exponential_moving_average
 from ..tensorflow.ops import entropy_loss
 from ..tensorflow.ops import l2_loss
+from ..tensorflow.ops import onehot_argmax
 
 class DQN(object):
 
-    def __init__(self,state_shape,num_actions,q_fn):
+    def __init__(self,state_shape,num_actions,q_fn,double_q=False):
         """Implements Deep Deterministic Policy Gradient with Tensorflow
 
         This class builds a DDPG model with optimization update and action prediction steps.
@@ -22,10 +23,17 @@ class DQN(object):
             i.e. "one of `num_actions`".
           q_fn: a function that takes as input two tensors: the state and action,
             and outputs an estimate Q(state,action)
+          double_q: boolean, when true uses "double q-learning" from [1]. Otherwise uses
+            standard q-learning.
+            
+        References:
+        [1] Van Hasselt, Hado, Arthur Guez, and David Silver. "Deep reinforcement learning 
+            with double q-learning." arXiv preprint arXiv:1509.06461 (2015).
         """
         self.state_shape = list(state_shape)
         self.num_actions = num_actions 
         self.q_fn = q_fn
+        self.double_q = double_q
 
         self.build_model()
 
@@ -59,7 +67,7 @@ class DQN(object):
                     raise InvalidArgumentError("Q_train shape (%s) and action shape (%s) must match" % \
                                                  (str(Q_train.shape), str(inputs['action'].shape)))
 
-                Q_action_train = tf.reduce_sum(Q_train*inputs['action'],axis=-1,keepdims=True)
+                Q_action_train = tf.reduce_sum(Q_train*inputs['action'],axis=-1)
                 policy_train = tf.nn.softmax(Q_train,axis=-1)
 
             with tf.variable_scope('Q',reuse=True):
@@ -71,30 +79,30 @@ class DQN(object):
 
                 Q_action_eval = tf.reduce_sum(Q_train*inputs['action'],axis=-1,keepdims=True)
                 policy_eval = tf.nn.softmax(Q_eval,axis=-1)
-                pe_indices = tf.argmax(policy_eval, axis=-1)
-                Q_policy_eval = tf.one_hot(pe_indices, self.num_actions)
+                Q_policy_eval = tf.reduce_max(Q_eval, axis=-1)
+
+            with tf.variable_scope('Q',reuse=True):
+                Q_state2_eval = self.q_fn(inputs['state2'],training=False)
+                policy_state2_eval = onehot_argmax(Q_state2_eval)
 
             # target networks
             ema, ema_op, ema_vars_getter = exponential_moving_average(
                     scope.name,decay=inputs['ema_decay'],zero_debias=True)
 
             with tf.variable_scope('Q',reuse=True,custom_getter=ema_vars_getter):
-                Q_ema_state2 = self.q_fn(inputs['state'],training=False)
-                Q_ema_state2 = tf.reduce_max(Q_ema_state2,axis=-1)
+                Q_ema_state2 = self.q_fn(inputs['state2'],training=False)
 
-            # make sure inputs to loss functions are in the correct shape
-            # (to avoid erroneous broadcasting)
-            reward = tf.reshape(inputs['reward'],[-1])
-            done = tf.reshape(inputs['done'],[-1])
-            Q_action_train = tf.reshape(Q_action_train,[-1])
-            Q_ema_state2 = tf.reshape(Q_ema_state2,[-1])
+            if self.double_q:
+                target_Q_state2 = tf.reduce_sum(Q_ema_state2*policy_state2_eval,axis=-1)
+            else:
+                target_Q_state2 = tf.reduce_max(Q_ema_state2,axis=-1)
 
             # loss functions
             losses_Q, y, td_error = td_learning(
                 Q_action_train,
-                reward,
+                inputs['reward'],
                 inputs['gamma'],
-                (1-done)*Q_ema_state2
+                (1-inputs['done'])*target_Q_state2
             )
 
             assert losses_Q.shape == tf.TensorShape(None)
@@ -133,10 +141,13 @@ class DQN(object):
                 'losses_Q': losses_Q,
                 'policy_train': policy_train,
                 'policy_eval': policy_eval,
+                'policy_state2_eval': policy_state2_eval,
                 'Q_action_eval': Q_action_eval,
                 'Q_action_train': Q_action_train,
                 'Q_policy_eval': Q_policy_eval,
+                'Q_state2_eval': Q_state2_eval,
                 'Q_ema_state2': Q_ema_state2,
+                'target_Q_state2': target_Q_state2,
                 'td_error': td_error,
                 'y': y,
             }

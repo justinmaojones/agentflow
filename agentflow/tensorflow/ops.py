@@ -120,3 +120,7 @@ def l2_loss(scope=None):
         variables.append(v)
     return tf.reduce_sum([tf.nn.l2_loss(v) for v in variables])
 
+def onehot_argmax(policy):
+    indices = tf.argmax(policy, axis=-1)
+    return tf.one_hot(indices, policy.shape[-1])
+

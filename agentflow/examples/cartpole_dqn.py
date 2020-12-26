@@ -29,17 +29,13 @@ from agentflow.utils import LogsTFSummary
 @click.option('--noise', default='eps_greedy', type=click.Choice(['eps_greedy','gumbel_softmax']))
 @click.option('--noise_eps', default=0.05, type=float)
 @click.option('--noise_temperature', default=1.0, type=float)
+@click.option('--double_q', default=False, type=bool)
 @click.option('--hidden_dims', default=64)
 @click.option('--hidden_layers', default=4)
-@click.option('--policy_temp', default=1.0, type=float)
-@click.option('--q_temp', default=1.0, type=float)
-@click.option('--noisy_target', default=0.0, type=float)
 @click.option('--normalize_inputs', default=True, type=bool)
 @click.option('--batchnorm', default=False, type=bool)
-@click.option('--binarized_time_state', default=False, type=bool)
 @click.option('--buffer_type', default='normal', type=click.Choice(['normal','prioritized','delayed','delayed_prioritized']))
 @click.option('--buffer_size', default=30000, type=int)
-@click.option('--sample_backwards', default=False, type=bool)
 @click.option('--enable_n_step_return_publisher', default=True, type=bool)
 @click.option('--n_step_return', default=8, type=int)
 @click.option('--prioritized_replay_alpha', default=0.6, type=float)
@@ -112,6 +108,7 @@ def run(**cfg):
         state_shape=state_shape[1:],
         num_actions=action_shape,
         q_fn=q_fn,
+        double_q=cfg['double_q'],
     )
 
     # Replay Buffer
