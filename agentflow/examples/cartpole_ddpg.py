@@ -90,7 +90,7 @@ def run(**cfg):
     test_env = NPrevFramesStateEnv(test_env, n_prev_frames=cfg['n_prev_frames'], flatten=True)
 
     # state and action shapes
-    state = env.reset()
+    state = env.reset()['state']
     state_shape = state.shape
     print('STATE SHAPE: ', state_shape)
 
@@ -181,7 +181,7 @@ def run(**cfg):
 
     log = LogsTFSummary(savedir)
 
-    state = env.reset()
+    state = env.reset()['state']
 
     start_time = time.time()
 

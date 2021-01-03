@@ -28,7 +28,7 @@ class VecGymEnv(BaseEnv):
         return state
 
     def reset(self):
-        return np.stack([self.reset_single_env(env) for env in self.envs])
+        return {'state': np.stack([self.reset_single_env(env) for env in self.envs])}
 
     def step(self,action):
         assert len(action) == len(self.envs), '%d %d'%(len(action),len(self.envs))

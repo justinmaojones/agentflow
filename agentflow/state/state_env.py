@@ -13,9 +13,11 @@ class StateEnv(BaseEnv):
         return self.env.action_shape()
 
     def reset(self):
-        frame = self.env.reset()
+        prior_output = self.env.reset()
         self.state.reset()
-        return self.state.update(frame)
+        output = {k: prior_output[k] for k in prior_output if k != 'state'}
+        output['state'] = self.state.update(prior_output['state'])
+        return output
 
     def step(self,*args,**kwargs):
         prior_step_output = self.env.step(*args,**kwargs)

@@ -23,7 +23,7 @@ def build_nested_feed_dict(inputs, placeholders):
     return feed_dict
 
 def test_agent(test_env, agent):
-    state = test_env.reset()
+    state = test_env.reset()['state']
     rt = None
     all_done = 0
     while np.mean(all_done) < 1:

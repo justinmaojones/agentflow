@@ -29,7 +29,7 @@ class VecConcaveFuncEnv(BaseEnv):
             done = done.ravel()
             self._steps = self._steps*(1-done) + reset_steps*done
         self.apply_boundary()
-        return self._state
+        return {'state': self._state}
 
     def compute_reward(self,state):
         return -(state**2).sum(axis=1)**0.5

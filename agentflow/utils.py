@@ -41,17 +41,21 @@ class LogsTFSummary(object):
                 tag=key,
                 simple_value=np.mean(val))
 
-    def append(self,key,val):
-        self._append(key,val)
+    def append(self,key,val,summary_only=True):
+        if summary_only:
+            self._append(key,np.mean(val))
+        else:
+            self._append(key,val)
+
         if np.size(val) > 1:
             for m in self._other_array_metrics:
                 k2 = key + '/' + m
                 v2 = self._other_array_metrics[m](val)
                 self._append(k2,v2)
 
-    def append_dict(self,inp):
+    def append_dict(self,inp,summary_only=True):
         for k in inp:
-            self.append(k,inp[k])
+            self.append(k,inp[k],summary_only)
 
     def stack(self,key=None):
         if key is None:
@@ -167,23 +171,23 @@ def load_multiple_experiments_as_arrays(resultsdir,allow_load_partial=False):
 def smooth(x,k=10.):
     return np.convolve(x,np.ones(int(k))*1./k)
 
-def plot_percentiles(x,y=None,label=None,smoothing=False):
+def plot_percentiles(x,y=None,label=None,smoothing=False,perc_low=10,perc_high=90):
     import matplotlib.pyplot as plt
     if y is None:
         y = x
         x = np.arange(len(y))
-    p10 = np.percentile(y,10,axis=1)
+    plow = np.percentile(y,perc_low,axis=1)
     mean = y.mean(axis=1)
-    p90 = np.percentile(y,90,axis=1)
+    phigh = np.percentile(y,perc_high,axis=1)
 
     if smoothing:
         f = lambda y: smooth(y)
-        p10 = f(p10)
+        plow = f(plow)
         mean = f(mean)
-        p90 = f(p90)
+        phigh = f(phigh)
         x = np.arange(len(mean))
 
-    plt.fill_between(x,p10,p90,alpha=0.25)
+    plt.fill_between(x,plow,phigh,alpha=0.25)
     plt.plot(x,mean,label=label)
 
 def get_hyperparameters(df_configs,threshold=0.9):

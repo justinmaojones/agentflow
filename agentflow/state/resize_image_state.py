@@ -11,12 +11,14 @@ class ResizeImageState(BaseState):
         self.flatten = flatten
         self.reset()
 
-    def update(self,frame):
+    def update(self, frame, reset_mask=None):
         n = len(frame)
         self._state = np.concatenate(
             [cv2.resize(frame[i],self.resized_shape)[None] for i in range(n)],
             axis=0
         )
+        while len(self._state.shape) < len(frame.shape):
+            self._state = self._state[...,None]
         return self.state()
 
     def state(self):
@@ -29,6 +31,6 @@ class ResizeImageState(BaseState):
 
 class ResizeImageStateEnv(StateEnv):
 
-    def __init__(self,env,**kwargs):
-        state = ResizeImageState(**kwargs)
+    def __init__(self,env,*args,**kwargs):
+        state = ResizeImageState(*args,**kwargs)
         super(ResizeImageStateEnv,self).__init__(env, state)

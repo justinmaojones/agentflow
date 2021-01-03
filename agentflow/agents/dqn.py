@@ -7,6 +7,7 @@ from ..tensorflow.ops import exponential_moving_average
 from ..tensorflow.ops import entropy_loss
 from ..tensorflow.ops import l2_loss
 from ..tensorflow.ops import onehot_argmax
+from ..tensorflow.ops import value_at_argmax 
 
 class DQN(object):
 
@@ -85,7 +86,6 @@ class DQN(object):
 
             with tf.variable_scope('Q',reuse=True):
                 Q_state2_eval = self.q_fn(inputs['state2'],training=False)
-                policy_state2_eval = onehot_argmax(Q_state2_eval)
 
             # target networks
             ema, ema_op, ema_vars_getter = exponential_moving_average(
@@ -95,7 +95,7 @@ class DQN(object):
                 Q_ema_state2 = self.q_fn(inputs['state2'],training=False)
 
             if self.double_q:
-                target_Q_state2 = tf.reduce_sum(Q_ema_state2*policy_state2_eval,axis=-1)
+                target_Q_state2 = value_at_argmax(Q_state2_eval, Q_ema_state2, axis=-1)
             else:
                 target_Q_state2 = tf.reduce_max(Q_ema_state2,axis=-1)
 
@@ -143,7 +143,6 @@ class DQN(object):
                 'losses_Q': losses_Q,
                 'policy_train': policy_train,
                 'policy_eval': policy_eval,
-                'policy_state2_eval': policy_state2_eval,
                 'Q_action_eval': Q_action_eval,
                 'Q_action_train': Q_action_train,
                 'Q_policy_eval': Q_policy_eval,

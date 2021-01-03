@@ -54,7 +54,7 @@ class TDLearningTestEnv(BaseEnv):
 
     def reset(self):
         self._t = 0
-        return self._build_state()
+        return {'state': self._build_state()}
 
     def _build_reward(self):
         if self._t % self.reward_freq == 0:

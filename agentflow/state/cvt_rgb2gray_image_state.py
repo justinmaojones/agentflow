@@ -10,7 +10,7 @@ class CvtRGB2GrayImageState(BaseState):
         self.flatten = flatten
         self.reset()
 
-    def update(self,frame,reset_mask=None):
+    def update(self, frame, reset_mask=None):
         n = len(frame)
         self._state = np.concatenate(
             [cv2.cvtColor(frame[i],cv2.COLOR_RGB2GRAY)[None,:,:,None] for i in range(n)],
