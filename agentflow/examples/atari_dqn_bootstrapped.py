@@ -65,6 +65,7 @@ from agentflow.utils import LogsTFSummary
 @click.option('--update_freq', default=1, type=int)
 @click.option('--n_steps_per_eval', default=1000, type=int)
 @click.option('--batchsize', default=64)
+@click.option('--log_flush_freq', default=100, type=int)
 @click.option('--savedir', default='results')
 @click.option('--seed',default=None, type=int)
 def run(**cfg):
@@ -192,6 +193,10 @@ def run(**cfg):
         for t in range(T):
             start_step_time = time.time()
 
+            if t % cfg['log_flush_freq'] == 0 and t > 0:
+                log.flush(step=t, verbose=True)
+                gc.collect()
+
             action_probs = agent.act_probs(state, mask)
 
             if len(replay_buffer) >= cfg['begin_learning_at_step']:
@@ -265,13 +270,12 @@ def run(**cfg):
                 log.append('test_ep_steps',t)
                 avg_test_ep_returns = np.mean(log['test_ep_returns'][-1:])
                 pb_input.append(('test_ep_returns', avg_test_ep_returns))
-                gc.collect()
+
             end_time = time.time()
             log.append('step_duration_sec',end_time-start_step_time)
             log.append('duration_cumulative',end_time-start_time)
 
             pb.add(1,pb_input)
-            log.flush(step=t)
 
     log.write(os.path.join(savedir,'log.h5'))
 

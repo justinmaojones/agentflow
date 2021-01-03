@@ -27,6 +27,7 @@ class LogsTFSummary(object):
             'l2norm': lambda x: np.sqrt(np.sum(np.square(x))),
             'max-min': lambda x: np.max(x.astype(float)) - np.min(x.astype(float)),
         }
+        self._log_filepath = os.path.join(self.savedir,'log.h5')
 
     def __getitem__(self, key):
         if key not in self.logs:
@@ -63,25 +64,38 @@ class LogsTFSummary(object):
         else:
             return np.stack(self.logs[key])
 
-    def flush(self, step=None):
+    def flush(self, step=None, verbose=False):
         self.summary_writer.add_summary(self.summary, step)
         self.summary_writer.flush()
         self.summary = tf.Summary()
+        self.write(self._log_filepath, verbose)
+        self.logs = {}
 
     def write(self, filepath, verbose=True):
         if verbose:
             print('WRITING H5 FILE TO: {filepath}'.format(**locals()))
-        with h5py.File(filepath, 'w') as f:
+        with h5py.File(filepath, 'a') as f:
             for key in sorted(self.logs):
+                data = np.array(self.logs[key])
+                key = key.replace('/','_')
                 if verbose:
-                    print('H5: %s %s'%(key,type(self.logs[key])))
-                try:
-                    f[key] = self.logs[key]
-                except:
-                    try:
-                        f[key] = np.concatenate(self.logs[key])
-                    except:
-                        pass
+                    print('H5: %s %s'%(key,str(data.shape)))
+                if key not in f:
+                    dataset = f.create_dataset(
+                        key, 
+                        data.shape, 
+                        dtype=data.dtype,
+                        chunks=data.shape,
+                        maxshape=tuple([None]+list(data.shape[1:]))
+                    )
+                    dataset[:] = data
+
+                else:
+                    dataset = f[key]
+                    n = len(f[key])
+                    m = len(data)
+                    f[key].resize(n + m,axis=0)
+                    f[key][n:] = data
 
 def load_hdf5(filepath):
     def load_data(f):
