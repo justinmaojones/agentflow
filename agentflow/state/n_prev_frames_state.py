@@ -1,30 +1,19 @@
 import numpy as np
+from .base_state import BaseState
 from .state_env import StateEnv
+from .utils import create_empty_state
+from .utils import shift_and_update_state
 
-def shift_and_update_state(state,frame):
-    ndim = state.ndim
-    T = state.shape[-1]
-    idx_prev = tuple([slice(None)]*(ndim-1) + [slice(0,T-1)])
-    idx_next = tuple([slice(None)]*(ndim-1) + [slice(1,T)])
-    idx_frame = tuple([slice(None)]*(ndim-1) + [0])
-    state[idx_next] = state[idx_prev]
-    state[idx_frame] = frame
-    return state
-
-def create_empty_state(frame,n_prev_frames):
-    shape = list(frame.shape) + [n_prev_frames]
-    return np.zeros(shape,dtype=frame.dtype)
-
-class NPrevFramesState(object):
+class NPrevFramesState(BaseState):
 
     def __init__(self,n_prev_frames=4,flatten=False):
         self.n_prev_frames = n_prev_frames
         self.flatten = flatten
-        self.reset()
+        super(NPrevFramesState, self).__init__()
 
     def reset(self,frame=None,**kwargs):
-        self._state = None
         self._new_shape = None
+        super(NPrevFramesState, self).reset(frame)
 
     def update(self,frame,reset_mask=None):
 
@@ -53,17 +42,5 @@ class NPrevFramesState(object):
 class NPrevFramesStateEnv(StateEnv):
 
     def __init__(self,env,**kwargs):
-        self.state = NPrevFramesState(**kwargs)
-        super(NPrevFramesStateEnv,self).__init__(env)
-
-    def reset(self):
-        frame = self.env.reset()
-        self.state.reset()
-        return self.state.update(frame)
-
-    def step(self,*args,**kwargs):
-        frame, reward, done, info = self.env.step(*args,**kwargs)
-        return self.state.update(frame,done), reward, done, info
-
-    def get_state(self):
-        return self.state.state()
+        state = NPrevFramesState(**kwargs)
+        super(NPrevFramesStateEnv,self).__init__(env, state)

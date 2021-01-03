@@ -111,6 +111,45 @@ def binarize(x,b):
     return tf.concat(y,axis=-1)
 
 def entropy_loss(logits,axis=-1):
+    n = len(logits.shape)
+    if axis < 0:
+        axis += n
     p = tf.nn.softmax(logits,axis=axis)
-    return tf.nn.softmax_cross_entropy_with_logits(labels=p,logits=logits)
+    return tf.nn.softmax_cross_entropy_with_logits(labels=p,logits=logits,dim=axis)
 
+def l2_loss(scope=None):
+    variables = []
+    for v in tf.trainable_variables(scope=scope):
+        variables.append(v)
+    return tf.reduce_sum([tf.nn.l2_loss(v) for v in variables])
+
+def onehot_argmax(x, axis=-1):
+    assert isinstance(axis, int)
+    n = len(x.shape)
+    if axis < 0:
+        axis = n + axis
+    indices = tf.argmax(x, axis=axis)
+    return tf.one_hot(indices, x.shape[axis], axis=axis)
+
+def value_at_argmax(x, y, axis=-1):
+    """
+    Returns the value of y at argmax index of x along provided axis.
+    """
+    assert isinstance(axis, int), 'axis must be an integer'
+    tf.assert_equal(tf.shape(x), tf.shape(y), message="shapes of x and y must match")
+    n = len(x.shape)
+    if axis < 0:
+        axis = n + axis
+    assert axis >= 0 and axis < n, 'invalid axis argument'
+    indices = tf.argmax(x, axis=axis)
+    if axis != n-1:
+        transpose = list(range(n))
+        transpose.pop(axis)
+        transpose.append(axis)
+        y = tf.transpose(y, transpose)
+    return tf.gather(y, tf.expand_dims(indices,axis=-1), axis=-1, batch_dims=n-1)[...,0]
+
+def not_trainable_getter(getter, name, shape, *args, **kwargs):
+    if 'trainable' in kwargs:
+        kwargs.pop('trainable')
+    return getter(name=name,shape=shape,trainable=False,*args,**kwargs)

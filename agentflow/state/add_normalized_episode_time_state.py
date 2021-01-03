@@ -1,7 +1,8 @@
 import numpy as np
+from .base_state import BaseState
 from .state_env import StateEnv
 
-class AddNormalizedEpisodeTimeState(object):
+class AddNormalizedEpisodeTimeState(BaseState):
 
     def __init__(self,flatten=False,ema_decay=0.99,scale=1,initial_estimate=1000):
         self.flatten = flatten
@@ -48,17 +49,5 @@ class AddNormalizedEpisodeTimeState(object):
 class AddNormalizedEpisodeTimeStateEnv(StateEnv):
 
     def __init__(self,env,**kwargs):
-        self.state = AddNormalizedEpisodeTimeState(**kwargs)
-        super(AddNormalizedEpisodeTimeStateEnv,self).__init__(env)
-
-    def reset(self):
-        frame = self.env.reset()
-        self.state.reset()
-        return self.state.update(frame)
-
-    def step(self,*args,**kwargs):
-        frame, reward, done, info = self.env.step(*args,**kwargs)
-        return self.state.update(frame,done), reward, done, info
-
-    def get_state(self):
-        return self.state.state()
+        state = AddNormalizedEpisodeTimeState(**kwargs)
+        super(AddNormalizedEpisodeTimeStateEnv,self).__init__(env, state)

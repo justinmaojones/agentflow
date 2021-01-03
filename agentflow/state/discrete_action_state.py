@@ -1,12 +1,11 @@
 import numpy as np
 from .state_env import StateEnv
 
-class DiscreteActionEnv(object):
+class DiscreteActionEnv(StateEnv):
 
     def __init__(self,env,axis=-1,**kwargs):
         self.env = env
         self.axis = axis
-        super(DiscreteActionEnv,self).__init__(env)
 
     def reset(self):
         return self.env.reset()
