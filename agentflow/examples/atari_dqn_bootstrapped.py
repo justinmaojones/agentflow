@@ -126,7 +126,7 @@ def run(**cfg):
     if cfg['buffer_type'] == 'prioritized':
         # prioritized experience replay
         replay_buffer = PrioritizedBufferMap(
-            max_length = cfg['buffer_size'],
+            max_length = cfg['buffer_size'] // cfg['n_envs'],
             alpha = cfg['prioritized_replay_alpha'],
             eps = cfg['prioritized_replay_eps'],
             default_priority = 1.0,
@@ -143,7 +143,7 @@ def run(**cfg):
 
     else:
         # Normal Buffer
-        replay_buffer = BufferMap(cfg['buffer_size'])
+        replay_buffer = BufferMap(cfg['buffer_size'] // cfg['n_envs'])
 
     # Delays publishing of records to the underlying replay buffer for n steps
     # then publishes the discounted n-step return
