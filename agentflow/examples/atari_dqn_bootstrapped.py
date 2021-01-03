@@ -65,7 +65,7 @@ from agentflow.utils import LogsTFSummary
 @click.option('--update_freq', default=1, type=int)
 @click.option('--n_steps_per_eval', default=1000, type=int)
 @click.option('--batchsize', default=64)
-@click.option('--log_flush_freq', default=100, type=int)
+@click.option('--log_flush_freq', default=1000, type=int)
 @click.option('--savedir', default='results')
 @click.option('--seed',default=None, type=int)
 def run(**cfg):
@@ -194,7 +194,7 @@ def run(**cfg):
             start_step_time = time.time()
 
             if t % cfg['log_flush_freq'] == 0 and t > 0:
-                log.flush(step=t, verbose=True)
+                log.flush(step=t)
                 gc.collect()
 
             action_probs = agent.act_probs(state, mask)
