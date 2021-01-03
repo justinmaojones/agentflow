@@ -1,5 +1,6 @@
 from .add_episode_time_state import AddEpisodeTimeStateEnv
 from .add_normalized_episode_time_state import AddNormalizedEpisodeTimeStateEnv 
+from .clipped_reward_env import ClippedRewardEnv
 from .crop_image_state import CropImageStateEnv
 from .cvt_rgb2gray_image_state import CvtRGB2GrayImageStateEnv
 from .discrete_action_state import DiscreteActionEnv

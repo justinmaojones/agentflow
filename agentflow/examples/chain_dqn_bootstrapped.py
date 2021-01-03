@@ -34,7 +34,7 @@ from agentflow.utils import LogsTFSummary
 @click.option('--double_q', default=True, type=bool)
 @click.option('--bootstrap_num_heads', default=16, type=int)
 @click.option('--bootstrap_mask_prob', default=0.5, type=float)
-@click.option('--bootstrap_prior_scale', default=0.05, type=float)
+@click.option('--bootstrap_prior_scale', default=1.0, type=float)
 @click.option('--bootstrap_random_prior', default=False, type=bool)
 @click.option('--hidden_dims', default=64, type=int)
 @click.option('--hidden_layers', default=4, type=int)
@@ -110,28 +110,10 @@ def run(**cfg):
         output = tf.layers.dense(h,action_shape*cfg['bootstrap_num_heads'])
         return tf.reshape(output,[-1,action_shape,cfg['bootstrap_num_heads']])
 
-    def q_prior_fn(state, training=False, **kwargs):
-        h = dense_net(
-            state,
-            cfg['hidden_dims'],
-            cfg['hidden_layers'],
-            batchnorm = cfg['batchnorm'],
-            training = training,
-            kernel_initializer = tf.keras.initializers.VarianceScaling(cfg['bootstrap_prior_scale']),
-        )
-        output = tf.layers.dense(
-            h,
-            action_shape*cfg['bootstrap_num_heads'],
-            kernel_initializer = tf.keras.initializers.RandomNormal(cfg['bootstrap_prior_scale']),
-        )
-        return tf.reshape(output,[-1,action_shape,cfg['bootstrap_num_heads']])
-
     agent = BootstrappedDQN(
         state_shape=state_shape[1:],
         num_actions=action_shape,
         q_fn=q_fn,
-        q_prior_fn=q_fn,
-        #q_prior_fn=q_prior_fn if cfg['bootstrap_random_prior'] else None,
         double_q=cfg['double_q'],
         num_heads=cfg['bootstrap_num_heads'],
         random_prior=cfg['bootstrap_random_prior'],

@@ -20,6 +20,8 @@ from agentflow.numpy.ops import gumbel_softmax_noise
 from agentflow.numpy.schedules import ExponentialDecaySchedule 
 from agentflow.numpy.schedules import LinearAnnealingSchedule
 from agentflow.state import NPrevFramesStateEnv
+from agentflow.state import PrevEpisodeReturnsEnv 
+from agentflow.state import PrevEpisodeLengthsEnv 
 from agentflow.state import RandomOneHotMaskEnv 
 from agentflow.tensorflow.nn import dense_net
 from agentflow.tensorflow.ops import normalize_ema
@@ -36,6 +38,7 @@ from agentflow.utils import LogsTFSummary
 @click.option('--double_q', default=True, type=bool)
 @click.option('--bootstrap_num_heads', default=16, type=int)
 @click.option('--bootstrap_mask_prob', default=0.5, type=float)
+@click.option('--bootstrap_prior_scale', default=1.0, type=float)
 @click.option('--bootstrap_random_prior', default=False, type=bool)
 @click.option('--network_scale', default=1, type=float)
 @click.option('--batchnorm', default=False, type=bool)
@@ -84,6 +87,8 @@ def run(**cfg):
 
     # environment
     env = dqn_atari_paper_env(cfg['env_id'], n_envs=cfg['n_envs'], n_prev_frames=cfg['n_prev_frames'])
+    env = PrevEpisodeReturnsEnv(env)
+    env = PrevEpisodeLengthsEnv(env)
     env = RandomOneHotMaskEnv(env, dim=cfg['bootstrap_num_heads'])
     test_env = dqn_atari_paper_env(cfg['env_id'], n_envs=1, n_prev_frames=cfg['n_prev_frames'])
 
@@ -110,6 +115,7 @@ def run(**cfg):
         double_q=cfg['double_q'],
         num_heads=cfg['bootstrap_num_heads'],
         random_prior=cfg['bootstrap_random_prior'],
+        prior_scale=cfg['bootstrap_prior_scale'],
     )
 
     for v in tf.global_variables():
@@ -175,7 +181,13 @@ def run(**cfg):
 
         T = cfg['num_steps']
 
-        pb = tf.keras.utils.Progbar(T,stateful_metrics=['test_ep_returns'])
+        pb = tf.keras.utils.Progbar(T,stateful_metrics=[
+            'Q_policy_eval',
+            'test_ep_returns',
+            'train_ep_length',
+            'train_ep_return',
+            'mask',
+        ])
         for t in range(T):
             start_step_time = time.time()
 
@@ -214,7 +226,10 @@ def run(**cfg):
             log.append('prev_episode_return',step_output['prev_episode_return'])
             log.append('prev_episode_length',step_output['prev_episode_length'])
 
-            pb_input = []
+            pb_input = [
+                ('train_ep_return', step_output['prev_episode_return'].mean()),
+                ('train_ep_length', step_output['prev_episode_length'].mean()),
+            ]
             if t >= cfg['begin_learning_at_step'] and t % cfg['update_freq'] == 0:
 
                 learning_rate = learning_rate_schedule(t)
@@ -242,6 +257,7 @@ def run(**cfg):
                         replay_buffer.update_priorities(update_outputs['td_error'])
 
                 log.append_dict(update_outputs)
+                pb_input.append(('Q_policy_eval', update_outputs['Q_policy_eval'].mean()))
 
             if t % cfg['n_steps_per_eval'] == 0 and t > 0:
                 log.append('test_ep_returns',test_agent(test_env,agent),summary_only=False)
