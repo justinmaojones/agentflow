@@ -1,4 +1,5 @@
 import click
+import gc
 import h5py
 import numpy as np
 import os
@@ -264,6 +265,7 @@ def run(**cfg):
                 log.append('test_ep_steps',t)
                 avg_test_ep_returns = np.mean(log['test_ep_returns'][-1:])
                 pb_input.append(('test_ep_returns', avg_test_ep_returns))
+                gc.collect()
             end_time = time.time()
             log.append('step_duration_sec',end_time-start_step_time)
             log.append('duration_cumulative',end_time-start_time)
