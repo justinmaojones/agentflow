@@ -9,7 +9,7 @@ do
         --bootstrap_num_heads=32 \
         --bootstrap_prior_scale=1.0 \
         --bootstrap_random_prior=True \
-        --buffer_size=1000000 \
+        --buffer_size=200000 \
         --buffer_type=normal \
         --double_q=True \
         --ema_decay=0.95 \
