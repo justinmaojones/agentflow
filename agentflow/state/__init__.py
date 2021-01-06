@@ -12,3 +12,4 @@ from .random_onehot_mask import RandomOneHotMaskEnv
 from .resize_image_state import ResizeImageStateEnv
 from .reward_forward_filter import RewardForwardFilterEnv
 from .tanh_action_env import TanhActionEnv
+from .test_agent_env import TestAgentEnv

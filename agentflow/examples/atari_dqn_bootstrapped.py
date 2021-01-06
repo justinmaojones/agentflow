@@ -24,6 +24,7 @@ from agentflow.state import NPrevFramesStateEnv
 from agentflow.state import PrevEpisodeReturnsEnv 
 from agentflow.state import PrevEpisodeLengthsEnv 
 from agentflow.state import RandomOneHotMaskEnv 
+from agentflow.state import TestAgentEnv 
 from agentflow.tensorflow.nn import dense_net
 from agentflow.tensorflow.ops import normalize_ema
 from agentflow.utils import LogsTFSummary
@@ -93,6 +94,7 @@ def run(**cfg):
     env = PrevEpisodeLengthsEnv(env)
     env = RandomOneHotMaskEnv(env, dim=cfg['bootstrap_num_heads'])
     test_env = dqn_atari_paper_env(cfg['env_id'], n_envs=1, n_prev_frames=cfg['n_prev_frames'])
+    test_env = TestAgentEnv(test_env)
 
     # state and action shapes
     state = env.reset()['state']
@@ -181,7 +183,7 @@ def run(**cfg):
     with tf.Session(config=tf.ConfigProto(allow_soft_placement=True)) as sess:
         sess.run(tf.global_variables_initializer())
 
-        T = cfg['num_steps']
+        T = cfg['num_steps'] // cfg['n_envs']
 
         pb = tf.keras.utils.Progbar(T,stateful_metrics=[
             'Q_policy_eval',
@@ -190,12 +192,16 @@ def run(**cfg):
             'train_ep_return',
             'mask',
         ])
+        frame_counter = 0
         for t in range(T):
             start_step_time = time.time()
 
             if t % cfg['log_flush_freq'] == 0 and t > 0:
                 log.flush(step=t)
                 gc.collect()
+
+            frame_counter += cfg['n_envs']
+            log.append('frame', frame_counter)
 
             action_probs = agent.act_probs(state, mask)
 
@@ -266,8 +272,11 @@ def run(**cfg):
                 pb_input.append(('Q_policy_eval', update_outputs['Q_policy_eval'].mean()))
 
             if t % cfg['n_steps_per_eval'] == 0 and t > 0:
-                log.append('test_ep_returns',test_agent(test_env,agent),summary_only=False)
-                log.append('test_ep_steps',t)
+                test_output = test_env.test(agent)
+                log.append('test_ep_returns', test_output['return'], summary_only=False)
+                log.append('test_ep_length', test_output['length'], summary_only=False)
+                log.append('test_ep_t', t)
+                log.append('test_ep_steps', frame_counter)
                 avg_test_ep_returns = np.mean(log['test_ep_returns'][-1:])
                 pb_input.append(('test_ep_returns', avg_test_ep_returns))
 
