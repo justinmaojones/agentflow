@@ -183,7 +183,7 @@ def run(**cfg):
     with tf.Session(config=tf.ConfigProto(allow_soft_placement=True)) as sess:
         sess.run(tf.global_variables_initializer())
 
-        T = cfg['num_steps'] // cfg['n_envs']
+        T = cfg['num_steps']
 
         pb = tf.keras.utils.Progbar(T,stateful_metrics=[
             'Q_policy_eval',
