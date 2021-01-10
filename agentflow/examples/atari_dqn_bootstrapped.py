@@ -42,6 +42,7 @@ from agentflow.utils import LogsTFSummary
 @click.option('--bootstrap_mask_prob', default=0.5, type=float)
 @click.option('--bootstrap_prior_scale', default=1.0, type=float)
 @click.option('--bootstrap_random_prior', default=False, type=bool)
+@click.option('--bootstrap_explore_before_learning', default=False, type=bool)
 @click.option('--network_scale', default=1, type=float)
 @click.option('--batchnorm', default=False, type=bool)
 @click.option('--buffer_type', default='normal', type=click.Choice(['normal','prioritized','delayed','delayed_prioritized']))
@@ -205,7 +206,7 @@ def run(**cfg):
 
             action_probs = agent.act_probs(state, mask)
 
-            if len(replay_buffer) >= cfg['begin_learning_at_step']:
+            if len(replay_buffer) >= cfg['begin_learning_at_step'] or cfg['bootstrap_explore_before_learning']:
                 if cfg['noise'] == 'eps_greedy':
                     action = eps_greedy_noise(action_probs, eps=cfg['noise_eps'])
                 elif cfg['noise'] == 'gumbel_softmax':
