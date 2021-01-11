@@ -58,6 +58,7 @@ from agentflow.utils import LogsTFSummary
 @click.option('--prioritized_replay_default_done_priority', default=5, type=float)
 @click.option('--begin_learning_at_step', default=200)
 @click.option('--learning_rate', default=1e-4)
+@click.option('--learning_rate_final', default=0.0, type=float)
 @click.option('--learning_rate_decay', default=0.99995)
 @click.option('--gamma', default=0.99)
 @click.option('--weight_decay', default=1e-4)
@@ -161,7 +162,7 @@ def run(**cfg):
     # Annealed parameters
     learning_rate_schedule = ExponentialDecaySchedule(
         initial_value = cfg['learning_rate'],
-        final_value = 0.0,
+        final_value = cfg['learning_rate_final'],
         decay_rate = cfg['learning_rate_decay'],
         begin_at_step = cfg['begin_learning_at_step']
     )
