@@ -266,7 +266,7 @@ def run(**cfg):
                             gamma=cfg['gamma'],
                             weight_decay=cfg['weight_decay'],
                             entropy_loss_weight=entropy_loss_weight,
-                            outputs=['td_error','Q_policy_eval'],
+                            outputs=['td_error','Q_policy_eval','loss'],
                             **sample)
 
                     if cfg['buffer_type'] == 'prioritized' and not cfg['prioritized_replay_simple']:
