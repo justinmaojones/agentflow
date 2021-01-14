@@ -34,8 +34,10 @@ from agentflow.utils import LogsTFSummary
 @click.option('--n_envs', default=1)
 @click.option('--n_prev_frames', default=4)
 @click.option('--ema_decay', default=0.95, type=float)
-@click.option('--noise', default='eps_greedy', type=click.Choice(['eps_greedy','gumbel_softmax']))
-@click.option('--noise_eps', default=0.01, type=float)
+@click.option('--noise_type', default='eps_greedy', type=click.Choice(['eps_greedy','gumbel_softmax']))
+@click.option('--noise_scale_decay', default=0.99999, type=float)
+@click.option('--noise_scale_init', default=1.0, type=float)
+@click.option('--noise_scale_final', default=0.01, type=float)
 @click.option('--noise_temperature', default=1.0, type=float)
 @click.option('--double_q', default=True, type=bool)
 @click.option('--bootstrap_num_heads', default=16, type=int)
@@ -170,8 +172,15 @@ def run(**cfg):
     entropy_loss_weight_schedule = ExponentialDecaySchedule(
         initial_value = cfg['entropy_loss_weight'],
         final_value = 0.0,
-        decay_rate = cfg['learning_rate_decay'],
+        decay_rate = cfg['entropy_loss_weight_decay'],
         begin_at_step = cfg['begin_learning_at_step']
+    )
+
+    noise_scale_schedule = ExponentialDecaySchedule(
+        initial_value = cfg['noise_scale_init'],
+        final_value = cfg['noise_scale_final'],
+        decay_rate = cfg['noise_scale_decay'],
+        begin_at_step = 0, 
     )
 
     log = LogsTFSummary(savedir)
@@ -208,12 +217,12 @@ def run(**cfg):
             action_probs = agent.act_probs(state, mask)
 
             if len(replay_buffer) >= cfg['begin_learning_at_step'] or cfg['bootstrap_explore_before_learning']:
-                if cfg['noise'] == 'eps_greedy':
-                    action = eps_greedy_noise(action_probs, eps=cfg['noise_eps'])
-                elif cfg['noise'] == 'gumbel_softmax':
+                if cfg['noise_type'] == 'eps_greedy':
+                    action = eps_greedy_noise(action_probs, eps=noise_scale_schedule(t))
+                elif cfg['noise_type'] == 'gumbel_softmax':
                     action = gumbel_softmax_noise(action_probs, temperature=cfg['noise_temperature'])
                 else:
-                    raise NotImplementedError("unknown noise type %s" % cfg['noise'])
+                    raise NotImplementedError("unknown noise type %s" % cfg['noise_type'])
             else:
                 # completely random action choices
                 action = eps_greedy_noise(action_probs, eps=1.0)
