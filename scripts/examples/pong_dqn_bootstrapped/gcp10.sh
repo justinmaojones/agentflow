@@ -17,7 +17,7 @@ do
         --enable_n_step_return_publisher=True \
         --entropy_loss_weight=1e-5 \
         --env_id=PongDeterministic-v4 \
-        --learning_rate=5e-5 \
+        --learning_rate=1e-4 \
         --learning_rate_final=1e-5 \
         --learning_rate_decay=0.9999995 \
         --n_envs=64 \
