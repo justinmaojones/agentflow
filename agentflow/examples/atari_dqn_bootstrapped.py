@@ -276,7 +276,6 @@ def run(**cfg):
                 pb_input.append(('Q_policy_eval', update_outputs['Q_policy_eval'].mean()))
 
             if t % cfg['n_steps_per_eval'] == 0 and t > 0:
-                log.append_dict(agent.pnorms())
                 test_output = test_env.test(agent)
                 log.append('test_ep_returns', test_output['return'], summary_only=False)
                 log.append('test_ep_length', test_output['length'], summary_only=False)
