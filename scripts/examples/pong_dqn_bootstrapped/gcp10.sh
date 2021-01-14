@@ -25,7 +25,7 @@ do
         --n_step_return=4 \
         --network_scale=1 \
         --noise=eps_greedy \
-        --noise_eps=0.05 \
+        --noise_eps=0.2 \
         --num_steps=10000000 \
         --prioritized_replay_simple=True \
         --weight_decay=1e-4 \
