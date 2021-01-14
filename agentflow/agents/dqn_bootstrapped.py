@@ -166,6 +166,7 @@ class BootstrappedDQN(object):
             )
 
             losses_Q = tf.reduce_sum(losses_Q_multihead*inputs['mask'], axis=-1)
+            losses_Q /= self.num_heads # gradient normalization 
             assert losses_Q.shape == tf.TensorShape(None)
 
             # entropy regularization
