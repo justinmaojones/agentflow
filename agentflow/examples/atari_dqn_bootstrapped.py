@@ -35,7 +35,7 @@ from agentflow.utils import LogsTFSummary
 @click.option('--n_prev_frames', default=4)
 @click.option('--ema_decay', default=0.95, type=float)
 @click.option('--noise_type', default='eps_greedy', type=click.Choice(['eps_greedy','gumbel_softmax']))
-@click.option('--noise_scale_decay', default=0.99999, type=float)
+@click.option('--noise_scale_anneal_steps', default=int(1e6), type=int)
 @click.option('--noise_scale_init', default=1.0, type=float)
 @click.option('--noise_scale_final', default=0.01, type=float)
 @click.option('--noise_temperature', default=1.0, type=float)
@@ -176,10 +176,10 @@ def run(**cfg):
         begin_at_step = cfg['begin_learning_at_step']
     )
 
-    noise_scale_schedule = ExponentialDecaySchedule(
+    noise_scale_schedule = LinearAnnealingSchedule(
         initial_value = cfg['noise_scale_init'],
         final_value = cfg['noise_scale_final'],
-        decay_rate = cfg['noise_scale_decay'],
+        annealing_steps = cfg['noise_scale_anneal_steps'],
         begin_at_step = 0, 
     )
 
