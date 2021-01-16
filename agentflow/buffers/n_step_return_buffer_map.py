@@ -2,8 +2,74 @@ import numpy as np
 from agentflow.buffers.buffer_map import BufferMap
 from collections import deque
 
-class NStepReturnPublisher(object):
+class NStepReturnBuffer(object):
     
+    def __init__(self,
+            n_steps=1,
+            gamma=0.99,
+            reward_key="reward",
+            done_indicator_key="done",
+            delayed_keys=['state2'],
+            ):
+
+        self._n_steps = n_steps
+        self._gamma = gamma
+        self._reward_key = reward_key
+        self._done_indicator_key = done_indicator_key
+        self._delayed_keys = delayed_keys
+        self._delayed_buffer = BufferMap(n_steps)
+        self._kwargs_queue = deque()
+        self._returns = None
+        self._dones = None
+        self._discounts = gamma**np.arange(n_steps)[:,None]
+
+        self._delayed_data = None
+        self._delayed_kwargs = None
+
+    def compute_returns_and_dones(self):
+        rewards = self._delayed_buffer._buffers[self._reward_key].tail(self._n_steps)
+        dones = self._delayed_buffer._buffers[self._done_indicator_key].tail(self._n_steps)
+        dones_shift_right_one = np.roll(dones,1,axis=0)
+        dones_shift_right_one[0] = 0
+        mask = (1-np.maximum.accumulate(dones_shift_right_one,axis=0))
+        self.mask = mask
+        returns = np.sum(rewards*self._discounts*mask,axis=0)
+        return_dones = dones.max(axis=0)
+        return returns, return_dones
+
+    def full(self):
+       return len(self._delayed_buffer) == self._n_steps
+
+    def append(self,data,**kwargs):
+        self._delayed_buffer.append(data)
+        self._kwargs_queue.append(kwargs)
+        if self.full():
+            returns, dones = self.compute_returns_and_dones()
+            data_to_publish = {
+                self._reward_key: returns,
+                self._done_indicator_key: dones
+            }
+            for k in data:
+                if k not in data_to_publish and k not in self._delayed_keys:
+                    data_to_publish[k] = self._delayed_buffer._buffers[k].get(0)
+            for k in self._delayed_keys:
+                data_to_publish[k] = data[k] 
+            delayed_kwargs = self._kwargs_queue.popleft()
+
+            self._delayed_data = data_to_publish
+            self._delayed_kwargs = delayed_kwargs
+
+    def latest_data(self):
+        if self.full():
+            return self._delayed_data, self._delayed_kwargs
+        else:
+            raise Exception("buffer must be full to publish latest data")
+
+    def __len__(self):
+        return len(self._delayed_buffer)
+
+class NStepReturnPublisher(object):
+
     def __init__(self,
             buffer_map,
             n_steps=1,
@@ -17,49 +83,19 @@ class NStepReturnPublisher(object):
             raise TypeError("buffer_map must be a type of BufferMap")
 
         self._buffer_map = buffer_map
-        self._n_steps = n_steps
-        self._gamma = gamma
-        self._reward_key = reward_key
-        self._done_indicator_key = done_indicator_key
-        self._delayed_keys = delayed_keys
-        self._delayed_buffer = BufferMap(n_steps)
-        self._kwargs_queue = deque()
-        self._returns = None
-        self._dones = None
-        self._discounts = gamma**np.arange(n_steps)[:,None]
+        self._n_step_return_buffer = NStepReturnBuffer(
+                n_steps=n_steps, 
+                gamma=gamma, 
+                reward_key=reward_key,
+                done_indicator_key=done_indicator_key,
+                delayed_keys=delayed_keys,
+            )
 
-    def compute_returns_and_dones(self):
-        rewards = self._delayed_buffer._buffers[self._reward_key].tail(self._n_steps)
-        dones = self._delayed_buffer._buffers[self._done_indicator_key].tail(self._n_steps)
-        dones_shift_right_one = np.roll(dones,1,axis=0)
-        dones_shift_right_one[0] = 0
-        mask = (1-np.maximum.accumulate(dones_shift_right_one,axis=0))
-        self.mask = mask
-        returns = np.sum(rewards*self._discounts*mask,axis=0)
-        return_dones = dones.max(axis=0)
-        return returns, return_dones
-
-    def append(self,data,**kwargs):
-        self._delayed_buffer.append(data)
-        self._kwargs_queue.append(kwargs)
-        if len(self._delayed_buffer) == self._n_steps:
-            returns, dones = self.compute_returns_and_dones()
-            data_to_publish = {
-                self._reward_key: returns,
-                self._done_indicator_key: dones
-            }
-            for k in data:
-                if k not in data_to_publish and k not in self._delayed_keys:
-                    data_to_publish[k] = self._delayed_buffer._buffers[k].get(0)
-            for k in self._delayed_keys:
-                data_to_publish[k] = data[k] 
-            delayed_kwargs = self._kwargs_queue.popleft()
-            self._buffer_map.append(data_to_publish,**delayed_kwargs)
-
-        elif len(self._delayed_buffer) >= self._n_steps:
-            raise Exception("should never get here") 
-        else:
-            pass # nothing to append
+    def append(self, data, **kwargs):
+        self._n_step_return_buffer.append(data, **kwargs)
+        if self._n_step_return_buffer.full():
+            delayed_data, delayed_kwargs = self._n_step_return_buffer.latest_data() 
+            self._buffer_map.append(delayed_data, **delayed_kwargs)
 
     def __len__(self):
         return len(self._buffer_map)
@@ -72,7 +108,6 @@ class NStepReturnPublisher(object):
 
     def priorities(self):
         return self._buffer_map.priorities()
-
 
 if __name__ == '__main__':
     import unittest
@@ -122,7 +157,7 @@ if __name__ == '__main__':
             buf_state = buf._buffers['state']._buffer[:len(buf)]
             buf_state2 = buf._buffers['state2']._buffer[:len(buf)]
             buf_action = buf._buffers['action']._buffer[:len(buf)]
-            buf_priority = buf._sum_tree
+            buf_priority = buf._sumtree
             for t in range(len(buf)):
                 R = np.zeros(B)
                 D = np.zeros(B)

@@ -87,7 +87,6 @@ def run(**cfg):
     env = RandomOneHotMaskEnv(env, dim=cfg['bootstrap_num_heads'])
     test_env = VecGymEnv('CartPole-v1', n_envs=1)
     test_env = NPrevFramesStateEnv(test_env, n_prev_frames=cfg['n_prev_frames'], flatten=True)
-    test_env = RandomOneHotMaskEnv(test_env, dim=cfg['bootstrap_num_heads'])
 
     # state and action shapes
     state = env.reset()['state']

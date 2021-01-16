@@ -31,6 +31,7 @@ from agentflow.utils import LogsTFSummary
 
 @click.option('--env_id', default='PongDeterministic-v4', type=str)
 @click.option('--num_steps', default=30000, type=int)
+@click.option('--num_frames_max', default=None, type=int)
 @click.option('--n_envs', default=1)
 @click.option('--n_prev_frames', default=4)
 @click.option('--ema_decay', default=0.95, type=float)
@@ -49,7 +50,6 @@ from agentflow.utils import LogsTFSummary
 @click.option('--batchnorm', default=False, type=bool)
 @click.option('--buffer_type', default='normal', type=click.Choice(['normal','prioritized','delayed','delayed_prioritized']))
 @click.option('--buffer_size', default=30000, type=int)
-@click.option('--enable_n_step_return_publisher', default=True, type=bool)
 @click.option('--n_step_return', default=8, type=int)
 @click.option('--prioritized_replay_alpha', default=0.6, type=float)
 @click.option('--prioritized_replay_beta0', default=0.4, type=float)
@@ -103,9 +103,8 @@ def run(**cfg):
     # state and action shapes
     state = env.reset()['state']
     state_shape = state.shape
-    print('STATE SHAPE: ', state_shape)
-
     action_shape = env.n_actions()
+    print('STATE SHAPE: ', state_shape)
     print('ACTION SHAPE: ', action_shape)
 
     # build agent
@@ -154,12 +153,11 @@ def run(**cfg):
 
     # Delays publishing of records to the underlying replay buffer for n steps
     # then publishes the discounted n-step return
-    if cfg['enable_n_step_return_publisher']:
-        replay_buffer = NStepReturnPublisher(
-            replay_buffer,
-            n_steps=cfg['n_step_return'],
-            gamma=cfg['gamma'],
-        )
+    replay_buffer = NStepReturnPublisher(
+        replay_buffer,
+        n_steps=cfg['n_step_return'],
+        gamma=cfg['gamma'],
+    )
 
     # Annealed parameters
     learning_rate_schedule = ExponentialDecaySchedule(
@@ -204,6 +202,7 @@ def run(**cfg):
             'mask',
         ])
         frame_counter = 0
+        update_counter = 0
         for t in range(T):
             start_step_time = time.time()
 
@@ -211,8 +210,6 @@ def run(**cfg):
                 log.flush(step=t)
                 gc.collect()
 
-            frame_counter += cfg['n_envs']
-            log.append('frame', frame_counter)
 
             action_probs = agent.act_probs(state, mask)
 
@@ -277,6 +274,7 @@ def run(**cfg):
                             entropy_loss_weight=entropy_loss_weight,
                             outputs=['td_error','Q_policy_eval','loss'],
                             **sample)
+                    update_counter += 1
 
                     if cfg['buffer_type'] == 'prioritized' and not cfg['prioritized_replay_simple']:
                         replay_buffer.update_priorities(update_outputs['td_error'])
@@ -294,10 +292,18 @@ def run(**cfg):
                 pb_input.append(('test_ep_returns', avg_test_ep_returns))
 
             end_time = time.time()
+            frame_counter += cfg['n_envs']
+            log.append('step', t+1)
+            log.append('frame', frame_counter)
+            log.append('update', update_counter)
             log.append('step_duration_sec',end_time-start_step_time)
             log.append('duration_cumulative',end_time-start_time)
 
             pb.add(1,pb_input)
+
+            if cfg['num_frames_max'] is not None and frame_counter >= cfg['num_frames_max']:
+                print("Stopping program because frame_counter=%0.0f has exceeded num_frames_max=%0.0f" % (frame_counter, cfg['num_frames_max']))
+                break
 
     log.write(os.path.join(savedir,'log.h5'))
 

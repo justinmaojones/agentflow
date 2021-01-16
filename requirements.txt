@@ -9,6 +9,7 @@ numpy==1.16.4
 pandas
 pyyaml
 opencv-python
+ray[rllib]
 scikit-learn
 seaborn
 starr
