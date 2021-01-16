@@ -428,7 +428,7 @@ def run(**cfg):
     T = cfg['num_steps']
     frame_counter = 0
     pb = tf.keras.utils.Progbar(T, stateful_metrics=['frames'])
-    while t < T and frame_counter < cfg['num_frames_max']:
+    while t < T and (cfg['num_frames_max'] is None or frame_counter < cfg['num_frames_max']):
         start_step_time = time.time()
 
         # add update op
