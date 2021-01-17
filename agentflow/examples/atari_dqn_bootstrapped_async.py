@@ -165,6 +165,10 @@ def run(**cfg):
                 begin_at_step = 0, 
             )
 
+            self._set_weights_counter = 0
+            self._name = 'Runner'
+
+
         def bootstrap_mask(self):
             bootstrap_mask_probs = (1-cfg['bootstrap_mask_prob'],cfg['bootstrap_mask_prob'])
             bootstrap_mask_shape = (len(state),cfg['bootstrap_num_heads'])
@@ -217,6 +221,8 @@ def run(**cfg):
 
         def set_weights(self, weights):
             self.variables.set_weights(weights)
+            self._set_weights_counter += 1
+            self.log.append.remote('set_weights/' + self._name, self._set_weights_counter)
 
     @ray.remote(num_cpus=1)
     class TestRunner(object):
@@ -232,15 +238,22 @@ def run(**cfg):
             self.variables = ray.experimental.tf_utils.TensorFlowVariables(
                     self.agent.outputs['loss'], self.sess)
 
+            self._set_weights_counter = 0
+            self._name = 'TestRunner'
+
         def test(self, t, frame_counter):
             test_output = self.env.test(self.agent, self.sess)
-            self.log.append.remote('test_ep_returns', test_output['return'], summary_only=False)
-            self.log.append.remote('test_ep_length', test_output['length'], summary_only=False)
-            self.log.append.remote('test_ep_t', t)
-            self.log.append.remote('test_ep_steps', frame_counter)
+            self.log.append_dict.remote({
+                'test_ep_returns': test_output['return'],
+                'test_ep_length': test_output['length'],
+                'test_ep_t': t,
+                'test_ep_steps': frame_counter,
+            })
 
         def set_weights(self, weights):
             self.variables.set_weights(weights)
+            self._set_weights_counter += 1
+            self.log.append.remote('set_weights/' + self._name, self._set_weights_counter)
 
 
     @ray.remote(num_cpus=1)
@@ -278,6 +291,10 @@ def run(**cfg):
 
         def append(self, data):
             self.replay_buffer.append(data)
+            self.log.append_dict.remote({
+                'replay_buffer_size': len(self.replay_buffer),
+                'replay_buffer_frames': len(self.replay_buffer)*cfg['n_envs'],
+                })
 
         def sample(self):
             if cfg['buffer_type'] == 'prioritized':
@@ -296,20 +313,15 @@ def run(**cfg):
     @ray.remote(num_cpus=1, num_gpus=cfg['n_gpus'])
     class ParameterServer(object):
 
+        import tensorflow as tf
+        import ray.experimental.tf_utils
+
         def __init__(self, log):
 
             self.log = log
 
             # build agent
-            self.agent = BootstrappedDQN(
-                state_shape=state_shape[1:],
-                num_actions=action_shape,
-                q_fn=q_fn,
-                double_q=cfg['double_q'],
-                num_heads=cfg['bootstrap_num_heads'],
-                random_prior=cfg['bootstrap_random_prior'],
-                prior_scale=cfg['bootstrap_prior_scale'],
-            )
+            self.agent = build_agent()
             self.sess = tf.Session(config=tf.ConfigProto(allow_soft_placement=True))
             self.sess.run(tf.global_variables_initializer())
             self.variables = ray.experimental.tf_utils.TensorFlowVariables(
@@ -432,11 +444,11 @@ def run(**cfg):
 
         # init and update weights periodically
         if t % cfg['runner_update_freq'] == 0 and frame_counter > cfg['begin_learning_at_step']:
-            update_runner_weights_task.run()
+            ray.get(update_runner_weights_task.run())
 
         # evaluate
         if t % cfg['n_steps_per_eval'] == 0 and t > 0:
-            test_runner.test.remote(t, frame_counter)
+            ray.get(test_runner.test.remote(t, frame_counter))
 
         ready_op_list, _ = ray.wait(list(ops))
         for op_id in ready_op_list:

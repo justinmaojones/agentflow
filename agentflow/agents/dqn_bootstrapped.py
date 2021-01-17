@@ -67,12 +67,11 @@ class BootstrappedDQN(object):
 
             # inputs
             inputs = {
-                'state': tf.placeholder(tf.float32,shape=tuple([None]+self.state_shape)),
-                'action': tf.placeholder(tf.float32,shape=[None, self.num_actions]),
-                'reward': tf.placeholder(tf.float32,shape=(None,)),
-                'returns': tf.placeholder(tf.float32,shape=(None,)),
-                'done': tf.placeholder(tf.float32,shape=(None,)),
-                'state2': tf.placeholder(tf.float32,shape=tuple([None]+self.state_shape)),
+                'state': tf.placeholder(tf.float32,shape=tuple([None]+self.state_shape), name='state'),
+                'action': tf.placeholder(tf.float32,shape=[None, self.num_actions], name='action'),
+                'reward': tf.placeholder(tf.float32,shape=(None,), name='reward'),
+                'done': tf.placeholder(tf.float32,shape=(None,), name='done'),
+                'state2': tf.placeholder(tf.float32,shape=tuple([None]+self.state_shape), name='state2'),
                 'gamma': tf.placeholder(tf.float32),
                 'learning_rate': tf.placeholder(tf.float32),
                 'ema_decay': tf.placeholder(tf.float32),
@@ -248,7 +247,7 @@ class BootstrappedDQN(object):
         session = session or tf.get_default_session()
         return session.run(self._pnorms)
 
-    def update(self,state,action,reward,done,state2,mask,gamma=0.99,learning_rate=1.,ema_decay=0.999,weight_decay=0.1,importance_weight=None,entropy_loss_weight=0.0,session=None,outputs=['td_error'],returns=None):
+    def update(self,state,action,reward,done,state2,mask,gamma=0.99,learning_rate=1.,ema_decay=0.999,weight_decay=0.1,importance_weight=None,entropy_loss_weight=0.0,session=None,outputs=['td_error']):
         session = session or tf.get_default_session()
         if importance_weight is None:
             importance_weight = np.ones_like(reward)
