@@ -132,13 +132,6 @@ def run(**cfg):
         )
 
     @ray.remote(num_cpus=1)
-    class RemoteLogsTFSummary(LogsTFSummary):
-        import gc
-        def flush(self, step):
-            super(RemoteLogsTFSummary, self).flush(step)
-            gc.collect()
-
-    @ray.remote(num_cpus=1)
     class Runner(object):
 
         import tensorflow as tf
@@ -403,6 +396,7 @@ def run(**cfg):
             return [runner.set_weights.remote(weights) for runner in runners]
 
     print("BUILD ACTORS")
+    RemoteLogsTFSummary = ray.remote(LogsTFSummary)
     log = RemoteLogsTFSummary.remote(savedir)
     runners = [Runner.remote(env, log) for i in range(cfg['n_runners'])]
     test_runner = TestRunner.remote(test_env, log)
