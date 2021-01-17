@@ -54,6 +54,10 @@ class LogsTFSummary(object):
                 v2 = self._other_array_metrics[m](val)
                 self._append(k2,v2)
 
+    def append_seq(self, key, vals):
+        for i in range(len(vals)):
+            self.append(key, vals[i])
+
     def append_dict(self,inp,summary_only=True):
         for k in inp:
             self.append(k,inp[k],summary_only)

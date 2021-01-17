@@ -246,8 +246,8 @@ def run(**cfg):
                 'test_ep_length': test_output['length'],
                 'test_ep_t': t,
                 'test_ep_steps': frame_counter,
-                'test_Q_policy_eval': test_output['Q_policy_eval'].mean(axis=1)
             })
+            log.append_seq.remote('test_Q_policy_eval', test_output['Q_policy_eval'])
 
         def set_weights(self, weights):
             self.variables.set_weights(weights)
