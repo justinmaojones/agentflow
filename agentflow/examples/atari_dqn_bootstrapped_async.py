@@ -409,7 +409,7 @@ def run(**cfg):
 
         def run(self, t=None):
             weights = self.parameter_server.get_weights.remote()
-            return [runner.set_weights.remote(weights) for runner in runners]
+            return [runner.set_weights.remote(weights) for runner in self.runners]
 
     print("BUILD ACTORS")
     RemoteLogsTFSummary = ray.remote(LogsTFSummary)
