@@ -240,11 +240,12 @@ def run(**cfg):
                     self.agent.outputs['loss'], self.sess)
 
         def test(self, t, frame_counter):
-            test_output = self.env.test(self.agent)
-            self.log.append.remote('test_ep_returns', test_output['return'], summary_only=False)
-            self.log.append.remote('test_ep_length', test_output['length'], summary_only=False)
-            self.log.append.remote('test_ep_t', t)
-            self.log.append.remote('test_ep_steps', frame_counter)
+            with self.sess:
+                test_output = self.env.test(self.agent)
+                self.log.append.remote('test_ep_returns', test_output['return'], summary_only=False)
+                self.log.append.remote('test_ep_length', test_output['length'], summary_only=False)
+                self.log.append.remote('test_ep_t', t)
+                self.log.append.remote('test_ep_steps', frame_counter)
 
         def set_weights(self, weights):
             self.variables.set_weights(weights)
