@@ -178,50 +178,49 @@ def run(**cfg):
             return np.random.choice(2, size=bootstrap_mask_shape, p=bootstrap_mask_probs)
 
         def step(self):
-            with self.sess:
-                while True:
-                    # do-while to initially fill the buffer
-                    noise_scale = self.noise_scale_schedule(self.t)
-                    if self.t >= cfg['begin_learning_at_step'] or cfg['bootstrap_explore_before_learning']:
-                        action_probs = self.agent.act_probs(self.next['state'], self.next['mask'], self.sess)
-                        if cfg['noise_type'] == 'eps_greedy':
-                            action = eps_greedy_noise(action_probs, eps=noise_scale)
-                        elif cfg['noise_type'] == 'gumbel_softmax':
-                            action = gumbel_softmax_noise(action_probs, temperature=cfg['noise_temperature'])
-                        else:
-                            raise NotImplementedError("unknown noise type %s" % cfg['noise_type'])
+            while True:
+                # do-while to initially fill the buffer
+                noise_scale = self.noise_scale_schedule(self.t)
+                if self.t >= cfg['begin_learning_at_step'] or cfg['bootstrap_explore_before_learning']:
+                    action_probs = self.agent.act_probs(self.next['state'], self.next['mask'], self.sess)
+                    if cfg['noise_type'] == 'eps_greedy':
+                        action = eps_greedy_noise(action_probs, eps=noise_scale)
+                    elif cfg['noise_type'] == 'gumbel_softmax':
+                        action = gumbel_softmax_noise(action_probs, temperature=cfg['noise_temperature'])
                     else:
-                        # completely random action choices
-                        action = eps_greedy_noise(action_probs, eps=1.0)
+                        raise NotImplementedError("unknown noise type %s" % cfg['noise_type'])
+                else:
+                    # completely random action choices
+                    action = eps_greedy_noise(action_probs, eps=1.0)
 
-                    self.prev = self.next
-                    self.next = env.step(action.astype('int').ravel())
-                    self.t += 1
+                self.prev = self.next
+                self.next = env.step(action.astype('int').ravel())
+                self.t += 1
 
-                    data = {
-                        'state':self.prev['state'],
-                        'action':onehot(action, depth=action_shape),
-                        'reward':self.next['reward'],
-                        'done':self.next['done'],
-                        'state2':self.next['state'],
-                        'mask':self.bootstrap_mask(),
-                    }
+                data = {
+                    'state':self.prev['state'],
+                    'action':onehot(action, depth=action_shape),
+                    'reward':self.next['reward'],
+                    'done':self.next['done'],
+                    'state2':self.next['state'],
+                    'mask':self.bootstrap_mask(),
+                }
 
-                    self.n_step_return_buffer.append(data)
-                    if self.n_step_return_buffer.full():
-                        # buffer is initialized (i.e. it's full)
-                        break
+                self.n_step_return_buffer.append(data)
+                if self.n_step_return_buffer.full():
+                    # buffer is initialized (i.e. it's full)
+                    break
 
-                self.log.append_dict.remote({
-                    'noise_scale': noise_scale,
-                    'train_ep_return': self.next['prev_episode_return'],
-                    'train_ep_length': self.next['prev_episode_length'],
-                    'prev_episode_return': self.next['prev_episode_return'], # for backwards compatibility
-                    'prev_episode_length': self.next['prev_episode_length'], # for backwards compatibility
-                })
+            self.log.append_dict.remote({
+                'noise_scale': noise_scale,
+                'train_ep_return': self.next['prev_episode_return'],
+                'train_ep_length': self.next['prev_episode_length'],
+                'prev_episode_return': self.next['prev_episode_return'], # for backwards compatibility
+                'prev_episode_length': self.next['prev_episode_length'], # for backwards compatibility
+            })
 
-            delayed_data, _ = self.n_step_return_buffer.latest_data() 
-            return delayed_data 
+        delayed_data, _ = self.n_step_return_buffer.latest_data() 
+        return delayed_data 
 
         def set_weights(self, weights):
             self.variables.set_weights(weights)
@@ -347,25 +346,24 @@ def run(**cfg):
             self.log.append.remote('learning_rate', learning_rate)
             self.log.append.remote('entropy_loss_weight', entropy_loss_weight)
             self.t += 1
-            with self.sess:
-                update_outputs = self.agent.update(
-                    session = self.sess,
-                    learning_rate=learning_rate,
-                    ema_decay=cfg['ema_decay'],
-                    gamma=cfg['gamma'],
-                    weight_decay=cfg['weight_decay'],
-                    entropy_loss_weight=entropy_loss_weight,
-                    outputs=['td_error','Q_policy_eval', 'loss'],
-                    **sample)
+            update_outputs = self.agent.update(
+                session = self.sess,
+                learning_rate=learning_rate,
+                ema_decay=cfg['ema_decay'],
+                gamma=cfg['gamma'],
+                weight_decay=cfg['weight_decay'],
+                entropy_loss_weight=entropy_loss_weight,
+                outputs=['td_error','Q_policy_eval', 'loss'],
+                **sample)
 
-                update_outputs['learning_rate'] = learning_rate
-                update_outputs['entropy_loss_weight'] = entropy_loss_weight
-                self.log.append_dict.remote(update_outputs)
+            update_outputs['learning_rate'] = learning_rate
+            update_outputs['entropy_loss_weight'] = entropy_loss_weight
+            self.log.append_dict.remote(update_outputs)
 
-                if cfg['buffer_type'] == 'prioritized' and not cfg['prioritized_replay_simple']:
-                    return update_outputs['td_error']
-                else:
-                    return
+            if cfg['buffer_type'] == 'prioritized' and not cfg['prioritized_replay_simple']:
+                return update_outputs['td_error']
+            else:
+                return
 
         def get_weights(self):
             return self.variables.get_weights()
