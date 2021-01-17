@@ -78,8 +78,12 @@ from agentflow.utils import LogsTFSummary
 @click.option('--log_flush_freq', default=1000, type=int)
 @click.option('--savedir', default='results')
 @click.option('--seed',default=None, type=int)
+@click.option('--ray_port',default=None, type=int)
 def run(**cfg):
-    ray.init(ignore_reinit_error=True, dashboard_port=6007)
+    ray_init_kwargs = {}
+    if cfg['ray_port'] is not None:
+        ray_init_kwargs['dashboard_port'] = cfg['ray_port']
+    ray.init(ignore_reinit_error=True, **ray_init_kwargs)
 
     for k in sorted(cfg):
         print('CONFIG: ',k,str(cfg[k]))
@@ -426,7 +430,7 @@ def run(**cfg):
 
     # setup tasks 
     print("SETUP OPS")
-    ops = {task.run(): task for task in runner_tasks}
+    ops = {task.run(0): task for task in runner_tasks}
 
     print("BEGIN!!!")
     start_time = time.time()
