@@ -79,7 +79,7 @@ from agentflow.utils import LogsTFSummary
 @click.option('--savedir', default='results')
 @click.option('--seed',default=None, type=int)
 def run(**cfg):
-    ray.init(ignore_reinit_error=True)
+    ray.init(ignore_reinit_error=True, dashboard_port=6007)
 
     for k in sorted(cfg):
         print('CONFIG: ',k,str(cfg[k]))
