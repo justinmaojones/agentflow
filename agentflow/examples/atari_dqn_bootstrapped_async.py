@@ -219,8 +219,8 @@ def run(**cfg):
                 'prev_episode_length': self.next['prev_episode_length'], # for backwards compatibility
             })
 
-        delayed_data, _ = self.n_step_return_buffer.latest_data() 
-        return delayed_data 
+            delayed_data, _ = self.n_step_return_buffer.latest_data() 
+            return delayed_data 
 
         def set_weights(self, weights):
             self.variables.set_weights(weights)
