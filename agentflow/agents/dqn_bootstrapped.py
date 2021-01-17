@@ -216,11 +216,29 @@ class BootstrappedDQN(object):
                 'y': y,
             }
 
-    def act(self,state,session=None):
-        mask = np.ones((len(state),self.num_heads))
-        return self.act_probs(state,mask,session).argmax(axis=-1).ravel()
+    def act(self,state,mask=None,session=None,addl_outputs=None):
+        if session is None:
+            session = tf.get_default_session()
+        if mask is None:
+            mask = np.ones((len(state),self.num_heads))
+        if addl_outputs is None:
+            addl_outputs = []
+        assert isinstance(addl_outputs, list)
+
+        outputs = ['policy_eval'] + addl_outputs
+        output = session.run(
+            {k: self.outputs[k] for k in outputs},
+            {
+                self.inputs['state']:state,
+                self.inputs['mask']:mask,
+            }
+        )
+        output['action'] = output['policy_eval'].argmax(axis=-1).ravel()
+        return output
         
-    def act_probs(self,state,mask,session=None):
+    def act_probs(self,state,mask=None,session=None):
+        if mask is None:
+            mask = np.ones((len(state),self.num_heads))
         session = session or tf.get_default_session()
         output = session.run(
             self.outputs['policy_eval'],

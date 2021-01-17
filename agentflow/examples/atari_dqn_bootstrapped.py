@@ -283,11 +283,12 @@ def run(**cfg):
                 pb_input.append(('Q_policy_eval', update_outputs['Q_policy_eval'].mean()))
 
             if t % cfg['n_steps_per_eval'] == 0 and t > 0:
-                test_output = test_env.test(agent)
+                test_output = test_env.test(agent, addl_outputs=['Q_policy_eval'])
                 log.append('test_ep_returns', test_output['return'], summary_only=False)
                 log.append('test_ep_length', test_output['length'], summary_only=False)
                 log.append('test_ep_t', t)
                 log.append('test_ep_steps', frame_counter)
+                log.append('test_Q_policy_eval', test_output['Q_policy_eval'].mean(axis=1))
                 avg_test_ep_returns = np.mean(log['test_ep_returns'][-1:])
                 pb_input.append(('test_ep_returns', avg_test_ep_returns))
 

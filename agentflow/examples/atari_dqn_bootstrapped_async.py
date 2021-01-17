@@ -141,7 +141,6 @@ def run(**cfg):
             self.log = log
             self.env = env
             self.next = self.env.reset()
-            self.t = 0
 
             # build agent
             self.agent = build_agent()
@@ -174,25 +173,20 @@ def run(**cfg):
             bootstrap_mask_shape = (len(state),cfg['bootstrap_num_heads'])
             return np.random.choice(2, size=bootstrap_mask_shape, p=bootstrap_mask_probs)
 
-        def step(self):
+        def step(self, t):
             while True:
                 # do-while to initially fill the buffer
-                noise_scale = self.noise_scale_schedule(self.t)
-                if self.t >= cfg['begin_learning_at_step'] or cfg['bootstrap_explore_before_learning']:
-                    action_probs = self.agent.act_probs(self.next['state'], self.next['mask'], self.sess)
-                    if cfg['noise_type'] == 'eps_greedy':
-                        action = eps_greedy_noise(action_probs, eps=noise_scale)
-                    elif cfg['noise_type'] == 'gumbel_softmax':
-                        action = gumbel_softmax_noise(action_probs, temperature=cfg['noise_temperature'])
-                    else:
-                        raise NotImplementedError("unknown noise type %s" % cfg['noise_type'])
+                noise_scale = self.noise_scale_schedule(t)
+                action_probs = self.agent.act_probs(self.next['state'], self.next['mask'], self.sess)
+                if cfg['noise_type'] == 'eps_greedy':
+                    action = eps_greedy_noise(action_probs, eps=noise_scale)
+                elif cfg['noise_type'] == 'gumbel_softmax':
+                    action = gumbel_softmax_noise(action_probs, temperature=cfg['noise_temperature'])
                 else:
-                    # completely random action choices
-                    action = eps_greedy_noise(action_probs, eps=1.0)
+                    raise NotImplementedError("unknown noise type %s" % cfg['noise_type'])
 
                 self.prev = self.next
                 self.next = env.step(action.astype('int').ravel())
-                self.t += 1
 
                 data = {
                     'state':self.prev['state'],
@@ -242,12 +236,13 @@ def run(**cfg):
             self._name = 'TestRunner'
 
         def test(self, t, frame_counter):
-            test_output = self.env.test(self.agent, self.sess)
+            test_output = self.env.test(self.agent, self.sess, addl_outputs=['Q_policy_eval'])
             self.log.append_dict.remote({
                 'test_ep_returns': test_output['return'],
                 'test_ep_length': test_output['length'],
                 'test_ep_t': t,
                 'test_ep_steps': frame_counter,
+                'test_Q_policy_eval': test_output['Q_policy_eval'].mean(axis=1)
             })
 
         def set_weights(self, weights):
@@ -372,23 +367,28 @@ def run(**cfg):
         def get_weights(self):
             return self.variables.get_weights()
 
-    class RunnerTask:
+    class Task(object):
+
+        def run(self, t=None):
+            raise NotImplementedError("implement me")
+
+    class RunnerTask(Task):
 
         def __init__(self, runner, replay_buffer):
             self.runner = runner
             self.replay_buffer = replay_buffer
 
-        def run(self):
-            data = self.runner.step.remote()
+        def run(self, t):
+            data = self.runner.step.remote(t)
             return self.replay_buffer.append.remote(data)
 
-    class UpdateAgentTask:
+    class UpdateAgentTask(Task):
 
         def __init__(self, parameter_server, replay_buffer):
             self.parameter_server = parameter_server
             self.replay_buffer = replay_buffer
 
-        def run(self):
+        def run(self, t):
             sample = self.replay_buffer.sample.remote()
             rval = self.parameter_server.update.remote(sample)
             if cfg['buffer_type'] == 'prioritized' and not cfg['prioritized_replay_simple']:
@@ -397,13 +397,13 @@ def run(**cfg):
             else:
                 return rval
 
-    class UpdateRunnerWeightsTask:
+    class UpdateRunnerWeightsTask(Task):
 
         def __init__(self, parameter_server, runners):
             self.parameter_server = parameter_server
             self.runners = runners
 
-        def run(self):
+        def run(self, t=None):
             weights = self.parameter_server.get_weights.remote()
             return [runner.set_weights.remote(weights) for runner in runners]
 
@@ -440,7 +440,7 @@ def run(**cfg):
         # add update op
         if t == 0 and frame_counter >= cfg['begin_learning_at_step']:
             print("ADD UDPDATE")
-            ops[update_agent_task.run()] = update_agent_task
+            ops[update_agent_task.run(t)] = update_agent_task
 
         # init and update weights periodically
         if t % cfg['runner_update_freq'] == 0 and frame_counter > cfg['begin_learning_at_step']:
@@ -462,7 +462,7 @@ def run(**cfg):
             else:
                 assert False, "unhandled worker: %s" % str(worker)
 
-            ops[task.run()] = task
+            ops[task.run(t)] = task
 
         end_time = time.time()
         log.append_dict.remote({

@@ -22,11 +22,22 @@ class TestAgentEnv(BaseEnv):
     def step(self, action):
         return self.env.step(action)
 
-    def test(self, agent, sess=None):
+    def test(self, agent, session=None, addl_outputs=None):
+
+        if addl_outputs is None:
+            addl_outputs = []
+        assert isinstance(addl_outputs, list)
+        stacked_addl_outputs = {k: [] for k in addl_outputs}
+
         state = self.reset()['state']
         all_done = None
         while all_done is None or np.mean(all_done) < 1:
-            action = agent.act(state, sess)
+            agent_output = agent.act(
+                state=state, 
+                session=session, 
+                addl_outputs=addl_outputs
+            )
+            action = agent_output['action']
             step_output = self.step(action)
             state = step_output['state']
             done = step_output['done']
@@ -34,10 +45,11 @@ class TestAgentEnv(BaseEnv):
                 all_done = done.copy()
             else:
                 all_done = np.maximum(done,all_done)
-        output = {
-            'return': step_output['prev_episode_return'],
-            'length': step_output['prev_episode_length']
-        }
+            for k in addl_outputs:
+                stacked_addl_outputs[k].append(agent_output[k])
+        output = {k: np.stack(stacked_addl_outputs[k]) for k in addl_outputs}
+        output['return'] = step_output['prev_episode_return'],
+        output['length'] = step_output['prev_episode_length']
         return output
 
 

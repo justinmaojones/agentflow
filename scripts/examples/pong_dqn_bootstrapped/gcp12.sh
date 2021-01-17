@@ -14,7 +14,6 @@ do
         --buffer_type=prioritized \
         --double_q=True \
         --ema_decay=0.999 \
-        --enable_n_step_return_publisher=True \
         --entropy_loss_weight=1e-5 \
         --env_id=PongDeterministic-v4 \
         --learning_rate=2.5e-4 \
