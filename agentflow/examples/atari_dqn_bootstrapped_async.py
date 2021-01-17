@@ -428,7 +428,7 @@ def run(**cfg):
     t = 0 #num update steps 
     T = cfg['num_steps']
     frame_counter = 0
-    pb = tf.keras.utils.Progbar(T, stateful_metrics=['frames'])
+    pb = tf.keras.utils.Progbar(T, stateful_metrics=['frame','update'])
     while t < T and (cfg['num_frames_max'] is None or frame_counter < cfg['num_frames_max']):
         start_step_time = time.time()
 
@@ -470,7 +470,7 @@ def run(**cfg):
         if t % cfg['log_flush_freq'] == 0 and t > 0:
             log.flush.remote(step=t)
 
-        pb.add(0,[('frames', frame_counter)])
+        pb.add(0,[('frame', frame_counter), ('update', t)])
 
 
     print("WRITING RESULTS TO: %s" % os.path.join(savedir,'log.h5'))
