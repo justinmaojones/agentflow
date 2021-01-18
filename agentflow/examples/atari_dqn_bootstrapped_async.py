@@ -426,7 +426,7 @@ def run(**cfg):
 
     # initialize runners
     print("INITIALIZE RUNNERS")
-    ray.get(update_runner_weights_task.run())
+    ray.get(update_runner_weights_task.run(), timeout=10.0)
 
     # setup tasks 
     print("SETUP OPS")
@@ -448,13 +448,13 @@ def run(**cfg):
 
         # init and update weights periodically
         if t % cfg['runner_update_freq'] == 0 and frame_counter > cfg['begin_learning_at_step']:
-            ray.get(update_runner_weights_task.run())
+            ray.get(update_runner_weights_task.run(), timeout=10.0)
 
         # evaluate
         if t % cfg['n_steps_per_eval'] == 0 and t > 0:
-            ray.get(test_runner.test.remote(t, frame_counter))
+            ray.get(test_runner.test.remote(t, frame_counter), timeout=10.0)
 
-        ready_op_list, _ = ray.wait(list(ops))
+        ready_op_list, _ = ray.wait(list(ops), timeout=10.0)
         for op_id in ready_op_list:
             task = ops.pop(op_id)
             if task in runner_tasks:
