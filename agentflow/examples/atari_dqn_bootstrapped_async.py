@@ -460,10 +460,6 @@ def run(**cfg):
         if t % cfg['runner_update_freq'] == 0 and frame_counter > cfg['begin_learning_at_step']:
             update_runner_weights_task.run()
 
-            if cfg['savemodel']:
-                parameter_server.save.remote()
-
-
         # evaluate
         if t % cfg['n_steps_per_eval'] == 0 and t > 0:
             test_runner.test.remote(t, frame_counter)
@@ -492,6 +488,8 @@ def run(**cfg):
 
         if t % cfg['log_flush_freq'] == 0 and t > 0:
             log.flush.remote(step=t)
+            if cfg['savemodel']:
+                parameter_server.save.remote()
 
         pb.add(0,[('frame', frame_counter), ('update', t)])
 
