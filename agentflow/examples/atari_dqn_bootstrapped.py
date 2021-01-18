@@ -72,6 +72,7 @@ from agentflow.utils import LogsTFSummary
 @click.option('--batchsize', default=64)
 @click.option('--log_flush_freq', default=1000, type=int)
 @click.option('--savedir', default='results')
+@click.option('--savemodel',default=False, type=bool)
 @click.option('--seed',default=None, type=int)
 def run(**cfg):
 
@@ -187,6 +188,10 @@ def run(**cfg):
     state = state_and_mask['state']
     mask = state_and_mask['mask']
 
+    if cfg['savemodel']:
+        saver = tf.train.Saver()
+        checkpoint_prefix = os.path.join(savedir,'ckpt')
+
     start_time = time.time()
 
     with tf.Session(config=tf.ConfigProto(allow_soft_placement=True)) as sess:
@@ -207,6 +212,8 @@ def run(**cfg):
             start_step_time = time.time()
 
             if t % cfg['log_flush_freq'] == 0 and t > 0:
+                if cfg['savemodel']:
+                    saver.save(sess, checkpoint_prefix) 
                 log.flush(step=t)
                 gc.collect()
 

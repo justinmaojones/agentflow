@@ -77,6 +77,7 @@ from agentflow.utils import LogsTFSummary
 @click.option('--batchsize', default=64)
 @click.option('--log_flush_freq', default=1000, type=int)
 @click.option('--savedir', default='results')
+@click.option('--savemodel',default=False, type=bool)
 @click.option('--seed',default=None, type=int)
 @click.option('--ray_port',default=None, type=int)
 def run(**cfg):
@@ -343,6 +344,9 @@ def run(**cfg):
 
             self.t = 0
 
+            self.saver = tf.train.Saver()
+            self.checkpoint_prefix = os.path.join(savedir,'ckpt')
+
         def update(self, sample):
             learning_rate = self.learning_rate_schedule(self.t)
             entropy_loss_weight = self.entropy_loss_weight_schedule(self.t)
@@ -370,6 +374,12 @@ def run(**cfg):
 
         def get_weights(self):
             return self.variables.get_weights()
+
+        def save(self):
+            self.saver.save(self.sess, self.checkpoint_prefix)
+
+        def restore(self, checkpoint_prefix):
+            self.saver.restore(self.sess, checkpoint_prefix)
 
     class Task(object):
 
@@ -449,6 +459,10 @@ def run(**cfg):
         # init and update weights periodically
         if t % cfg['runner_update_freq'] == 0 and frame_counter > cfg['begin_learning_at_step']:
             update_runner_weights_task.run()
+
+            if cfg['savemodel']:
+                parameter_server.save.remote()
+
 
         # evaluate
         if t % cfg['n_steps_per_eval'] == 0 and t > 0:
