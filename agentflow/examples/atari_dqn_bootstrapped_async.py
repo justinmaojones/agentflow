@@ -449,14 +449,14 @@ def run(**cfg):
         # init and update weights periodically
         if t % cfg['runner_update_freq'] == 0 and frame_counter > cfg['begin_learning_at_step']:
             try:
-                ray.get(update_runner_weights_task.run(), timeout=10.0)
+                ray.get(update_runner_weights_task.run(), timeout=60.0)
             except ray.exceptions.GetTimeoutError as err:
                 print("update_runner_weights_task.run timed out: %s" % str(err))
 
         # evaluate
         if t % cfg['n_steps_per_eval'] == 0 and t > 0:
             try:
-                ray.get(test_runner.test.remote(t, frame_counter), timeout=10.0)
+                ray.get(test_runner.test.remote(t, frame_counter), timeout=60.0)
             except ray.exceptions.GetTimeoutError as err:
                 print("test_runner.test.remote timed out: %s" % str(err))
 
