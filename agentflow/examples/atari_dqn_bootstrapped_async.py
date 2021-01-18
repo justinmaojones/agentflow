@@ -426,7 +426,7 @@ def run(**cfg):
 
     # initialize runners
     print("INITIALIZE RUNNERS")
-    ray.get(update_runner_weights_task.run(), timeout=10.0)
+    ray.get(update_runner_weights_task.run(), timeout=20.0)
 
     # setup tasks 
     print("SETUP OPS")
