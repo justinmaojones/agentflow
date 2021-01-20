@@ -78,6 +78,7 @@ from agentflow.utils import LogsTFSummary
 @click.option('--n_steps_per_eval', default=1000, type=int)
 @click.option('--batchsize', default=64)
 @click.option('--log_flush_freq', default=1000, type=int)
+@click.option('--gc_freq', default=1000, type=int)
 @click.option('--savedir', default='results')
 @click.option('--restore_from_ckpt', default=None, type=str)
 @click.option('--savemodel',default=False, type=bool)
@@ -87,7 +88,7 @@ def run(**cfg):
     ray_init_kwargs = {}
     if cfg['ray_port'] is not None:
         ray_init_kwargs['dashboard_port'] = cfg['ray_port']
-    ray.init(ignore_reinit_error=True, **ray_init_kwargs)
+    ray.init(ignore_reinit_error=True, lru_evict=True, **ray_init_kwargs)
 
     for k in sorted(cfg):
         print('CONFIG: ',k,str(cfg[k]))
@@ -501,6 +502,9 @@ def run(**cfg):
             log.flush.remote(step=t)
             if cfg['savemodel']:
                 parameter_server.save.remote()
+
+        if t % cfg['gc_freq'] == 0 and t > 0:
+            gc.collect()
 
         pb.add(0,[('frame', frame_counter), ('update', t)])
 
