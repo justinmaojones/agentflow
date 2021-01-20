@@ -88,7 +88,7 @@ def run(**cfg):
     ray_init_kwargs = {}
     if cfg['ray_port'] is not None:
         ray_init_kwargs['dashboard_port'] = cfg['ray_port']
-    ray.init(ignore_reinit_error=True, _lru_evict=True, **ray_init_kwargs)
+    ray.init(ignore_reinit_error=True, **ray_init_kwargs)
 
     for k in sorted(cfg):
         print('CONFIG: ',k,str(cfg[k]))
