@@ -28,6 +28,7 @@ from agentflow.state import RandomOneHotMaskEnv
 from agentflow.state import TestAgentEnv 
 from agentflow.tensorflow.nn import dense_net
 from agentflow.tensorflow.ops import normalize_ema
+from agentflow.utils import IdleTimer 
 from agentflow.utils import LogsTFSummary
 
 
@@ -352,7 +353,10 @@ def run(**cfg):
             if cfg['restore_from_ckpt'] is not None:
                 self.restore(cfg['restore_from_ckpt'])
 
+            self.timer = IdleTimer(start_idle=True) 
+
         def update(self, sample):
+            self.timer(idle=False)
             learning_rate = self.learning_rate_schedule(self.t)
             entropy_loss_weight = self.entropy_loss_weight_schedule(self.t)
             self.log.append.remote('learning_rate', learning_rate)
@@ -370,6 +374,8 @@ def run(**cfg):
 
             update_outputs['learning_rate'] = learning_rate
             update_outputs['entropy_loss_weight'] = entropy_loss_weight
+            self.timer(idle=True)
+            update_outputs['IdleTimer/fraction_idle/parameter_server'] = self.timer.fraction_idle()
             self.log.append_dict.remote(update_outputs)
 
             if cfg['buffer_type'] == 'prioritized' and not cfg['prioritized_replay_simple']:

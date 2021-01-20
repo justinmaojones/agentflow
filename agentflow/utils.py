@@ -1,5 +1,6 @@
 import h5py
 import os
+import time
 import yaml
 import numpy as np
 import pandas as pd
@@ -13,6 +14,33 @@ def check_whats_connected(output):
         else:
             print('GRADIENT',v.name)
 
+class IdleTimer(object):
+
+    def __init__(self, start_idle=True):
+        self.start_time = time.time()
+        self.idle_duration = 0
+        self.duration = 0
+        assert isinstance(start_idle, bool)
+        self.idle = start_idle
+
+        self.reset_timer()
+
+    def reset_timer(self):
+        self.prev_time = time.time()
+
+    def __call__(self, idle):
+        if self.idle:
+            self.idle_duration += time.time() - self.prev_time
+        self.duration = time.time() - self.start_time
+        self.prev_time = time.time()
+        self.idle = idle
+
+    def fraction_idle(self):
+        self.__call__(self.idle)
+        if self.duration > 0:
+            return float(self.idle_duration) / self.duration
+        else:
+            return 0.
 
 class LogsTFSummary(object):
 
