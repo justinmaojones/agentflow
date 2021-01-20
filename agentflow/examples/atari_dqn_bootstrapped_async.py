@@ -328,6 +328,10 @@ def run(**cfg):
             self.agent = build_agent()
             self.sess = tf.Session(config=tf.ConfigProto(allow_soft_placement=True))
             self.sess.run(tf.global_variables_initializer())
+            self.saver = tf.train.Saver()
+            self.checkpoint_prefix = os.path.join(savedir,'ckpt')
+            if cfg['restore_from_ckpt'] is not None:
+                self.restore(cfg['restore_from_ckpt'])
             self.variables = ray.experimental.tf_utils.TensorFlowVariables(
                     self.agent.outputs['loss'], self.sess)
 
@@ -347,12 +351,6 @@ def run(**cfg):
             )
 
             self.t = cfg['begin_at_step']
-
-            self.saver = tf.train.Saver()
-            self.checkpoint_prefix = os.path.join(savedir,'ckpt')
-
-            if cfg['restore_from_ckpt'] is not None:
-                self.restore(cfg['restore_from_ckpt'])
 
             self.timer = IdleTimer() 
 
