@@ -63,7 +63,8 @@ from agentflow.utils import LogsTFSummary
 @click.option('--prioritized_replay_simple', default=True, type=bool)
 @click.option('--prioritized_replay_default_reward_priority', default=5, type=float)
 @click.option('--prioritized_replay_default_done_priority', default=5, type=float)
-@click.option('--begin_learning_at_step', default=200)
+@click.option('--begin_at_step', default=0, type=int)
+@click.option('--begin_learning_at_step', default=200, type=int)
 @click.option('--learning_rate', default=1e-4)
 @click.option('--learning_rate_final', default=0.0, type=float)
 @click.option('--learning_rate_decay', default=0.99995)
@@ -77,6 +78,7 @@ from agentflow.utils import LogsTFSummary
 @click.option('--batchsize', default=64)
 @click.option('--log_flush_freq', default=1000, type=int)
 @click.option('--savedir', default='results')
+@click.option('--restore_from_ckpt', default=None, type=str)
 @click.option('--savemodel',default=False, type=bool)
 @click.option('--seed',default=None, type=int)
 @click.option('--ray_port',default=None, type=int)
@@ -281,7 +283,7 @@ def run(**cfg):
                     annealing_steps = cfg['prioritized_replay_beta_iters'] or cfg['num_steps'],
                     begin_at_step = cfg['begin_learning_at_step'],
                 )
-                self.t = 0
+                self.t = cfg['begin_at_step']
 
             else:
                 # Normal Buffer
@@ -342,10 +344,13 @@ def run(**cfg):
                 begin_at_step = cfg['begin_learning_at_step']
             )
 
-            self.t = 0
+            self.t = cfg['begin_at_step']
 
             self.saver = tf.train.Saver()
             self.checkpoint_prefix = os.path.join(savedir,'ckpt')
+
+            if cfg['restore_from_ckpt'] is not None:
+                self.restore(cfg['restore_from_ckpt'])
 
         def update(self, sample):
             learning_rate = self.learning_rate_schedule(self.t)
@@ -444,7 +449,7 @@ def run(**cfg):
 
     print("BEGIN!!!")
     start_time = time.time()
-    t = 0 #num update steps 
+    t = cfg['begin_at_step'] #num update steps 
     T = cfg['num_steps']
     frame_counter = 0
     pb = tf.keras.utils.Progbar(T, stateful_metrics=['frame','update'])
@@ -452,7 +457,7 @@ def run(**cfg):
         start_step_time = time.time()
 
         # add update op
-        if t == 0 and frame_counter >= cfg['begin_learning_at_step']:
+        if t == cfg['begin_at_step'] and frame_counter >= cfg['begin_learning_at_step']:
             print("ADD UDPDATE")
             ops[update_agent_task.run(t)] = update_agent_task
 
