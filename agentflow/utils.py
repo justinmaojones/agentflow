@@ -16,19 +16,29 @@ def check_whats_connected(output):
 
 class IdleTimer(object):
 
-    def __init__(self, start_idle=True):
-        self.start_time = time.time()
+    def __init__(self, start_on_create=False):
         self.idle_duration = 0
         self.duration = 0
-        assert isinstance(start_idle, bool)
-        self.idle = start_idle
+        self.start_on_create = start_on_create
 
+        self.idle = None 
+        self.start_time = None 
+        self.prev_time = None
+
+        if self.start_on_create:
+            self.start_timer()
+
+    def start_timer(self, idle=True):
+        self.idle = idle
+        self.start_time = time.time()
         self.reset_timer()
 
     def reset_timer(self):
         self.prev_time = time.time()
 
     def __call__(self, idle):
+        if self.prev_time is None:
+            self.start_timer()
         if self.idle:
             self.idle_duration += time.time() - self.prev_time
         self.duration = time.time() - self.start_time

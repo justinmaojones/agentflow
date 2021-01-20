@@ -353,7 +353,7 @@ def run(**cfg):
             if cfg['restore_from_ckpt'] is not None:
                 self.restore(cfg['restore_from_ckpt'])
 
-            self.timer = IdleTimer(start_idle=True) 
+            self.timer = IdleTimer() 
 
         def update(self, sample):
             self.timer(idle=False)
