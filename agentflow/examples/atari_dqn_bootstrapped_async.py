@@ -475,7 +475,8 @@ def run(**cfg):
         if t == cfg['begin_at_step'] and frame_counter >= cfg['begin_learning_at_step']:
             if update_agent_task not in list(ops.values()):
                 print("ADD UDPDATE")
-                ops[update_agent_task.run(t)] = update_agent_task
+                for i in range(2):
+                    ops[update_agent_task.run(t)] = update_agent_task
 
         # init and update weights periodically
         if t % cfg['runner_update_freq'] == 0 and frame_counter > cfg['begin_learning_at_step']:
