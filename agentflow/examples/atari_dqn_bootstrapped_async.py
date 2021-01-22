@@ -426,10 +426,20 @@ def run(**cfg):
         def __init__(self, parameter_server, runners):
             self.parameter_server = parameter_server
             self.runners = runners
+            self.prev_t = 0
+            self.pending = []
 
-        def run(self, t=None):
-            weights = self.parameter_server.get_weights.remote()
-            return [runner.set_weights.remote(weights) for runner in self.runners]
+        def run(self, t):
+            try:
+                ray.get(self.pending, timeout=0)
+            except ray.exceptions.GetTimeoutError:
+                print("weight update still not finished after %d steps" % (t-self.prev_t))
+            else:
+                self.prev_t = t
+                weights = self.parameter_server.get_weights.remote()
+                self.pending = [runner.set_weights.remote(weights) for runner in self.runners]
+            return self.pending
+
 
     print("BUILD ACTORS")
     RemoteLogsTFSummary = ray.remote(LogsTFSummary)
@@ -446,7 +456,7 @@ def run(**cfg):
 
     # initialize runners
     print("INITIALIZE RUNNERS")
-    ray.get(update_runner_weights_task.run())
+    ray.get(update_runner_weights_task.run(0))
 
     # setup tasks 
     print("SETUP OPS")
@@ -468,7 +478,7 @@ def run(**cfg):
 
         # init and update weights periodically
         if t % cfg['runner_update_freq'] == 0 and frame_counter > cfg['begin_learning_at_step']:
-            update_runner_weights_task.run()
+            update_runner_weights_task.run(t)
 
         # evaluate
         if t % cfg['n_steps_per_eval'] == 0 and t > 0:
@@ -479,7 +489,6 @@ def run(**cfg):
             task = ops.pop(op_id)
             if task in runner_tasks:
                 frame_counter += cfg['n_envs']
-
             elif task == update_agent_task:
                 t += 1
                 pb.add(1)
