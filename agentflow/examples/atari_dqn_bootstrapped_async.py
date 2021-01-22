@@ -431,7 +431,7 @@ def run(**cfg):
 
         def run(self, t):
             try:
-                ray.get(self.pending, timeout=0)
+                ray.get(self.pending, timeout=1e-16)
             except ray.exceptions.GetTimeoutError:
                 print("weight update still not finished after %d steps" % (t-self.prev_t))
             else:
