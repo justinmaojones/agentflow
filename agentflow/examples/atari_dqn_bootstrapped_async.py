@@ -412,10 +412,13 @@ def run(**cfg):
         def __init__(self, parameter_server, replay_buffer):
             self.parameter_server = parameter_server
             self.replay_buffer = replay_buffer
+            self.sample = None
 
         def run(self, t):
-            sample = self.replay_buffer.sample.remote()
-            rval = self.parameter_server.update.remote(sample)
+            if self.sample is None:
+                self.sample = self.replay_buffer.sample.remote()
+            rval = self.parameter_server.update.remote(self.sample)
+            self.sample = self.replay_buffer.sample.remote()
             if cfg['buffer_type'] == 'prioritized' and not cfg['prioritized_replay_simple']:
                 td_error = rval
                 return self.replay_buffer.update_priorities.remote(td_error)
