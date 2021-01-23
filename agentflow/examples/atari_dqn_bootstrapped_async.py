@@ -231,6 +231,7 @@ def run(**cfg):
     class TestRunner(object):
 
         import tensorflow as tf
+        import ray.experimental.tf_utils
 
         def __init__(self, env, log):
             self.log = log
@@ -426,19 +427,42 @@ def run(**cfg):
         def __init__(self, parameter_server, runners):
             self.parameter_server = parameter_server
             self.runners = runners
-            self.prev_t = 0
-            self.pending = []
+            self.pending = {}
+            self.weights = None
+
+        def refresh_weights(self):
+            self.weights = self.parameter_server.get_weights.remote()
+
+        def update_pending(self):
+            ready_ops, not_ready_ops = ray.wait(list(self.pending), num_returns=len(self.pending), timeout=1e-12)
+            for op_id in ready_ops:
+                self.pending.pop(op_id)
+
+        def update_runner(self, runner):
+            self.update_pending()
+            # for each runner that is ready, update weights 
+            not_ready_runners = list(self.pending.values())
+            if runner in not_ready_runners:
+                print("Could not update runner, since it is still pending completion of a prior scheduled task")
+                return []
+            else:
+                task = runner.set_weights.remote(self.weights)
+                self.pending[task] = runner
+                return [task]
 
         def run(self, t):
-            try:
-                ray.get(self.pending, timeout=1e-16)
-            except ray.exceptions.GetTimeoutError:
-                print("weight update still not finished after %d steps" % (t-self.prev_t))
-            else:
-                self.prev_t = t
-                weights = self.parameter_server.get_weights.remote()
-                self.pending = [runner.set_weights.remote(weights) for runner in self.runners]
-            return self.pending
+            # get weights
+            self.refresh_weights()
+
+            # remove completed ops from pending
+            self.update_pending()
+            
+            # for each runner that is ready, update weights 
+            not_ready_runners = list(self.pending.values())
+            ready_runners = [runner for runner in self.runners if runner not in not_ready_runners]
+            for runner in ready_runners:
+                self.pending[runner.set_weights.remote(self.weights)] = runner
+            return list(self.pending)
 
 
     print("BUILD ACTORS")
@@ -452,7 +476,7 @@ def run(**cfg):
     print("BUILD TASK MANAGERS")
     runner_tasks = [RunnerTask(runner, replay_buffer) for runner in runners]
     update_agent_task = UpdateAgentTask(parameter_server, replay_buffer)
-    update_runner_weights_task = UpdateRunnerWeightsTask(parameter_server, runners + [test_runner])
+    update_runner_weights_task = UpdateRunnerWeightsTask(parameter_server, runners)
 
     # initialize runners
     print("INITIALIZE RUNNERS")
@@ -475,7 +499,7 @@ def run(**cfg):
         if t == cfg['begin_at_step'] and frame_counter >= cfg['begin_learning_at_step']:
             if update_agent_task not in list(ops.values()):
                 print("ADD UDPDATE")
-                for i in range(2):
+                for i in range(4):
                     ops[update_agent_task.run(t)] = update_agent_task
 
         # init and update weights periodically
@@ -484,6 +508,7 @@ def run(**cfg):
 
         # evaluate
         if t % cfg['n_steps_per_eval'] == 0 and t > 0:
+            update_runner_weights_task.update_runner(test_runner)
             test_runner.test.remote(t, frame_counter)
 
         ready_op_list, _ = ray.wait(list(ops))
