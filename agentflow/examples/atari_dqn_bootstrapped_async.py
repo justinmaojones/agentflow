@@ -507,7 +507,7 @@ def run(**cfg):
             update_runner_weights_task.run(t)
 
         # evaluate
-        if t % cfg['n_steps_per_eval'] == 0 and t > 0:
+        if t % cfg['n_steps_per_eval'] == 0 and t > cfg['begin_at_step']:
             update_runner_weights_task.update_runner(test_runner)
             test_runner.test.remote(t, frame_counter)
 
@@ -532,12 +532,12 @@ def run(**cfg):
             'duration_cumulative': end_time-start_time,
         })
 
-        if t % cfg['log_flush_freq'] == 0 and t > 0:
+        if t % cfg['log_flush_freq'] == 0 and t > cfg['begin_at_step']:
             log.flush.remote(step=t)
             if cfg['savemodel']:
                 parameter_server.save.remote()
 
-        if t % cfg['gc_freq'] == 0 and t > 0:
+        if t % cfg['gc_freq'] == 0 and t > cfg['begin_at_step']:
             gc.collect()
 
         pb.add(0,[('frame', frame_counter), ('update', t)])
