@@ -46,6 +46,7 @@ from agentflow.utils import LogsTFSummary
 @click.option('--noise_scale_init', default=1.0, type=float)
 @click.option('--noise_scale_final', default=0.01, type=float)
 @click.option('--noise_temperature', default=1.0, type=float)
+@click.option('--noise_scale_test', default=0.01, type=float)
 @click.option('--double_q', default=True, type=bool)
 @click.option('--bootstrap_num_heads', default=16, type=int)
 @click.option('--bootstrap_mask_prob', default=0.5, type=float)
@@ -112,7 +113,7 @@ def run(**cfg):
     env = PrevEpisodeReturnsEnv(env)
     env = PrevEpisodeLengthsEnv(env)
     env = RandomOneHotMaskEnv(env, dim=cfg['bootstrap_num_heads'])
-    test_env = dqn_atari_paper_env(cfg['env_id'], n_envs=1, n_prev_frames=cfg['n_prev_frames'])
+    test_env = dqn_atari_paper_env(cfg['env_id'], n_envs=8, n_prev_frames=cfg['n_prev_frames'])
     test_env = TestAgentEnv(test_env)
 
     # state and action shapes
@@ -246,14 +247,13 @@ def run(**cfg):
             self._name = 'TestRunner'
 
         def test(self, t, frame_counter):
-            test_output = self.env.test(self.agent, self.sess, addl_outputs=['Q_policy_eval'])
+            test_output = self.env.test(self.agent, self.sess, noise_scale=cfg['noise_scale_test'])
             self.log.append_dict.remote({
                 'test_ep_returns': test_output['return'],
                 'test_ep_length': test_output['length'],
                 'test_ep_t': t,
                 'test_ep_steps': frame_counter,
             })
-            log.append_seq.remote('test_Q_policy_eval', test_output['Q_policy_eval'])
 
         def set_weights(self, weights):
             self.variables.set_weights(weights)
@@ -521,7 +521,7 @@ def run(**cfg):
                 frame_counter += cfg['n_envs']
             elif task == update_agent_task:
                 t += 1
-                pb.add(1)
+                pb.add(1,[('frame', frame_counter), ('update', t)])
             else:
                 assert False, "unhandled worker: %s" % str(worker)
 
@@ -542,9 +542,6 @@ def run(**cfg):
 
         if t % cfg['gc_freq'] == 0 and t > cfg['begin_at_step']:
             gc.collect()
-
-        pb.add(0,[('frame', frame_counter), ('update', t)])
-
 
     print("WRITING RESULTS TO: %s" % os.path.join(savedir,'log.h5'))
     log.write.remote(os.path.join(savedir,'log.h5'))
