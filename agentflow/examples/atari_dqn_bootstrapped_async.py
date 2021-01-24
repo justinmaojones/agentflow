@@ -60,6 +60,7 @@ from agentflow.utils import LogsTFSummary
 @click.option('--n_step_return', default=8, type=int)
 @click.option('--prioritized_replay_alpha', default=0.6, type=float)
 @click.option('--prioritized_replay_beta0', default=0.4, type=float)
+@click.option('--prioritized_replay_beta_final', default=0.4, type=float)
 @click.option('--prioritized_replay_beta_iters', default=None, type=int)
 @click.option('--prioritized_replay_eps', default=1e-6, type=float)
 @click.option('--prioritized_replay_simple', default=True, type=bool)
@@ -291,7 +292,7 @@ def run(**cfg):
 
                 self.beta_schedule = LinearAnnealingSchedule(
                     initial_value = cfg['prioritized_replay_beta0'],
-                    final_value = 1.0,
+                    final_value = cfg['prioritized_replay_beta_final'],
                     annealing_steps = cfg['prioritized_replay_beta_iters'] or cfg['num_steps'],
                     begin_at_step = cfg['begin_learning_at_step'],
                 )
