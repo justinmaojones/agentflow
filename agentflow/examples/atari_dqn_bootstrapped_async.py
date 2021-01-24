@@ -207,9 +207,17 @@ def run(**cfg):
                     'mask':self.bootstrap_mask(),
                 }
 
+                if cfg['buffer_type'] == 'prioritized' and not cfg['prioritized_replay_simple']:
+                    data['priority'] = self.agent.infer(
+                        outputs=['abs_td_error'], 
+                        gamma=cfg['gamma'],
+                        session=self.sess,
+                        **data
+                    )['abs_td_error']
+
                 self.n_step_return_buffer.append(data)
                 if self.n_step_return_buffer.full():
-                    # buffer is initialized (i.e. it's full)
+                    # buffer is initialized
                     break
 
             self.log.append_dict.remote({
@@ -278,6 +286,7 @@ def run(**cfg):
                     default_priority = 1.0,
                     default_non_zero_reward_priority = cfg['prioritized_replay_default_reward_priority'],
                     default_done_priority = cfg['prioritized_replay_default_done_priority'],
+                    priority_key = 'priority' if not cfg['prioritized_replay_simple'] else None
                 )
 
                 self.beta_schedule = LinearAnnealingSchedule(
@@ -296,6 +305,7 @@ def run(**cfg):
 
         def append(self, data):
             self.replay_buffer.append(data)
+
             self.log.append_dict.remote({
                 'replay_buffer_size': len(self.replay_buffer),
                 'replay_buffer_frames': len(self.replay_buffer)*cfg['n_envs'],
@@ -304,16 +314,21 @@ def run(**cfg):
         def sample(self):
             if cfg['buffer_type'] == 'prioritized':
                 beta = self.beta_schedule(self.t)
-                sample = self.replay_buffer.sample(cfg['batchsize'],beta=beta)
-                self.log.append.remote('beta',beta)
-                self.log.append.remote('max_importance_weight',sample['importance_weight'].max())
+                sample = self.replay_buffer.sample(cfg['batchsize'],beta=beta,with_indices=True)
+                self.log.append_dict.remote({
+                    'beta': beta,
+                    'importance_weight': sample['importance_weight'],
+                })
             else:
                 sample = self.replay_buffer.sample(cfg['batchsize'])
             self.t += 1
             return sample
 
-        def update_priorities(self, priorities):
-            self.replay_buffer.update_priorities(priorities)
+        def update_priorities(self, priorities_and_indices):
+            assert isinstance(priorities_and_indices, dict)
+            assert 'priorities' in priorities_and_indices
+            assert 'indices' in priorities_and_indices
+            self.replay_buffer.update_priorities(**priorities_and_indices)
 
     @ray.remote(num_cpus=1, num_gpus=cfg['n_gpus'])
     class ParameterServer(object):
@@ -362,6 +377,9 @@ def run(**cfg):
             self.log.append.remote('learning_rate', learning_rate)
             self.log.append.remote('entropy_loss_weight', entropy_loss_weight)
             self.t += 1
+            if cfg['buffer_type'] == 'prioritized' and not cfg['prioritized_replay_simple']:
+                indices = sample.pop('indices')
+
             update_outputs = self.agent.update(
                 session = self.sess,
                 learning_rate=learning_rate,
@@ -369,7 +387,7 @@ def run(**cfg):
                 gamma=cfg['gamma'],
                 weight_decay=cfg['weight_decay'],
                 entropy_loss_weight=entropy_loss_weight,
-                outputs=['td_error','Q_policy_eval', 'loss'],
+                outputs=['abs_td_error','Q_policy_eval', 'loss'],
                 **sample)
 
             update_outputs['learning_rate'] = learning_rate
@@ -379,7 +397,10 @@ def run(**cfg):
             self.log.append_dict.remote(update_outputs)
 
             if cfg['buffer_type'] == 'prioritized' and not cfg['prioritized_replay_simple']:
-                return update_outputs['td_error']
+                return {
+                    'priorities': np.abs(update_outputs['abs_td_error']),
+                    'indices': indices,
+                  }
             else:
                 return
 
@@ -420,8 +441,7 @@ def run(**cfg):
             rval = self.parameter_server.update.remote(self.sample)
             self.sample = self.replay_buffer.sample.remote()
             if cfg['buffer_type'] == 'prioritized' and not cfg['prioritized_replay_simple']:
-                td_error = rval
-                return self.replay_buffer.update_priorities.remote(td_error)
+                return self.replay_buffer.update_priorities.remote(rval)
             else:
                 return rval
 

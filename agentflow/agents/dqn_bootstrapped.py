@@ -72,13 +72,13 @@ class BootstrappedDQN(object):
                 'reward': tf.placeholder(tf.float32,shape=(None,), name='reward'),
                 'done': tf.placeholder(tf.float32,shape=(None,), name='done'),
                 'state2': tf.placeholder(tf.float32,shape=tuple([None]+self.state_shape), name='state2'),
-                'gamma': tf.placeholder(tf.float32),
-                'learning_rate': tf.placeholder(tf.float32),
-                'ema_decay': tf.placeholder(tf.float32),
-                'importance_weight': tf.placeholder(tf.float32,shape=(None,)),
-                'weight_decay': tf.placeholder(tf.float32,shape=()),
+                'gamma': tf.placeholder(tf.float32, shape=(), name='gamma'),
+                'learning_rate': tf.placeholder(tf.float32, shape=(), name='learning_rate'),
+                'ema_decay': tf.placeholder(tf.float32, shape=(), name='ema_decay'),
+                'importance_weight': tf.placeholder(tf.float32,shape=(None,), name='importance_weight'),
+                'weight_decay': tf.placeholder(tf.float32,shape=(), name='weight_decay'),
                 'entropy_loss_weight': tf.placeholder(tf.float32,shape=(),name='entropy_loss_weight'),
-                'mask': tf.placeholder(tf.float32, shape=(None, self.num_heads))
+                'mask': tf.placeholder(tf.float32, shape=(None, self.num_heads), name='mask')
             }
             self.inputs = inputs
 
@@ -157,16 +157,19 @@ class BootstrappedDQN(object):
                 target_Q_state2 = tf.reduce_max(Q_ema_state2_multihead,axis=-2)
 
             # loss functions
-            losses_Q_multihead, y, td_error = td_learning(
+            losses_Q_multihead, y, td_error_multihead = td_learning(
                 Q_action_train_multihead,
                 inputs['reward'][:,None],
                 inputs['gamma'],
                 (1-inputs['done'][:,None])*target_Q_state2
             )
 
+            td_error = weighted_avg(td_error_multihead, inputs['mask']) 
+            abs_td_error = weighted_avg(tf.abs(td_error_multihead), inputs['mask']) 
+
             losses_Q = tf.reduce_sum(losses_Q_multihead*inputs['mask'], axis=-1)
             losses_Q /= self.num_heads # gradient normalization 
-            assert losses_Q.shape == tf.TensorShape(None)
+            assert losses_Q.shape.as_list() == [None]
 
             # entropy regularization
             losses_entropy_reg_multihead = entropy_loss(Q_train_multihead, axis=-2)
@@ -212,6 +215,7 @@ class BootstrappedDQN(object):
                 'Q_state2_eval': Q_state2_eval,
                 'Q_ema_state2': Q_ema_state2,
                 'target_Q_state2': target_Q_state2,
+                'abs_td_error': abs_td_error,
                 'td_error': td_error,
                 'y': y,
             }

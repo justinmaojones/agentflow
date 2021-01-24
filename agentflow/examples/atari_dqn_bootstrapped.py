@@ -139,6 +139,7 @@ def run(**cfg):
             default_priority = 1.0,
             default_non_zero_reward_priority = cfg['prioritized_replay_default_reward_priority'],
             default_done_priority = cfg['prioritized_replay_default_done_priority'],
+            priority_key = 'priority' if not cfg['prioritized_replay_simple'] else None
         )
 
         beta_schedule = LinearAnnealingSchedule(
@@ -244,6 +245,12 @@ def run(**cfg):
                 'state2':step_output['state'],
                 'mask':bootstrap_mask,
             }
+            if cfg['buffer_type'] == 'prioritized' and not cfg['prioritized_replay_simple']:
+                data['priority'] = agent.infer(
+                    outputs=['abs_td_error'], 
+                    gamma=cfg['gamma'],
+                    **data
+                )['abs_td_error']
             replay_buffer.append(data)
             state = step_output['state']
             mask = step_output['mask']
@@ -279,23 +286,22 @@ def run(**cfg):
                             gamma=cfg['gamma'],
                             weight_decay=cfg['weight_decay'],
                             entropy_loss_weight=entropy_loss_weight,
-                            outputs=['td_error','Q_policy_eval','loss'],
+                            outputs=['abs_td_error','Q_policy_eval','loss'],
                             **sample)
                     update_counter += 1
 
                     if cfg['buffer_type'] == 'prioritized' and not cfg['prioritized_replay_simple']:
-                        replay_buffer.update_priorities(update_outputs['td_error'])
+                        replay_buffer.update_priorities(update_outputs['abs_td_error'])
 
                 log.append_dict(update_outputs)
                 pb_input.append(('Q_policy_eval', update_outputs['Q_policy_eval'].mean()))
 
             if t % cfg['n_steps_per_eval'] == 0 and t > 0:
-                test_output = test_env.test(agent, addl_outputs=['Q_policy_eval'])
+                test_output = test_env.test(agent)
                 log.append('test_ep_returns', test_output['return'], summary_only=False)
                 log.append('test_ep_length', test_output['length'], summary_only=False)
                 log.append('test_ep_t', t)
                 log.append('test_ep_steps', frame_counter)
-                log.append('test_Q_policy_eval', test_output['Q_policy_eval'].mean(axis=1))
                 avg_test_ep_returns = np.mean(log['test_ep_returns'][-1:])
                 pb_input.append(('test_ep_returns', avg_test_ep_returns))
 
