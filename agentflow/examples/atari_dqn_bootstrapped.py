@@ -183,11 +183,22 @@ def run(**cfg):
         begin_at_step = 0, 
     )
 
+    def get_noise_scale(eps=None, done=None, t=0):
+        noise_scale = noise_scale_schedule(t)
+        eps_next = np.random.rand(cfg['n_envs'])*noise_scale
+        if eps is None:
+            eps = eps_next
+        else:
+            eps = done*eps_next + (1-done)*eps
+        return eps
+
+
     log = LogsTFSummary(savedir)
 
     state_and_mask = env.reset()
     state = state_and_mask['state']
     mask = state_and_mask['mask']
+    noise_scale = get_noise_scale()
 
     if cfg['savemodel']:
         saver = tf.train.Saver()
@@ -223,7 +234,7 @@ def run(**cfg):
 
             if len(replay_buffer) >= cfg['begin_learning_at_step'] or cfg['bootstrap_explore_before_learning']:
                 if cfg['noise_type'] == 'eps_greedy':
-                    action = eps_greedy_noise(action_probs, eps=noise_scale_schedule(t))
+                    action = eps_greedy_noise(action_probs, eps=noise_scale)
                 elif cfg['noise_type'] == 'gumbel_softmax':
                     action = gumbel_softmax_noise(action_probs, temperature=cfg['noise_temperature'])
                 else:
@@ -236,6 +247,8 @@ def run(**cfg):
             bootstrap_mask_probs = (1-cfg['bootstrap_mask_prob'],cfg['bootstrap_mask_prob'])
             bootstrap_mask_shape = (len(state),cfg['bootstrap_num_heads'])
             bootstrap_mask = np.random.choice(2, size=bootstrap_mask_shape, p=bootstrap_mask_probs)
+
+            noise_scale = get_noise_scale(noise_scale, step_output['done'], t)
 
             data = {
                 'state':state,

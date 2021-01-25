@@ -45,8 +45,8 @@ from agentflow.utils import LogsTFSummary
 @click.option('--noise_scale_anneal_steps', default=int(1e6), type=int)
 @click.option('--noise_scale_init', default=1.0, type=float)
 @click.option('--noise_scale_final', default=0.01, type=float)
-@click.option('--noise_temperature', default=1.0, type=float)
 @click.option('--noise_scale_test', default=0.01, type=float)
+@click.option('--noise_temperature', default=1.0, type=float)
 @click.option('--double_q', default=True, type=bool)
 @click.option('--bootstrap_num_heads', default=16, type=int)
 @click.option('--bootstrap_mask_prob', default=0.5, type=float)
@@ -178,19 +178,29 @@ def run(**cfg):
             self._set_weights_counter = 0
             self._name = 'Runner'
 
+            self.noise_scale = None
+            self.update_noise_scale(t=cfg['begin_at_step'])
+
 
         def bootstrap_mask(self):
             bootstrap_mask_probs = (1-cfg['bootstrap_mask_prob'],cfg['bootstrap_mask_prob'])
             bootstrap_mask_shape = (len(state),cfg['bootstrap_num_heads'])
             return np.random.choice(2, size=bootstrap_mask_shape, p=bootstrap_mask_probs)
 
+        def update_noise_scale(self, done=None, t=0):
+            noise_scale = self.noise_scale_schedule(t)
+            eps = np.random.rand(cfg['n_envs'])*noise_scale
+            if self.noise_scale is None:
+                self.noise_scale = eps
+            else:
+                self.noise_scale = done*eps + (1-done)*self.noise_scale
+
         def step(self, t):
             while True:
                 # do-while to initially fill the buffer
-                noise_scale = self.noise_scale_schedule(t)
                 action_probs = self.agent.act_probs(self.next['state'], self.next['mask'], self.sess)
                 if cfg['noise_type'] == 'eps_greedy':
-                    action = eps_greedy_noise(action_probs, eps=noise_scale)
+                    action = eps_greedy_noise(action_probs, eps=self.noise_scale)
                 elif cfg['noise_type'] == 'gumbel_softmax':
                     action = gumbel_softmax_noise(action_probs, temperature=cfg['noise_temperature'])
                 else:
@@ -198,6 +208,8 @@ def run(**cfg):
 
                 self.prev = self.next
                 self.next = env.step(action.astype('int').ravel())
+
+                self.update_noise_scale(self.next['done'])
 
                 data = {
                     'state':self.prev['state'],
@@ -222,7 +234,7 @@ def run(**cfg):
                     break
 
             self.log.append_dict.remote({
-                'noise_scale': noise_scale,
+                'noise_scale': self.noise_scale,
                 'train_ep_return': self.next['prev_episode_return'],
                 'train_ep_length': self.next['prev_episode_length'],
                 'prev_episode_return': self.next['prev_episode_return'], # for backwards compatibility
