@@ -62,6 +62,7 @@ from agentflow.utils import LogsTFSummary
 @click.option('--learning_rate', default=1e-4)
 @click.option('--learning_rate_final', default=0.0, type=float)
 @click.option('--learning_rate_decay', default=0.99995)
+@click.option('--grad_clip_norm', default=None, type=float)
 @click.option('--gamma', default=0.99)
 @click.option('--weight_decay', default=1e-4)
 @click.option('--entropy_loss_weight', default=1e-5, type=float)
