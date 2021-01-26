@@ -12,7 +12,7 @@ from ..tensorflow.ops import value_at_argmax
 
 class BootstrappedDQN(object):
 
-    def __init__(self,state_shape,num_actions,num_heads,q_fn,q_prior_fn=None,double_q=False,random_prior=False,prior_scale=1.0):
+    def __init__(self,state_shape,num_actions,num_heads,q_fn,q_prior_fn=None,double_q=False,random_prior=False,prior_scale=1.0,grad_clip_norm=None):
         """Implements Boostrapped Deep Q Networks [1] with Tensorflow
 
         This class builds a DDPG model with optimization update and action prediction steps.
@@ -52,6 +52,7 @@ class BootstrappedDQN(object):
         self.double_q = double_q
         self.random_prior = random_prior
         self.prior_scale = prior_scale
+        self.grad_clip_norm = grad_clip_norm
 
         self.build_model()
 
@@ -191,7 +192,14 @@ class BootstrappedDQN(object):
             # gradient update for parameters of Q 
             self.optimizer = tf.train.AdamOptimizer(inputs['learning_rate']) 
             with tf.control_dependencies(tf.get_collection(tf.GraphKeys.UPDATE_OPS,scope=scope.name)):
-                train_op = self.optimizer.minimize(loss)
+                var_list = tf.trainable_variables(scope=scope.name)
+                grad_list = tf.gradients(loss,var_list)
+                if self.grad_clip_norm is not None:
+                    grad_list_clipped, gnorm = tf.clip_by_global_norm(grad_list, self.grad_clip_norm)
+                    train_op = self.optimizer.apply_gradients(zip(grad_list_clipped,var_list))
+                else:
+                    gnorm = tf.linalg.global_norm(grad_list)
+                    train_op = self.optimizer.minimize(loss)
 
             # used in update step
             self.update_ops = {
@@ -202,6 +210,7 @@ class BootstrappedDQN(object):
 
             self.var_list = tf.global_variables(scope=scope.name)
             self._pnorms = {v.name: tf.sqrt(tf.reduce_mean(tf.square(v))) for v in self.var_list} 
+            self._gnorm = {v.name: tf.sqrt(tf.reduce_mean(tf.square(v))) for v in self.var_list} 
 
             # store attributes for later use
             self.outputs = {
@@ -218,6 +227,7 @@ class BootstrappedDQN(object):
                 'abs_td_error': abs_td_error,
                 'td_error': td_error,
                 'y': y,
+                'gnorm': gnorm,
             }
 
     def act(self,state,mask=None,session=None,addl_outputs=None):

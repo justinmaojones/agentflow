@@ -124,6 +124,7 @@ def run(**cfg):
         num_heads=cfg['bootstrap_num_heads'],
         random_prior=cfg['bootstrap_random_prior'],
         prior_scale=cfg['bootstrap_prior_scale'],
+        grad_clip_norm=cfg['grad_clip_norm']
     )
 
     for v in tf.global_variables():

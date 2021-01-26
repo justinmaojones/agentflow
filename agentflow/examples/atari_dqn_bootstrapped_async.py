@@ -72,6 +72,7 @@ from agentflow.utils import LogsTFSummary
 @click.option('--learning_rate', default=1e-4)
 @click.option('--learning_rate_final', default=0.0, type=float)
 @click.option('--learning_rate_decay', default=0.99995)
+@click.option('--grad_clip_norm', default=None, type=float)
 @click.option('--gamma', default=0.99)
 @click.option('--weight_decay', default=1e-4)
 @click.option('--entropy_loss_weight', default=1e-5, type=float)
@@ -141,6 +142,7 @@ def run(**cfg):
             num_heads=cfg['bootstrap_num_heads'],
             random_prior=cfg['bootstrap_random_prior'],
             prior_scale=cfg['bootstrap_prior_scale'],
+            grad_clip_norm=cfg['grad_clip_norm']
         )
 
     @ray.remote(num_cpus=1)
@@ -406,7 +408,7 @@ def run(**cfg):
                 gamma = gamma,
                 weight_decay = weight_decay,
                 entropy_loss_weight = entropy_loss_weight,
-                outputs = ['abs_td_error','Q_policy_eval', 'loss'],
+                outputs = ['abs_td_error', 'Q_policy_eval', 'loss', 'gnorm'],
                 **sample)
 
             update_outputs['weight_decay'] = weight_decay
