@@ -41,6 +41,7 @@ from agentflow.utils import LogsTFSummary
 @click.option('--n_envs', default=1, type=int)
 @click.option('--n_prev_frames', default=4, type=int)
 @click.option('--ema_decay', default=0.95, type=float)
+@click.option('--target_network_copy_freq', default=None, type=int)
 @click.option('--noise_type', default='eps_greedy', type=click.Choice(['eps_greedy','gumbel_softmax']))
 @click.option('--noise_scale_anneal_steps', default=int(1e6), type=int)
 @click.option('--noise_scale_init', default=1.0, type=float)
@@ -209,7 +210,7 @@ def run(**cfg):
                 self.prev = self.next
                 self.next = env.step(action.astype('int').ravel())
 
-                self.update_noise_scale(self.next['done'])
+                self.update_noise_scale(self.next['done'], t=t)
 
                 data = {
                     'state':self.prev['state'],
@@ -387,28 +388,38 @@ def run(**cfg):
             self.timer(idle=False)
             learning_rate = self.learning_rate_schedule(self.t)
             entropy_loss_weight = self.entropy_loss_weight_schedule(self.t)
-            self.log.append.remote('learning_rate', learning_rate)
-            self.log.append.remote('entropy_loss_weight', entropy_loss_weight)
-            self.t += 1
+            weight_decay = cfg['weight_decay']
+            gamma = cfg['gamma']
+
+            if cfg['target_network_copy_freq'] is not None:
+                if self.t % cfg['target_network_copy_freq'] == 0:
+                    ema_decay = 0.0
+                else:
+                    ema_decay = cfg['ema_decay']
+
             if cfg['buffer_type'] == 'prioritized' and not cfg['prioritized_replay_simple']:
                 indices = sample.pop('indices')
 
             update_outputs = self.agent.update(
                 session = self.sess,
-                learning_rate=learning_rate,
-                ema_decay=cfg['ema_decay'],
-                gamma=cfg['gamma'],
-                weight_decay=cfg['weight_decay'],
-                entropy_loss_weight=entropy_loss_weight,
-                outputs=['abs_td_error','Q_policy_eval', 'loss'],
+                learning_rate = learning_rate,
+                ema_decay = ema_decay,
+                gamma = gamma,
+                weight_decay = weight_decay,
+                entropy_loss_weight = entropy_loss_weight,
+                outputs = ['abs_td_error','Q_policy_eval', 'loss'],
                 **sample)
 
+            update_outputs['weight_decay'] = weight_decay
+            update_outputs['gamma'] = gamma
+            update_outputs['ema_decay'] = ema_decay
             update_outputs['learning_rate'] = learning_rate
             update_outputs['entropy_loss_weight'] = entropy_loss_weight
             self.timer(idle=True)
             update_outputs['IdleTimer/fraction_idle/parameter_server'] = self.timer.fraction_idle()
             self.log.append_dict.remote(update_outputs)
 
+            self.t += 1
             if cfg['buffer_type'] == 'prioritized' and not cfg['prioritized_replay_simple']:
                 return {
                     'priorities': np.abs(update_outputs['abs_td_error']),
