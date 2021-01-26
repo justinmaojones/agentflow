@@ -28,7 +28,7 @@ do
         --network_scale=1 \
         --noise_scale_anneal_steps=1000000 \
         --noise_scale_init=0.4 \
-        --noise_scale_final=0.01 \
+        --noise_scale_final=0.4 \
         --noise_type=eps_greedy \
         --num_steps=10000000 \
         --prioritized_replay_simple=False \
