@@ -391,11 +391,10 @@ def run(**cfg):
             weight_decay = cfg['weight_decay']
             gamma = cfg['gamma']
 
+            ema_decay = cfg['ema_decay']
             if cfg['target_network_copy_freq'] is not None:
                 if self.t % cfg['target_network_copy_freq'] == 0:
                     ema_decay = 0.0
-                else:
-                    ema_decay = cfg['ema_decay']
 
             if cfg['buffer_type'] == 'prioritized' and not cfg['prioritized_replay_simple']:
                 indices = sample.pop('indices')
