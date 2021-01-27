@@ -16,6 +16,7 @@ from agentflow.buffers import PrioritizedBufferMap
 from agentflow.buffers import NStepReturnBuffer
 from agentflow.examples.env import dqn_atari_paper_env
 from agentflow.examples.nn import dqn_atari_paper_net
+from agentflow.examples.nn import dqn_atari_paper_net_dueling
 from agentflow.numpy.ops import onehot
 from agentflow.numpy.ops import eps_greedy_noise
 from agentflow.numpy.ops import gumbel_softmax_noise
@@ -48,6 +49,7 @@ from agentflow.utils import LogsTFSummary
 @click.option('--noise_scale_final', default=0.01, type=float)
 @click.option('--noise_scale_test', default=0.01, type=float)
 @click.option('--noise_temperature', default=1.0, type=float)
+@click.option('--dueling', default=False, type=bool)
 @click.option('--double_q', default=True, type=bool)
 @click.option('--bootstrap_num_heads', default=16, type=int)
 @click.option('--bootstrap_mask_prob', default=0.5, type=float)
@@ -126,12 +128,25 @@ def run(**cfg):
     print('STATE SHAPE: ', state_shape)
     print('ACTION SHAPE: ', action_shape)
 
-    def q_fn(state, training=False, **kwargs):
-        state = state/255 - 0.5
-        state, _ = normalize_ema(state, training)
-        h = dqn_atari_paper_net(state, cfg['network_scale'])
-        output = tf.layers.dense(h,action_shape*cfg['bootstrap_num_heads'])
-        return tf.reshape(output,[-1,action_shape,cfg['bootstrap_num_heads']])
+    if not cfg['dueling']:
+        def q_fn(state, training=False, **kwargs):
+            state = state/255 - 0.5
+            state, _ = normalize_ema(state, training)
+            h = dqn_atari_paper_net(state, cfg['network_scale'])
+            output = tf.layers.dense(h,action_shape*cfg['bootstrap_num_heads'])
+            return tf.reshape(output,[-1,action_shape,cfg['bootstrap_num_heads']])
+    else:
+        def q_fn(state, training=False, **kwargs):
+            state = state/255 - 0.5
+            state, _ = normalize_ema(state, training)
+            h_val, h_adv = dqn_atari_paper_net_dueling(state, cfg['network_scale'])
+            val_flat = tf.layers.dense(h_val, cfg['bootstrap_num_heads'])
+            val = val_flat[:,None,:]
+            adv_flat = tf.layers.dense(h_adv, action_shape*cfg['bootstrap_num_heads'])
+            adv = tf.reshape(adv_flat, [-1,action_shape,cfg['bootstrap_num_heads']])
+            adv_avg = tf.reduce_mean(adv, axis=-2, keepdims=True)
+            adv_normed = adv - adv_avg
+            return val + adv_normed 
 
     def build_agent():
         return BootstrappedDQN(
