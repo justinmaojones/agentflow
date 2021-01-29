@@ -129,7 +129,7 @@ def run(**cfg):
         data = ImgEncoder('state2', 2000)(data) 
         return data
 
-    @ray.remote:
+    @ray.remote
     def decode(sample):
         sample = ImgDecoder('state')(sample) 
         sample = ImgDecoder('state2')(sample) 
