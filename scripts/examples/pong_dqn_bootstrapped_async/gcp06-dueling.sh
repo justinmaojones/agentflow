@@ -1,4 +1,4 @@
-export SAVEDIR=results/pong_dqn_bootstrapped_async_gcp05/
+export SAVEDIR=results/pong_dqn_bootstrapped_async_gcp06/
 
 for SEED in 1 #2 3 4 5 6 7 8 9 10
 do
