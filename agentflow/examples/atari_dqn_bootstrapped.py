@@ -28,6 +28,8 @@ from agentflow.state import RandomOneHotMaskEnv
 from agentflow.state import TestAgentEnv 
 from agentflow.tensorflow.nn import dense_net
 from agentflow.tensorflow.ops import normalize_ema
+from agentflow.transform import ImgDecoder
+from agentflow.transform import ImgEncoder
 from agentflow.utils import LogsTFSummary
 
 @click.option('--env_id', default='PongDeterministic-v4', type=str)
@@ -281,6 +283,9 @@ def run(**cfg):
                     gamma=cfg['gamma'],
                     **data
                 )['abs_td_error']
+
+            data = ImgEncoder('state', 2000)(data) 
+            data = ImgEncoder('state2', 2000)(data) 
             replay_buffer.append(data)
             state = step_output['state']
             mask = step_output['mask']
@@ -309,6 +314,9 @@ def run(**cfg):
                         log.append('max_importance_weight',sample['importance_weight'].max())
                     else:
                         sample = replay_buffer.sample(cfg['batchsize'])
+
+                    sample = ImgDecoder('state')(sample) 
+                    sample = ImgDecoder('state2')(sample) 
 
                     update_outputs = agent.update(
                             learning_rate=learning_rate,

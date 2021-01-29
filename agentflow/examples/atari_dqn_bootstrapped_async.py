@@ -29,6 +29,8 @@ from agentflow.state import RandomOneHotMaskEnv
 from agentflow.state import TestAgentEnv 
 from agentflow.tensorflow.nn import dense_net
 from agentflow.tensorflow.ops import normalize_ema
+from agentflow.transform import ImgDecoder
+from agentflow.transform import ImgEncoder
 from agentflow.utils import IdleTimer 
 from agentflow.utils import LogsTFSummary
 
@@ -238,6 +240,9 @@ def run(**cfg):
                     'mask':self.bootstrap_mask(),
                 }
 
+                data = ImgEncoder('state', 2000)(data) 
+                data = ImgEncoder('state2', 2000)(data) 
+
                 if cfg['buffer_type'] == 'prioritized' and not cfg['prioritized_replay_simple']:
                     data['priority'] = self.agent.infer(
                         outputs=['abs_td_error'], 
@@ -352,6 +357,8 @@ def run(**cfg):
                 })
             else:
                 sample = self.replay_buffer.sample(cfg['batchsize'])
+            sample = ImgDecoder('state')(sample) 
+            sample = ImgDecoder('state2')(sample) 
             self.t += 1
             return sample
 
@@ -562,7 +569,7 @@ def run(**cfg):
         if t == cfg['begin_at_step'] and frame_counter >= cfg['begin_learning_at_step']:
             if update_agent_task not in list(ops.values()):
                 print("ADD UDPDATE")
-                for i in range(16):
+                for i in range(4):
                     ops[update_agent_task.run(t)] = update_agent_task
 
         # init and update weights periodically
