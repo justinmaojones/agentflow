@@ -553,7 +553,10 @@ def run(**cfg):
 
     # setup tasks 
     print("SETUP OPS")
-    ops = {task.run(0): task for task in runner_tasks}
+    ops = {}
+    for i in range(4):
+        for task in runner_tasks:
+            ops[task.run(i)] = task
 
     print("BEGIN!!!")
     start_time = time.time()
@@ -568,7 +571,7 @@ def run(**cfg):
         if t == cfg['begin_at_step'] and frame_counter >= cfg['begin_learning_at_step']:
             if update_agent_task not in list(ops.values()):
                 print("ADD UDPDATE")
-                for i in range(4):
+                for i in range(8):
                     ops[update_agent_task.run(t)] = update_agent_task
 
         # init and update weights periodically
