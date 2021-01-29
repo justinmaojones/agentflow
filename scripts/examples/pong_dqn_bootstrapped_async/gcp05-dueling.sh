@@ -3,7 +3,7 @@ export SAVEDIR=results/pong_dqn_bootstrapped_async_gcp05/
 for SEED in 1 #2 3 4 5 6 7 8 9 10
 do
     python3 agentflow/examples/atari_dqn_bootstrapped_async.py \
-        --batchsize=128 \
+        --batchsize=512 \
         --begin_learning_at_step=50000 \
         --bootstrap_mask_prob=1.0 \
         --bootstrap_num_heads=1 \
