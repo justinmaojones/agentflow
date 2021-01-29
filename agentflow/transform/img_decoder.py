@@ -45,9 +45,9 @@ if __name__ == '__main__':
     class Test(unittest.TestCase):
 
         def test_normal(self):
-            img_encoder = ImgEncoder('state', 70)
+            img_encoder = ImgEncoder('state', 3000)
             img_decoder = ImgDecoder('state')
-            x = {'state':  np.array([[[0]],[[1]]],dtype='uint8')}
+            x = {'state':  np.random.choice(10,size=(3,4,5)).astype('uint8')}
             x2 = img_decoder(img_encoder(x))
             np.testing.assert_array_equal(x2['state'], x['state'])
             self.assertEqual(set(x2.keys()), set(('state',)))
