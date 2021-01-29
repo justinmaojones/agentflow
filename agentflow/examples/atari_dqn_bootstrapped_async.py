@@ -601,6 +601,7 @@ def run(**cfg):
             task = ops.pop(op_id)
             if task in runner_tasks:
                 frame_counter += cfg['n_envs']
+                pb.add(0,[('frame', frame_counter), ('update', t)])
             elif task == update_agent_task:
                 t += 1
                 pb.add(1,[('frame', frame_counter), ('update', t)])
