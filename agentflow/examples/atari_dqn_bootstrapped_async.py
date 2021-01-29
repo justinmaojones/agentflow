@@ -248,9 +248,6 @@ def run(**cfg):
                         **data
                     )['abs_td_error']
 
-                data = ImgEncoder('state', 2000)(data) 
-                data = ImgEncoder('state2', 2000)(data) 
-
                 self.n_step_return_buffer.append(data)
                 if self.n_step_return_buffer.full():
                     # buffer is initialized
@@ -265,6 +262,8 @@ def run(**cfg):
             })
 
             delayed_data, _ = self.n_step_return_buffer.latest_data() 
+            delayed_data = ImgEncoder('state', 2000)(delayed_data) 
+            delayed_data = ImgEncoder('state2', 2000)(delayed_data) 
             return delayed_data 
 
         def set_weights(self, weights):
