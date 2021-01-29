@@ -240,9 +240,6 @@ def run(**cfg):
                     'mask':self.bootstrap_mask(),
                 }
 
-                data = ImgEncoder('state', 2000)(data) 
-                data = ImgEncoder('state2', 2000)(data) 
-
                 if cfg['buffer_type'] == 'prioritized' and not cfg['prioritized_replay_simple']:
                     data['priority'] = self.agent.infer(
                         outputs=['abs_td_error'], 
@@ -250,6 +247,9 @@ def run(**cfg):
                         session=self.sess,
                         **data
                     )['abs_td_error']
+
+                data = ImgEncoder('state', 2000)(data) 
+                data = ImgEncoder('state2', 2000)(data) 
 
                 self.n_step_return_buffer.append(data)
                 if self.n_step_return_buffer.full():
