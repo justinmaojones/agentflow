@@ -123,6 +123,18 @@ def run(**cfg):
     test_env = dqn_atari_paper_env(cfg['env_id'], n_envs=8, n_prev_frames=cfg['n_prev_frames'])
     test_env = TestAgentEnv(test_env)
 
+    @ray.remote
+    def encode(data):
+        data = ImgEncoder('state', 2000)(data) 
+        data = ImgEncoder('state2', 2000)(data) 
+        return data
+
+    @ray.remote:
+    def decode(sample):
+        sample = ImgDecoder('state')(sample) 
+        sample = ImgDecoder('state2')(sample) 
+        return sample
+
     # state and action shapes
     state = env.reset()['state']
     state_shape = state.shape
@@ -262,8 +274,6 @@ def run(**cfg):
             })
 
             delayed_data, _ = self.n_step_return_buffer.latest_data() 
-            delayed_data = ImgEncoder('state', 2000)(delayed_data) 
-            delayed_data = ImgEncoder('state2', 2000)(delayed_data) 
             return delayed_data 
 
         def set_weights(self, weights):
@@ -356,8 +366,6 @@ def run(**cfg):
                 })
             else:
                 sample = self.replay_buffer.sample(cfg['batchsize'])
-            sample = ImgDecoder('state')(sample) 
-            sample = ImgDecoder('state2')(sample) 
             self.t += 1
             return sample
 
@@ -472,6 +480,7 @@ def run(**cfg):
 
         def run(self, t):
             data = self.runner.step.remote(t)
+            data = encode.remote(data)
             return self.replay_buffer.append.remote(data)
 
     class UpdateAgentTask(Task):
@@ -479,11 +488,16 @@ def run(**cfg):
         def __init__(self, parameter_server, replay_buffer):
             self.parameter_server = parameter_server
             self.replay_buffer = replay_buffer
-            self.sample = None
+            self._sample = None
+
+        def sample(self):
+            if self._sample is None:
+                self._sample = decode.remote(self.replay_buffer.sample.remote())
+            sample = self._sample
+            self._sample = decode.remote(self.replay_buffer.sample.remote())
+            return sample
 
         def run(self, t):
-            if self.sample is None:
-                self.sample = self.replay_buffer.sample.remote()
             rval = self.parameter_server.update.remote(self.sample)
             self.sample = self.replay_buffer.sample.remote()
             if cfg['buffer_type'] == 'prioritized' and not cfg['prioritized_replay_simple']:
