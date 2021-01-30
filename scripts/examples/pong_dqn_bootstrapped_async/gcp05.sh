@@ -16,7 +16,7 @@ do
         --ema_decay=1.0 \
         --target_network_copy_freq=2500 \
         --entropy_loss_weight=0.0 \
-        --env_id=PongDeterministic-v4 \
+        --env_id=PongNoFrameskip-v4 \
         --grad_clip_norm=40.0 \
         --learning_rate=2.5e-4 \
         --learning_rate_final=2.5e-4 \

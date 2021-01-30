@@ -32,7 +32,7 @@ from agentflow.transform import ImgDecoder
 from agentflow.transform import ImgEncoder
 from agentflow.utils import LogsTFSummary
 
-@click.option('--env_id', default='PongDeterministic-v4', type=str)
+@click.option('--env_id', default='PongNoFrameskip-v4', type=str)
 @click.option('--num_steps', default=30000, type=int)
 @click.option('--num_frames_max', default=None, type=int)
 @click.option('--n_envs', default=1)
@@ -178,6 +178,7 @@ def run(**cfg):
         replay_buffer,
         n_steps=cfg['n_step_return'],
         gamma=cfg['gamma'],
+        delayed_keys=['state2_encoded','state2_encoding_length']
     )
 
     # Annealed parameters

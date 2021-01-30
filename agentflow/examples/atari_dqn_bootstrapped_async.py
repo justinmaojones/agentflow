@@ -35,7 +35,7 @@ from agentflow.utils import IdleTimer
 from agentflow.utils import LogsTFSummary
 
 
-@click.option('--env_id', default='PongDeterministic-v4', type=str)
+@click.option('--env_id', default='PongNoFrameskip-v4', type=str)
 @click.option('--num_steps', default=30000, type=int)
 @click.option('--num_frames_max', default=None, type=int)
 @click.option('--n_runners', default=1, type=int)
@@ -584,7 +584,7 @@ def run(**cfg):
         if t == cfg['begin_at_step'] and frame_counter >= cfg['begin_learning_at_step']:
             if update_agent_task not in list(ops.values()):
                 print("ADD UDPDATE")
-                for i in range(8):
+                for i in range(16):
                     ops[update_agent_task.run(t)] = update_agent_task
 
         # init and update weights periodically
