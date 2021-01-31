@@ -22,9 +22,11 @@ do
         --learning_rate=2.5e-4 \
         --learning_rate_final=2.5e-4 \
         --learning_rate_decay=0.9999995 \
+        --log_flush_freq=100 \
         --n_envs=100 \
         --n_gpus=0 \
         --n_runners=4 \
+        --n_steps_per_eval=250 \
         --n_step_return=4 \
         --n_update_steps=1 \
         --network_scale=1 \
