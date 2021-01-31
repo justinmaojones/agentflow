@@ -14,7 +14,7 @@ class ResizeImageState(BaseState):
     def update(self, frame, reset_mask=None):
         n = len(frame)
         self._state = np.concatenate(
-            [cv2.resize(frame[i],self.resized_shape)[None] for i in range(n)],
+            [cv2.resize(frame[i],self.resized_shape,interpolation=cv2.INTER_AREA)[None] for i in range(n)],
             axis=0
         )
         while len(self._state.shape) < len(frame.shape):
