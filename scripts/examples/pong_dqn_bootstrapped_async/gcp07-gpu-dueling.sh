@@ -10,7 +10,7 @@ do
         --bootstrap_prior_scale=0.0 \
         --bootstrap_random_prior=False \
         --bootstrap_explore_before_learning=False \
-        --buffer_size=400000 \
+        --buffer_size=1000000 \
         --buffer_type=normal \
         --dueling=True \
         --double_q=True \
@@ -22,7 +22,7 @@ do
         --learning_rate_final=1e-4 \
         --learning_rate_decay=0.9999995 \
         --log_flush_freq=1000 \
-        --n_envs=10 \
+        --n_envs=25 \
         --n_steps_per_eval=10000 \
         --n_gpus=1 \
         --n_runners=4 \
