@@ -1,3 +1,4 @@
+from contextlib import contextmanager
 import h5py
 import os
 import time
@@ -16,12 +17,12 @@ def check_whats_connected(output):
 
 class IdleTimer(object):
 
-    def __init__(self, start_on_create=False):
+    def __init__(self, start_on_create=True):
         self.idle_duration = 0
         self.duration = 0
         self.start_on_create = start_on_create
 
-        self.idle = None 
+        self.idle = True 
         self.start_time = None 
         self.prev_time = None
 
@@ -51,6 +52,48 @@ class IdleTimer(object):
             return float(self.idle_duration) / self.duration
         else:
             return 0.
+
+class ScopedIdleTimer(IdleTimer):
+
+    def __init__(self, scope=None, start_on_create=True):
+        super(ScopedIdleTimer, self).__init__(start_on_create)
+        self._timed_scopes = {}
+        self._scopes = []
+        assert scope is None or isinstance(scope, str)
+        self._scope = scope
+
+    def _add(self, key, duration):
+        key = str(key)
+        if key not in self._timed_scopes:
+            self._timed_scopes[key] = 0
+        self._timed_scopes[key] += duration
+
+    @contextmanager
+    def time(self, scope):
+        assert scope != 'idle'
+        assert self.idle
+        self.__call__(False)
+        start = time.time()
+        try:
+            yield None
+        finally:
+            duration = time.time() - start
+            self._add(scope, duration)
+            self.__call__(True)
+
+    def _get_scoped_key(self, key):
+        if self._scope is not None:
+            key = self._scope + "/" + key
+        return key
+
+    def summary(self):
+        self.__call__(self.idle)
+        assert self.duration > 0
+        output = {}
+        for k in self._timed_scopes:
+            output[self._get_scoped_key(k)] = float(self._timed_scopes[k]) / self.duration
+        output[self._get_scoped_key('idle')] = float(self.idle_duration) / self.duration
+        return output
 
 class LogsTFSummary(object):
 

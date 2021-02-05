@@ -1,7 +1,7 @@
 click
-gym==0.13.1
-gym[classic_control]==0.13.1
-gym[atari]==0.13.1
+gym>=0.17
+gym[classic_control]>=0.17
+gym[atari]>=0.17
 h5py
 jupyter
 matplotlib

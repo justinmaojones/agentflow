@@ -32,8 +32,18 @@ from agentflow.tensorflow.ops import normalize_ema
 from agentflow.transform import ImgDecoder
 from agentflow.transform import ImgEncoder
 from agentflow.utils import IdleTimer 
+from agentflow.utils import ScopedIdleTimer
 from agentflow.utils import LogsTFSummary
 
+def timed(func):
+    def wrapper(self, *args, **kwargs):
+        key = func.__name__
+        with self.scoped_timer.time(key):
+            output = func(self, *args, **kwargs)
+        timer_summary = self.scoped_timer.summary()
+        self.log.append_dict.remote({k: timer_summary[k] for k in timer_summary})
+        return output
+    return wrapper
 
 @click.option('--env_id', default='PongNoFrameskip-v4', type=str)
 @click.option('--num_steps', default=30000, type=int)
@@ -76,16 +86,17 @@ from agentflow.utils import LogsTFSummary
 @click.option('--learning_rate', default=1e-4)
 @click.option('--learning_rate_final', default=0.0, type=float)
 @click.option('--learning_rate_decay', default=0.99995)
+@click.option('--td_loss', default='square', type=click.Choice(['square','huber']))
 @click.option('--grad_clip_norm', default=None, type=float)
+@click.option('--normalize_inputs', default=True, type=bool)
 @click.option('--gamma', default=0.99)
 @click.option('--weight_decay', default=1e-4)
-@click.option('--entropy_loss_weight', default=1e-5, type=float)
-@click.option('--entropy_loss_weight_decay', default=0.99995)
 @click.option('--n_update_steps', default=4, type=int)
 @click.option('--update_freq', default=1, type=int)
 @click.option('--n_steps_per_eval', default=1000, type=int)
 @click.option('--batchsize', default=64)
 @click.option('--log_flush_freq', default=1000, type=int)
+@click.option('--log_pnorms', default=False, type=bool)
 @click.option('--gc_freq', default=1000, type=int)
 @click.option('--savedir', default='results')
 @click.option('--restore_from_ckpt', default=None, type=str)
@@ -145,14 +156,16 @@ def run(**cfg):
     if not cfg['dueling']:
         def q_fn(state, training=False, **kwargs):
             state = state/255 - 0.5
-            state, _ = normalize_ema(state, training)
+            if cfg['normalize_inputs']:
+                state, _ = normalize_ema(state, training)
             h = dqn_atari_paper_net(state, cfg['network_scale'])
             output = tf.layers.dense(h,action_shape*cfg['bootstrap_num_heads'])
             return tf.reshape(output,[-1,action_shape,cfg['bootstrap_num_heads']])
     else:
         def q_fn(state, training=False, **kwargs):
             state = state/255 - 0.5
-            state, _ = normalize_ema(state, training)
+            if cfg['normalize_inputs']:
+                state, _ = normalize_ema(state, training)
             h_val, h_adv = dqn_atari_paper_net_dueling(state, cfg['network_scale'])
             val_flat = tf.layers.dense(h_val, cfg['bootstrap_num_heads'])
             val = val_flat[:,None,:]
@@ -171,7 +184,8 @@ def run(**cfg):
             num_heads=cfg['bootstrap_num_heads'],
             random_prior=cfg['bootstrap_random_prior'],
             prior_scale=cfg['bootstrap_prior_scale'],
-            grad_clip_norm=cfg['grad_clip_norm']
+            grad_clip_norm=cfg['grad_clip_norm'],
+            td_loss=cfg['td_loss'],
         )
 
     @ray.remote(num_cpus=1)
@@ -182,6 +196,7 @@ def run(**cfg):
 
         def __init__(self, env, log):
             self.log = log
+            self.scoped_timer = ScopedIdleTimer("ScopedIdleTimer/Runner", start_on_create=False)
             self.env = env
             self.next = self.env.reset()
 
@@ -220,13 +235,16 @@ def run(**cfg):
             return np.random.choice(2, size=bootstrap_mask_shape, p=bootstrap_mask_probs)
 
         def update_noise_scale(self, done=None, t=0):
-            noise_scale = self.noise_scale_schedule(t)
-            eps = np.random.rand(cfg['n_envs'])*noise_scale
-            if self.noise_scale is None:
-                self.noise_scale = eps
-            else:
-                self.noise_scale = done*eps + (1-done)*self.noise_scale
+            self.noise_scale = self.noise_scale_schedule(t)
+            if False:
+                noise_scale = self.noise_scale_schedule(t)
+                eps = np.random.rand(cfg['n_envs'])*noise_scale
+                if self.noise_scale is None:
+                    self.noise_scale = eps
+                else:
+                    self.noise_scale = done*eps + (1-done)*self.noise_scale
 
+        @timed
         def step(self, t):
             while True:
                 # do-while to initially fill the buffer
@@ -276,6 +294,7 @@ def run(**cfg):
             delayed_data, _ = self.n_step_return_buffer.latest_data() 
             return delayed_data 
 
+        @timed
         def set_weights(self, weights):
             self.variables.set_weights(weights)
             self._set_weights_counter += 1
@@ -320,6 +339,7 @@ def run(**cfg):
         def __init__(self, log):
 
             self.log = log
+            self.scoped_timer = ScopedIdleTimer("ScopedIdleTimer/ReplayBuffer", start_on_create=False)
 
             # Replay Buffer
             if cfg['buffer_type'] == 'prioritized':
@@ -340,14 +360,15 @@ def run(**cfg):
                     annealing_steps = cfg['prioritized_replay_beta_iters'] or cfg['num_steps'],
                     begin_at_step = cfg['begin_learning_at_step'],
                 )
-                self.t = cfg['begin_at_step']
 
             else:
                 # Normal Buffer
                 replay_buffer = BufferMap(cfg['buffer_size'] // cfg['n_envs'])
 
+            self.t = cfg['begin_at_step']
             self.replay_buffer = replay_buffer
 
+        @timed
         def append(self, data):
             self.replay_buffer.append(data)
 
@@ -356,6 +377,7 @@ def run(**cfg):
                 'replay_buffer_frames': len(self.replay_buffer)*cfg['n_envs'],
                 })
 
+        @timed
         def sample(self):
             if cfg['buffer_type'] == 'prioritized':
                 beta = self.beta_schedule(self.t)
@@ -369,6 +391,7 @@ def run(**cfg):
             self.t += 1
             return sample
 
+        @timed
         def update_priorities(self, priorities_and_indices):
             assert isinstance(priorities_and_indices, dict)
             assert 'priorities' in priorities_and_indices
@@ -384,6 +407,7 @@ def run(**cfg):
         def __init__(self, log):
 
             self.log = log
+            self.scoped_timer = ScopedIdleTimer("ScopedIdleTimer/ParameterServer", start_on_create=False)
 
             # build agent
             self.agent = build_agent()
@@ -404,27 +428,24 @@ def run(**cfg):
                 begin_at_step = cfg['begin_learning_at_step']
             )
 
-            self.entropy_loss_weight_schedule = ExponentialDecaySchedule(
-                initial_value = cfg['entropy_loss_weight'],
-                final_value = 0.0,
-                decay_rate = cfg['learning_rate_decay'],
-                begin_at_step = cfg['begin_learning_at_step']
-            )
-
             self.t = cfg['begin_at_step']
 
-            self.timer = IdleTimer() 
+            self.timer = IdleTimer(start_on_create=False) 
 
+            for v in tf.trainable_variables():
+                print(v)
+
+        @timed
         def update(self, sample):
             self.timer(idle=False)
             learning_rate = self.learning_rate_schedule(self.t)
-            entropy_loss_weight = self.entropy_loss_weight_schedule(self.t)
             weight_decay = cfg['weight_decay']
             gamma = cfg['gamma']
 
             ema_decay = cfg['ema_decay']
             if cfg['target_network_copy_freq'] is not None:
                 if self.t % cfg['target_network_copy_freq'] == 0:
+                    self.log.append.remote('target_network_copy', self.t)
                     ema_decay = 0.0
 
             if cfg['buffer_type'] == 'prioritized' and not cfg['prioritized_replay_simple']:
@@ -436,7 +457,6 @@ def run(**cfg):
                 ema_decay = ema_decay,
                 gamma = gamma,
                 weight_decay = weight_decay,
-                entropy_loss_weight = entropy_loss_weight,
                 outputs = ['abs_td_error', 'Q_policy_eval', 'loss', 'gnorm'],
                 **sample)
 
@@ -444,23 +464,28 @@ def run(**cfg):
             update_outputs['gamma'] = gamma
             update_outputs['ema_decay'] = ema_decay
             update_outputs['learning_rate'] = learning_rate
-            update_outputs['entropy_loss_weight'] = entropy_loss_weight
-            self.timer(idle=True)
-            update_outputs['IdleTimer/fraction_idle/parameter_server'] = self.timer.fraction_idle()
             self.log.append_dict.remote(update_outputs)
+
+            if cfg['log_pnorms']:
+                log.append_dict.remote(agent.pnorms(self.sess))
 
             self.t += 1
             if cfg['buffer_type'] == 'prioritized' and not cfg['prioritized_replay_simple']:
-                return {
+                output = {
                     'priorities': np.abs(update_outputs['abs_td_error']),
                     'indices': indices,
                   }
             else:
-                return
+                output = None
+            self.timer(idle=True)
+            self.log.append.remote('IdleTimer/fraction_idle/parameter_server', self.timer.fraction_idle())
+            return output
 
+        @timed
         def get_weights(self):
             return self.variables.get_weights()
 
+        @timed
         def save(self):
             self.saver.save(self.sess, self.checkpoint_prefix)
 
@@ -567,7 +592,7 @@ def run(**cfg):
     # setup tasks 
     print("SETUP OPS")
     ops = {}
-    for i in range(4):
+    for i in range(2):
         for task in runner_tasks:
             ops[task.run(i)] = task
 
@@ -587,15 +612,6 @@ def run(**cfg):
                 for i in range(16):
                     ops[update_agent_task.run(t)] = update_agent_task
 
-        # init and update weights periodically
-        if t % cfg['runner_update_freq'] == 0 and frame_counter > cfg['begin_learning_at_step']:
-            update_runner_weights_task.run(t)
-
-        # evaluate
-        if t % cfg['n_steps_per_eval'] == 0 and t > cfg['begin_at_step']:
-            update_runner_weights_task.update_runner(test_runner)
-            test_runner.test.remote(t, frame_counter)
-
         ready_op_list, _ = ray.wait(list(ops))
         for op_id in ready_op_list:
             task = ops.pop(op_id)
@@ -604,6 +620,24 @@ def run(**cfg):
                 pb.add(0,[('frame', frame_counter), ('update', t)])
             elif task == update_agent_task:
                 t += 1
+
+                # update weights periodically
+                if t % cfg['runner_update_freq'] == 0:
+                    update_runner_weights_task.run(t)
+
+                # evaluate
+                if t % cfg['n_steps_per_eval'] == 0:
+                    update_runner_weights_task.update_runner(test_runner)
+                    test_runner.test.remote(t, frame_counter)
+
+                if t % cfg['log_flush_freq'] == 0:
+                    log.flush.remote(step=t)
+                    if cfg['savemodel']:
+                        parameter_server.save.remote()
+
+                if t % cfg['gc_freq'] == 0:
+                    gc.collect()
+
                 pb.add(1,[('frame', frame_counter), ('update', t)])
             else:
                 assert False, "unhandled worker: %s" % str(worker)
@@ -617,14 +651,6 @@ def run(**cfg):
             'step_duration_sec': end_time-start_step_time,
             'duration_cumulative': end_time-start_time,
         })
-
-        if t % cfg['log_flush_freq'] == 0 and t > cfg['begin_at_step']:
-            log.flush.remote(step=t)
-            if cfg['savemodel']:
-                parameter_server.save.remote()
-
-        if t % cfg['gc_freq'] == 0 and t > cfg['begin_at_step']:
-            gc.collect()
 
     print("WRITING RESULTS TO: %s" % os.path.join(savedir,'log.h5'))
     log.write.remote(os.path.join(savedir,'log.h5'))

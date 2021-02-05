@@ -32,12 +32,14 @@ from agentflow.transform import ImgDecoder
 from agentflow.transform import ImgEncoder
 from agentflow.utils import LogsTFSummary
 
+
 @click.option('--env_id', default='PongNoFrameskip-v4', type=str)
 @click.option('--num_steps', default=30000, type=int)
 @click.option('--num_frames_max', default=None, type=int)
 @click.option('--n_envs', default=1)
 @click.option('--n_prev_frames', default=4)
 @click.option('--ema_decay', default=0.95, type=float)
+@click.option('--target_network_copy_freq', default=None, type=int)
 @click.option('--noise_type', default='eps_greedy', type=click.Choice(['eps_greedy','gumbel_softmax']))
 @click.option('--noise_scale_anneal_steps', default=int(1e6), type=int)
 @click.option('--noise_scale_init', default=1.0, type=float)
@@ -54,6 +56,7 @@ from agentflow.utils import LogsTFSummary
 @click.option('--batchnorm', default=False, type=bool)
 @click.option('--buffer_type', default='normal', type=click.Choice(['normal','prioritized','delayed','delayed_prioritized']))
 @click.option('--buffer_size', default=30000, type=int)
+@click.option('--encode_obs', default=True, type=bool)
 @click.option('--n_step_return', default=8, type=int)
 @click.option('--prioritized_replay_alpha', default=0.6, type=float)
 @click.option('--prioritized_replay_beta0', default=0.4, type=float)
@@ -66,16 +69,17 @@ from agentflow.utils import LogsTFSummary
 @click.option('--learning_rate', default=1e-4)
 @click.option('--learning_rate_final', default=0.0, type=float)
 @click.option('--learning_rate_decay', default=0.99995)
+@click.option('--td_loss', default='square', type=click.Choice(['square','huber']))
 @click.option('--grad_clip_norm', default=None, type=float)
+@click.option('--normalize_inputs', default=True, type=bool)
 @click.option('--gamma', default=0.99)
 @click.option('--weight_decay', default=1e-4)
-@click.option('--entropy_loss_weight', default=1e-5, type=float)
-@click.option('--entropy_loss_weight_decay', default=0.99995)
 @click.option('--n_update_steps', default=4, type=int)
 @click.option('--update_freq', default=1, type=int)
 @click.option('--n_steps_per_eval', default=1000, type=int)
 @click.option('--batchsize', default=64)
 @click.option('--log_flush_freq', default=1000, type=int)
+@click.option('--log_pnorms', default=False, type=bool)
 @click.option('--savedir', default='results')
 @click.option('--savemodel',default=False, type=bool)
 @click.option('--seed',default=None, type=int)
@@ -116,15 +120,17 @@ def run(**cfg):
     # build agent
     if not cfg['dueling']:
         def q_fn(state, training=False, **kwargs):
-            state = state/255 - 0.5
-            state, _ = normalize_ema(state, training)
+            state = state/255.
+            if cfg['normalize_inputs']:
+                state, _ = normalize_ema(state, training)
             h = dqn_atari_paper_net(state, cfg['network_scale'])
             output = tf.layers.dense(h,action_shape*cfg['bootstrap_num_heads'])
             return tf.reshape(output,[-1,action_shape,cfg['bootstrap_num_heads']])
     else:
         def q_fn(state, training=False, **kwargs):
-            state = state/255 - 0.5
-            state, _ = normalize_ema(state, training)
+            state = state/255.
+            if cfg['normalize_inputs']:
+                state, _ = normalize_ema(state, training)
             h_val, h_adv = dqn_atari_paper_net_dueling(state, cfg['network_scale'])
             val_flat = tf.layers.dense(h_val, cfg['bootstrap_num_heads'])
             val = val_flat[:,None,:]
@@ -142,7 +148,8 @@ def run(**cfg):
         num_heads=cfg['bootstrap_num_heads'],
         random_prior=cfg['bootstrap_random_prior'],
         prior_scale=cfg['bootstrap_prior_scale'],
-        grad_clip_norm=cfg['grad_clip_norm']
+        grad_clip_norm=cfg['grad_clip_norm'],
+        td_loss=cfg['td_loss'],
     )
 
     for v in tf.global_variables():
@@ -174,25 +181,26 @@ def run(**cfg):
 
     # Delays publishing of records to the underlying replay buffer for n steps
     # then publishes the discounted n-step return
-    replay_buffer = NStepReturnPublisher(
-        replay_buffer,
-        n_steps=cfg['n_step_return'],
-        gamma=cfg['gamma'],
-        delayed_keys=['state2_encoded','state2_encoding_length']
-    )
+    if cfg['n_step_return'] > 1:
+        if cfg['encode_obs']:
+            replay_buffer = NStepReturnPublisher(
+                replay_buffer,
+                n_steps=cfg['n_step_return'],
+                gamma=cfg['gamma'],
+                delayed_keys=['state2_encoded','state2_encoding_length']
+            )
+        else:
+            replay_buffer = NStepReturnPublisher(
+                replay_buffer,
+                n_steps=cfg['n_step_return'],
+                gamma=cfg['gamma'],
+            )
 
     # Annealed parameters
     learning_rate_schedule = ExponentialDecaySchedule(
         initial_value = cfg['learning_rate'],
         final_value = cfg['learning_rate_final'],
         decay_rate = cfg['learning_rate_decay'],
-        begin_at_step = cfg['begin_learning_at_step']
-    )
-
-    entropy_loss_weight_schedule = ExponentialDecaySchedule(
-        initial_value = cfg['entropy_loss_weight'],
-        final_value = 0.0,
-        decay_rate = cfg['entropy_loss_weight_decay'],
         begin_at_step = cfg['begin_learning_at_step']
     )
 
@@ -203,7 +211,7 @@ def run(**cfg):
         begin_at_step = 0, 
     )
 
-    def get_noise_scale(eps=None, done=None, t=0):
+    def get_noise_scale_OLD(eps=None, done=None, t=0):
         noise_scale = noise_scale_schedule(t)
         eps_next = np.random.rand(cfg['n_envs'])*noise_scale
         if eps is None:
@@ -212,6 +220,8 @@ def run(**cfg):
             eps = done*eps_next + (1-done)*eps
         return eps
 
+    def get_noise_scale(eps=None, done=None, t=0):
+        return noise_scale_schedule(t)
 
     log = LogsTFSummary(savedir)
 
@@ -249,10 +259,11 @@ def run(**cfg):
                 log.flush(step=t)
                 gc.collect()
 
-
             action_probs = agent.act_probs(state, mask)
 
-            if len(replay_buffer) >= cfg['begin_learning_at_step'] or cfg['bootstrap_explore_before_learning']:
+            noise_scale = noise_scale_schedule(t)
+            log.append('noise_scale', noise_scale)
+            if frame_counter >= cfg['begin_learning_at_step'] or cfg['bootstrap_explore_before_learning']:
                 if cfg['noise_type'] == 'eps_greedy':
                     action = eps_greedy_noise(action_probs, eps=noise_scale)
                 elif cfg['noise_type'] == 'gumbel_softmax':
@@ -267,8 +278,6 @@ def run(**cfg):
             bootstrap_mask_probs = (1-cfg['bootstrap_mask_prob'],cfg['bootstrap_mask_prob'])
             bootstrap_mask_shape = (len(state),cfg['bootstrap_num_heads'])
             bootstrap_mask = np.random.choice(2, size=bootstrap_mask_shape, p=bootstrap_mask_probs)
-
-            noise_scale = get_noise_scale(noise_scale, step_output['done'], t)
 
             data = {
                 'state':state,
@@ -285,16 +294,14 @@ def run(**cfg):
                     **data
                 )['abs_td_error']
 
-            data = ImgEncoder('state', 2000)(data) 
-            data = ImgEncoder('state2', 2000)(data) 
+            if cfg['encode_obs']:
+                data = ImgEncoder('state', 2000)(data) 
+                data = ImgEncoder('state2', 2000)(data) 
             replay_buffer.append(data)
             state = step_output['state']
             mask = step_output['mask']
-            log.append('reward',step_output['reward'])
-            log.append('action',action)
-            log.append('done',step_output['done'])
-            log.append('prev_episode_return',step_output['prev_episode_return'])
-            log.append('prev_episode_length',step_output['prev_episode_length'])
+            log.append('train/ep_return',step_output['prev_episode_return'])
+            log.append('train/ep_length',step_output['prev_episode_length'])
 
             pb_input = [
                 ('train_ep_return', step_output['prev_episode_return'].mean()),
@@ -303,9 +310,7 @@ def run(**cfg):
             if t >= cfg['begin_learning_at_step'] and t % cfg['update_freq'] == 0:
 
                 learning_rate = learning_rate_schedule(t)
-                entropy_loss_weight = entropy_loss_weight_schedule(t)
                 log.append('learning_rate', learning_rate)
-                log.append('entropy_loss_weight', entropy_loss_weight)
 
                 for i in range(cfg['n_update_steps']):
                     if cfg['buffer_type'] == 'prioritized':
@@ -316,15 +321,21 @@ def run(**cfg):
                     else:
                         sample = replay_buffer.sample(cfg['batchsize'])
 
-                    sample = ImgDecoder('state')(sample) 
-                    sample = ImgDecoder('state2')(sample) 
+                    if cfg['encode_obs']:
+                        sample = ImgDecoder('state')(sample) 
+                        sample = ImgDecoder('state2')(sample) 
+
+                    ema_decay = cfg['ema_decay']
+                    if cfg['target_network_copy_freq'] is not None:
+                        if t % cfg['target_network_copy_freq'] == 0 and i == 0:
+                            ema_decay = 0.0
+                    log.append('ema_decay', ema_decay)
 
                     update_outputs = agent.update(
                             learning_rate=learning_rate,
-                            ema_decay=cfg['ema_decay'],
+                            ema_decay=ema_decay,
                             gamma=cfg['gamma'],
                             weight_decay=cfg['weight_decay'],
-                            entropy_loss_weight=entropy_loss_weight,
                             outputs=['abs_td_error','Q_policy_eval','loss'],
                             **sample)
                     update_counter += 1
@@ -335,7 +346,10 @@ def run(**cfg):
                 log.append_dict(update_outputs)
                 pb_input.append(('Q_policy_eval', update_outputs['Q_policy_eval'].mean()))
 
-            if t % cfg['n_steps_per_eval'] == 0 and t > 0:
+                if cfg['log_pnorms']:
+                    log.append_dict(agent.pnorms())
+
+            if t % cfg['n_steps_per_eval'] == 0 and t >= cfg['begin_learning_at_step']:
                 test_output = test_env.test(agent)
                 log.append('test_ep_returns', test_output['return'], summary_only=False)
                 log.append('test_ep_length', test_output['length'], summary_only=False)
