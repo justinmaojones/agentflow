@@ -307,7 +307,7 @@ def run(**cfg):
                 ('train_ep_return', step_output['prev_episode_return'].mean()),
                 ('train_ep_length', step_output['prev_episode_length'].mean()),
             ]
-            if t >= cfg['begin_learning_at_step'] and t % cfg['update_freq'] == 0:
+            if frame_counter >= cfg['begin_learning_at_step'] and t % cfg['update_freq'] == 0:
 
                 learning_rate = learning_rate_schedule(t)
                 log.append('learning_rate', learning_rate)

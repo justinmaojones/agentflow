@@ -609,7 +609,7 @@ def run(**cfg):
         if t == cfg['begin_at_step'] and frame_counter >= cfg['begin_learning_at_step']:
             if update_agent_task not in list(ops.values()):
                 print("ADD UDPDATE")
-                for i in range(16):
+                for i in range(2):
                     ops[update_agent_task.run(t)] = update_agent_task
 
         ready_op_list, _ = ray.wait(list(ops))
