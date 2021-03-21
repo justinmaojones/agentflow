@@ -1,5 +1,6 @@
 from .add_episode_time_state import AddEpisodeTimeStateEnv
 from .add_normalized_episode_time_state import AddNormalizedEpisodeTimeStateEnv 
+from .clipped_reward_env import ClippedRewardEnv
 from .crop_image_state import CropImageStateEnv
 from .cvt_rgb2gray_image_state import CvtRGB2GrayImageStateEnv
 from .discrete_action_state import DiscreteActionEnv
@@ -11,3 +12,4 @@ from .random_onehot_mask import RandomOneHotMaskEnv
 from .resize_image_state import ResizeImageStateEnv
 from .reward_forward_filter import RewardForwardFilterEnv
 from .tanh_action_env import TanhActionEnv
+from .test_agent_env import TestAgentEnv

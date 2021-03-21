@@ -1,5 +1,7 @@
+from contextlib import contextmanager
 import h5py
 import os
+import time
 import yaml
 import numpy as np
 import pandas as pd
@@ -13,6 +15,85 @@ def check_whats_connected(output):
         else:
             print('GRADIENT',v.name)
 
+class IdleTimer(object):
+
+    def __init__(self, start_on_create=True):
+        self.idle_duration = 0
+        self.duration = 0
+        self.start_on_create = start_on_create
+
+        self.idle = True 
+        self.start_time = None 
+        self.prev_time = None
+
+        if self.start_on_create:
+            self.start_timer()
+
+    def start_timer(self, idle=True):
+        self.idle = idle
+        self.start_time = time.time()
+        self.reset_timer()
+
+    def reset_timer(self):
+        self.prev_time = time.time()
+
+    def __call__(self, idle):
+        if self.prev_time is None:
+            self.start_timer()
+        if self.idle:
+            self.idle_duration += time.time() - self.prev_time
+        self.duration = time.time() - self.start_time
+        self.prev_time = time.time()
+        self.idle = idle
+
+    def fraction_idle(self):
+        self.__call__(self.idle)
+        if self.duration > 0:
+            return float(self.idle_duration) / self.duration
+        else:
+            return 0.
+
+class ScopedIdleTimer(IdleTimer):
+
+    def __init__(self, scope=None, start_on_create=True):
+        super(ScopedIdleTimer, self).__init__(start_on_create)
+        self._timed_scopes = {}
+        self._scopes = []
+        assert scope is None or isinstance(scope, str)
+        self._scope = scope
+
+    def _add(self, key, duration):
+        key = str(key)
+        if key not in self._timed_scopes:
+            self._timed_scopes[key] = 0
+        self._timed_scopes[key] += duration
+
+    @contextmanager
+    def time(self, scope):
+        assert scope != 'idle'
+        assert self.idle
+        self.__call__(False)
+        start = time.time()
+        try:
+            yield None
+        finally:
+            duration = time.time() - start
+            self._add(scope, duration)
+            self.__call__(True)
+
+    def _get_scoped_key(self, key):
+        if self._scope is not None:
+            key = self._scope + "/" + key
+        return key
+
+    def summary(self):
+        self.__call__(self.idle)
+        assert self.duration > 0
+        output = {}
+        for k in self._timed_scopes:
+            output[self._get_scoped_key(k)] = float(self._timed_scopes[k]) / self.duration
+        output[self._get_scoped_key('idle')] = float(self.idle_duration) / self.duration
+        return output
 
 class LogsTFSummary(object):
 
@@ -27,6 +108,7 @@ class LogsTFSummary(object):
             'l2norm': lambda x: np.sqrt(np.sum(np.square(x))),
             'max-min': lambda x: np.max(x.astype(float)) - np.min(x.astype(float)),
         }
+        self._log_filepath = os.path.join(self.savedir,'log.h5')
 
     def __getitem__(self, key):
         if key not in self.logs:
@@ -53,6 +135,10 @@ class LogsTFSummary(object):
                 v2 = self._other_array_metrics[m](val)
                 self._append(k2,v2)
 
+    def append_seq(self, key, vals):
+        for i in range(len(vals)):
+            self.append(key, vals[i])
+
     def append_dict(self,inp,summary_only=True):
         for k in inp:
             self.append(k,inp[k],summary_only)
@@ -63,25 +149,38 @@ class LogsTFSummary(object):
         else:
             return np.stack(self.logs[key])
 
-    def flush(self, step=None):
+    def flush(self, step=None, verbose=False):
         self.summary_writer.add_summary(self.summary, step)
         self.summary_writer.flush()
         self.summary = tf.Summary()
+        self.write(self._log_filepath, verbose)
+        self.logs = {}
 
     def write(self, filepath, verbose=True):
         if verbose:
             print('WRITING H5 FILE TO: {filepath}'.format(**locals()))
-        with h5py.File(filepath, 'w') as f:
+        with h5py.File(filepath, 'a') as f:
             for key in sorted(self.logs):
+                data = np.array(self.logs[key])
+                key = key.replace('/','_')
                 if verbose:
-                    print('H5: %s %s'%(key,type(self.logs[key])))
-                try:
-                    f[key] = self.logs[key]
-                except:
-                    try:
-                        f[key] = np.concatenate(self.logs[key])
-                    except:
-                        pass
+                    print('H5: %s %s'%(key,str(data.shape)))
+                if key not in f:
+                    dataset = f.create_dataset(
+                        key, 
+                        data.shape, 
+                        dtype=data.dtype,
+                        chunks=data.shape,
+                        maxshape=tuple([None]+list(data.shape[1:]))
+                    )
+                    dataset[:] = data
+
+                else:
+                    dataset = f[key]
+                    n = len(f[key])
+                    m = len(data)
+                    f[key].resize(n + m,axis=0)
+                    f[key][n:] = data
 
 def load_hdf5(filepath):
     def load_data(f):

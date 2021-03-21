@@ -4,7 +4,6 @@ from tensorflow.python.framework.errors_impl import InvalidArgumentError
 
 from ..objectives import td_learning
 from ..tensorflow.ops import exponential_moving_average
-from ..tensorflow.ops import entropy_loss
 from ..tensorflow.ops import l2_loss
 from ..tensorflow.ops import not_trainable_getter 
 from ..tensorflow.ops import onehot_argmax
@@ -12,7 +11,7 @@ from ..tensorflow.ops import value_at_argmax
 
 class BootstrappedDQN(object):
 
-    def __init__(self,state_shape,num_actions,num_heads,q_fn,q_prior_fn=None,double_q=False,random_prior=False,prior_scale=1.0):
+    def __init__(self,state_shape,num_actions,num_heads,q_fn,q_prior_fn=None,double_q=False,random_prior=False,prior_scale=1.0,grad_clip_norm=None,td_loss='square'):
         """Implements Boostrapped Deep Q Networks [1] with Tensorflow
 
         This class builds a DDPG model with optimization update and action prediction steps.
@@ -52,6 +51,8 @@ class BootstrappedDQN(object):
         self.double_q = double_q
         self.random_prior = random_prior
         self.prior_scale = prior_scale
+        self.grad_clip_norm = grad_clip_norm
+        self.td_loss = td_loss
 
         self.build_model()
 
@@ -67,19 +68,17 @@ class BootstrappedDQN(object):
 
             # inputs
             inputs = {
-                'state': tf.placeholder(tf.float32,shape=tuple([None]+self.state_shape)),
-                'action': tf.placeholder(tf.float32,shape=[None, self.num_actions]),
-                'reward': tf.placeholder(tf.float32,shape=(None,)),
-                'returns': tf.placeholder(tf.float32,shape=(None,)),
-                'done': tf.placeholder(tf.float32,shape=(None,)),
-                'state2': tf.placeholder(tf.float32,shape=tuple([None]+self.state_shape)),
-                'gamma': tf.placeholder(tf.float32),
-                'learning_rate': tf.placeholder(tf.float32),
-                'ema_decay': tf.placeholder(tf.float32),
-                'importance_weight': tf.placeholder(tf.float32,shape=(None,)),
-                'weight_decay': tf.placeholder(tf.float32,shape=()),
-                'entropy_loss_weight': tf.placeholder(tf.float32,shape=(),name='entropy_loss_weight'),
-                'mask': tf.placeholder(tf.float32, shape=(None, self.num_heads))
+                'state': tf.placeholder(tf.float32,shape=tuple([None]+self.state_shape), name='state'),
+                'action': tf.placeholder(tf.float32,shape=[None, self.num_actions], name='action'),
+                'reward': tf.placeholder(tf.float32,shape=(None,), name='reward'),
+                'done': tf.placeholder(tf.float32,shape=(None,), name='done'),
+                'state2': tf.placeholder(tf.float32,shape=tuple([None]+self.state_shape), name='state2'),
+                'gamma': tf.placeholder(tf.float32, shape=(), name='gamma'),
+                'learning_rate': tf.placeholder(tf.float32, shape=(), name='learning_rate'),
+                'ema_decay': tf.placeholder(tf.float32, shape=(), name='ema_decay'),
+                'importance_weight': tf.placeholder(tf.float32,shape=(None,), name='importance_weight'),
+                'weight_decay': tf.placeholder(tf.float32,shape=(), name='weight_decay'),
+                'mask': tf.placeholder(tf.float32, shape=(None, self.num_heads), name='mask')
             }
             self.inputs = inputs
 
@@ -158,28 +157,25 @@ class BootstrappedDQN(object):
                 target_Q_state2 = tf.reduce_max(Q_ema_state2_multihead,axis=-2)
 
             # loss functions
-            losses_Q_multihead, y, td_error = td_learning(
+            losses_Q_multihead, y, td_error_multihead = td_learning(
                 Q_action_train_multihead,
                 inputs['reward'][:,None],
                 inputs['gamma'],
-                (1-inputs['done'][:,None])*target_Q_state2
+                (1-inputs['done'][:,None])*target_Q_state2,
+                loss = self.td_loss
             )
 
-            losses_Q = tf.reduce_sum(losses_Q_multihead*inputs['mask'], axis=-1)
-            assert losses_Q.shape == tf.TensorShape(None)
+            td_error = weighted_avg(td_error_multihead, inputs['mask']) 
+            abs_td_error = weighted_avg(tf.abs(td_error_multihead), inputs['mask']) 
 
-            # entropy regularization
-            losses_entropy_reg_multihead = entropy_loss(Q_train_multihead, axis=-2)
-            losses_entropy_reg = tf.reduce_sum(losses_entropy_reg_multihead*inputs['mask'], axis=-1)
-            assert losses_entropy_reg.shape.as_list() == [None]
+            losses_Q = tf.reduce_sum(losses_Q_multihead*inputs['mask'], axis=-1)
+            losses_Q /= self.num_heads # gradient normalization 
+            assert losses_Q.shape.as_list() == [None]
 
             #loss = tf.reduce_mean(self.inputs['importance_weight']*losses_Q)
             # overall loss function (importance weighted)
             loss = tf.reduce_mean(
-                self.inputs['importance_weight']*tf.add_n([
-                    losses_Q,
-                    inputs['entropy_loss_weight']*losses_entropy_reg,
-                ])
+                self.inputs['importance_weight']*losses_Q,
             )
 
             # weight decay
@@ -188,7 +184,14 @@ class BootstrappedDQN(object):
             # gradient update for parameters of Q 
             self.optimizer = tf.train.AdamOptimizer(inputs['learning_rate']) 
             with tf.control_dependencies(tf.get_collection(tf.GraphKeys.UPDATE_OPS,scope=scope.name)):
-                train_op = self.optimizer.minimize(loss)
+                var_list = tf.trainable_variables(scope=scope.name)
+                grad_list = tf.gradients(loss,var_list)
+                if self.grad_clip_norm is not None:
+                    grad_list_clipped, gnorm = tf.clip_by_global_norm(grad_list, self.grad_clip_norm)
+                    train_op = self.optimizer.apply_gradients(zip(grad_list_clipped,var_list))
+                else:
+                    gnorm = tf.linalg.global_norm(grad_list)
+                    train_op = self.optimizer.minimize(loss)
 
             # used in update step
             self.update_ops = {
@@ -199,6 +202,7 @@ class BootstrappedDQN(object):
 
             self.var_list = tf.global_variables(scope=scope.name)
             self._pnorms = {v.name: tf.sqrt(tf.reduce_mean(tf.square(v))) for v in self.var_list} 
+            self._gnorm = {v.name: tf.sqrt(tf.reduce_mean(tf.square(v))) for v in self.var_list} 
 
             # store attributes for later use
             self.outputs = {
@@ -212,15 +216,35 @@ class BootstrappedDQN(object):
                 'Q_state2_eval': Q_state2_eval,
                 'Q_ema_state2': Q_ema_state2,
                 'target_Q_state2': target_Q_state2,
+                'abs_td_error': abs_td_error,
                 'td_error': td_error,
                 'y': y,
+                'gnorm': gnorm,
             }
 
-    def act(self,state,session=None):
-        mask = np.ones((len(state),self.num_heads))
-        return self.act_probs(state,mask,session).argmax(axis=-1).ravel()
+    def act(self,state,mask=None,session=None,addl_outputs=None):
+        if session is None:
+            session = tf.get_default_session()
+        if mask is None:
+            mask = np.ones((len(state),self.num_heads))
+        if addl_outputs is None:
+            addl_outputs = []
+        assert isinstance(addl_outputs, list)
+
+        outputs = ['policy_eval'] + addl_outputs
+        output = session.run(
+            {k: self.outputs[k] for k in outputs},
+            {
+                self.inputs['state']:state,
+                self.inputs['mask']:mask,
+            }
+        )
+        output['action'] = output['policy_eval'].argmax(axis=-1).ravel()
+        return output
         
-    def act_probs(self,state,mask,session=None):
+    def act_probs(self,state,mask=None,session=None):
+        if mask is None:
+            mask = np.ones((len(state),self.num_heads))
         session = session or tf.get_default_session()
         output = session.run(
             self.outputs['policy_eval'],
@@ -247,7 +271,7 @@ class BootstrappedDQN(object):
         session = session or tf.get_default_session()
         return session.run(self._pnorms)
 
-    def update(self,state,action,reward,done,state2,mask,gamma=0.99,learning_rate=1.,ema_decay=0.999,weight_decay=0.1,importance_weight=None,entropy_loss_weight=0.0,session=None,outputs=['td_error'],returns=None):
+    def update(self,state,action,reward,done,state2,mask,gamma=0.99,learning_rate=1.,ema_decay=0.999,weight_decay=0.1,importance_weight=None,session=None,outputs=['td_error']):
         session = session or tf.get_default_session()
         if importance_weight is None:
             importance_weight = np.ones_like(reward)
@@ -263,8 +287,12 @@ class BootstrappedDQN(object):
             self.inputs['ema_decay']:ema_decay,
             self.inputs['weight_decay']:weight_decay,
             self.inputs['importance_weight']:importance_weight,
-            self.inputs['entropy_loss_weight']:entropy_loss_weight,
         }
+
+        updates = [self.update_ops['train']]
+        if ema_decay < 1:
+            updates.append(self.update_ops['ema'])
+
 
         my_outputs, _ = session.run(
             [

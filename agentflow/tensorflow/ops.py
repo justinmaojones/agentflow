@@ -136,7 +136,7 @@ def value_at_argmax(x, y, axis=-1):
     Returns the value of y at argmax index of x along provided axis.
     """
     assert isinstance(axis, int), 'axis must be an integer'
-    tf.assert_equal(tf.shape(x), tf.shape(y), message="shapes of x and y must match")
+    assert x.shape.as_list() == y.shape.as_list(), "shapes of x and y must match"
     n = len(x.shape)
     if axis < 0:
         axis = n + axis

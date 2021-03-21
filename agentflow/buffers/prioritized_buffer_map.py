@@ -31,6 +31,7 @@ class PrioritizedBufferMap(BufferMap):
             default_priority = 1.0,
             default_non_zero_reward_priority = None,
             default_done_priority = None,
+            priority_key = None
             ):
 
         super(PrioritizedBufferMap,self).__init__(max_length)
@@ -45,6 +46,7 @@ class PrioritizedBufferMap(BufferMap):
 
         self._idx_sample = None 
         self._sumtree = None 
+        self._priority_key = priority_key
 
     def _compute_default_priority(self, data):
         priority = self._default_priority*np.ones_like(data['reward'], dtype=float)
@@ -60,7 +62,13 @@ class PrioritizedBufferMap(BufferMap):
     def _smooth_and_warp_priority(self,priority):
         return (np.abs(priority)+self._eps)**self._alpha
 
-    def append(self,data,priority=None):
+    def append(self, data, priority=None):
+        if priority is None:
+            if self._priority_key is not None:
+                priority = data.pop(self._priority_key)
+        else:
+            assert self._priority_key is None, "cannot supply priority when priority key already set, instead provide priority in data"
+
         super(PrioritizedBufferMap,self).append(data)
 
         if priority is None:
@@ -91,7 +99,9 @@ class PrioritizedBufferMap(BufferMap):
         for x,p in zip(X,priorities):
             self.append(x,p)
 
-    def sample(self,nsamples,beta=None,normalized=True):
+    def sample(self,nsamples,beta=None,normalized=True,with_indices=False):
+
+        assert self._sumtree is not None, "cannot sample without first appending"
 
         if beta is None:
             beta = 1.
@@ -124,14 +134,18 @@ class PrioritizedBufferMap(BufferMap):
             output['importance_weight'] = w
 
         self._idx_sample = idx_sample
+        if with_indices:
+            assert 'indices' not in output, "output cannot already contain key 'indices'"
+            output['indices'] = idx_sample
 
         return output
 
-    def update_priorities(self,priority):
-        if self._idx_sample is None:
-            raise ValueError("update_priorities must be called after sample")
-        p = self._smooth_and_warp_priority(priority)
-        self._sumtree[self._idx_sample] = p
+    def update_priorities(self,priorities,indices=None):
+        idx = indices if indices is not None else self._idx_sample
+        if idx is None:
+            raise ValueError("update_priorities must be called after sample or indices provided")
+        p = self._smooth_and_warp_priority(priorities)
+        self._sumtree[idx] = p
         self._idx_sample = None 
 
     def priorities(self):
