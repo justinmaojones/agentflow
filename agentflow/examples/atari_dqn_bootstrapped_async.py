@@ -55,6 +55,7 @@ def timed(func):
 @click.option('--n_prev_frames', default=4, type=int)
 @click.option('--ema_decay', default=0.95, type=float)
 @click.option('--target_network_copy_freq', default=None, type=int)
+@click.option('--noise_fancy', default=False, type=bool)
 @click.option('--noise_type', default='eps_greedy', type=click.Choice(['eps_greedy','gumbel_softmax']))
 @click.option('--noise_scale_anneal_steps', default=int(1e6), type=int)
 @click.option('--noise_scale_init', default=1.0, type=float)
@@ -155,7 +156,7 @@ def run(**cfg):
 
     if not cfg['dueling']:
         def q_fn(state, training=False, **kwargs):
-            state = state/255 - 0.5
+            state = state/255. - 0.5
             if cfg['normalize_inputs']:
                 state, _ = normalize_ema(state, training)
             h = dqn_atari_paper_net(state, cfg['network_scale'])
@@ -163,7 +164,7 @@ def run(**cfg):
             return tf.reshape(output,[-1,action_shape,cfg['bootstrap_num_heads']])
     else:
         def q_fn(state, training=False, **kwargs):
-            state = state/255 - 0.5
+            state = state/255. - 0.5
             if cfg['normalize_inputs']:
                 state, _ = normalize_ema(state, training)
             h_val, h_adv = dqn_atari_paper_net_dueling(state, cfg['network_scale'])
@@ -228,6 +229,12 @@ def run(**cfg):
             self.noise_scale = None
             self.update_noise_scale(t=cfg['begin_at_step'])
 
+        @timed
+        def set_weights(self, weights):
+            self.variables.set_weights(weights)
+            self._set_weights_counter += 1
+            self.log.append.remote('set_weights/' + self._name, self._set_weights_counter)
+
 
         def bootstrap_mask(self):
             bootstrap_mask_probs = (1-cfg['bootstrap_mask_prob'],cfg['bootstrap_mask_prob'])
@@ -235,14 +242,15 @@ def run(**cfg):
             return np.random.choice(2, size=bootstrap_mask_shape, p=bootstrap_mask_probs)
 
         def update_noise_scale(self, done=None, t=0):
-            self.noise_scale = self.noise_scale_schedule(t)
-            if False:
+            if cfg['noise_fancy']:
                 noise_scale = self.noise_scale_schedule(t)
                 eps = np.random.rand(cfg['n_envs'])*noise_scale
                 if self.noise_scale is None:
                     self.noise_scale = eps
                 else:
                     self.noise_scale = done*eps + (1-done)*self.noise_scale
+            else:
+                self.noise_scale = self.noise_scale_schedule(t)
 
         @timed
         def step(self, t):
@@ -293,12 +301,6 @@ def run(**cfg):
 
             delayed_data, _ = self.n_step_return_buffer.latest_data() 
             return delayed_data 
-
-        @timed
-        def set_weights(self, weights):
-            self.variables.set_weights(weights)
-            self._set_weights_counter += 1
-            self.log.append.remote('set_weights/' + self._name, self._set_weights_counter)
 
     @ray.remote(num_cpus=1)
     class TestRunner(object):
@@ -601,7 +603,8 @@ def run(**cfg):
     t = cfg['begin_at_step'] #num update steps 
     T = cfg['num_steps']
     frame_counter = 0
-    pb = tf.keras.utils.Progbar(T, stateful_metrics=['frame','update'])
+    pb = tf.keras.utils.Progbar(T, stateful_metrics=['frame','update','frame_steps_per_env_per_update'])
+    frame_steps_per_env_per_update = 0
     while t < T and (cfg['num_frames_max'] is None or frame_counter < cfg['num_frames_max']):
         start_step_time = time.time()
 
@@ -638,7 +641,13 @@ def run(**cfg):
                 if t % cfg['gc_freq'] == 0:
                     gc.collect()
 
-                pb.add(1,[('frame', frame_counter), ('update', t)])
+                if t > 0:
+                    frame_steps_per_env_per_update = (frame_counter - cfg['begin_learning_at_step']) / cfg['n_envs'] / cfg['n_runners'] / (t - cfg['begin_at_step'])
+                pb.add(1, [
+                    ('frame', frame_counter), 
+                    ('update', t),
+                    ('frame_steps_per_env_per_update', frame_steps_per_env_per_update),
+                ])
             else:
                 assert False, "unhandled worker: %s" % str(worker)
 
@@ -648,6 +657,7 @@ def run(**cfg):
         log.append_dict.remote({
             'update': t,
             'frame': frame_counter,
+            'frame_steps_per_env_per_update': frame_steps_per_env_per_update,
             'step_duration_sec': end_time-start_step_time,
             'duration_cumulative': end_time-start_time,
         })
