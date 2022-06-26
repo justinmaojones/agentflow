@@ -4,27 +4,33 @@ from .base_env import BaseEnv
 
 class GymEnv(BaseEnv):
 
-    def __init__(self,env_id,noops=30,skip=4):
+    def __init__(self, env_id, noops=30, skip=4):
         self.env_id = env_id
         self.env = gym.make(env_id)
         self.noops = noops
-        self.fire_reset = 'FIRE' in self.env.unwrapped.get_action_meanings()
+        if hasattr(self.env.unwrapped, "get_action_meanings"):
+            self.fire_reset = 'FIRE' in self.env.unwrapped.get_action_meanings()
+        else:
+            self.fire_reset = False
         if skip > 1:
-            assert 'NoFrameskip' in self.env.spec.id
+            assert 'NoFrameskip' in self.env.spec.id, "cannot specify skips if using NoFrameskip"
         self.skip = skip
+
+    def _reshape_action(self, action):
+        return np.reshape(action, self.action_space.shape)
 
     def reset(self):
         ob = self.env.reset()
         self._obs_buf = np.stack([np.zeros_like(ob)]*2)
         for i in range(self.noops):
-            ob, _, done, _ = self.env.step(0)
+            ob, _, done, _ = self.env.step(self._reshape_action(0))
             if done:
                 ob = self.env.reset()
         if self.fire_reset:
-            ob, _, done, _ = self.env.step(1)
+            ob, _, done, _ = self.env.step(self._reshape_action(1))
             if done:
                 ob = self.env.reset()
-            ob, _, done, _ = self.env.step(2)
+            ob, _, done, _ = self.env.step(self._reshape_action(2))
             if done:
                 ob = self.env.reset()
         return ob
@@ -32,7 +38,7 @@ class GymEnv(BaseEnv):
     def step(self, action):
         total_reward = 0
         for i in range(self.skip):
-            ob, reward, done, info = self.env.step(action)
+            ob, reward, done, info = self.env.step(self._reshape_action(action))
             total_reward += reward
             if i >= self.skip - 2:
                 self._obs_buf[i - (self.skip - 2)] = ob

@@ -100,13 +100,11 @@ class LogsTFSummary(object):
     def __init__(self,savedir,**kwargs):
         self.logs = {}
         self.savedir = savedir
-        self.summary_writer = tf.summary.FileWriter(savedir,**kwargs)
-        self.summary = tf.Summary()
+        self.summary_writer = tf.summary.create_file_writer(savedir,**kwargs)
         self._other_array_metrics = {
             'min': np.min,
             'max': np.max,
-            'l2norm': lambda x: np.sqrt(np.sum(np.square(x))),
-            'max-min': lambda x: np.max(x.astype(float)) - np.min(x.astype(float)),
+            'std': np.std,
         }
         self._log_filepath = os.path.join(self.savedir,'log.h5')
 
@@ -115,19 +113,21 @@ class LogsTFSummary(object):
             self.logs[key] = []
         return self.logs[key]
 
-    def _append(self,key,val):
+    def _append(self, key, val):
         if key not in self.logs:
             self.logs[key] = []
         self.logs[key].append(val)
-        self.summary.value.add(
-                tag=key,
-                simple_value=np.mean(val))
+        with self.summary_writer.as_default():
+            tf.summary.scalar(key, np.mean(val))
 
-    def append(self,key,val,summary_only=True):
+    def append(self, key, val, summary_only=True):
+        # TODO: very hacky converting tensors to numpy
+        if isinstance(val, tf.Tensor):
+            val = val.numpy()
         if summary_only:
-            self._append(key,np.mean(val))
+            self._append(key, np.mean(val))
         else:
-            self._append(key,val)
+            self._append(key, val)
 
         if np.size(val) > 1:
             for m in self._other_array_metrics:
@@ -139,9 +139,13 @@ class LogsTFSummary(object):
         for i in range(len(vals)):
             self.append(key, vals[i])
 
-    def append_dict(self,inp,summary_only=True):
+    def append_dict(self, inp, summary_only=True):
         for k in inp:
-            self.append(k,inp[k],summary_only)
+            if isinstance(inp[k], dict):
+                v = {f"{k}/{k2}":inp[k][k2] for k2 in inp[k]}
+                self.append_dict(v, summary_only)
+            else:
+                self.append(k, inp[k], summary_only)
 
     def stack(self,key=None):
         if key is None:
@@ -149,10 +153,8 @@ class LogsTFSummary(object):
         else:
             return np.stack(self.logs[key])
 
-    def flush(self, step=None, verbose=False):
-        self.summary_writer.add_summary(self.summary, step)
+    def flush(self, verbose=False):
         self.summary_writer.flush()
-        self.summary = tf.Summary()
         self.write(self._log_filepath, verbose)
         self.logs = {}
 

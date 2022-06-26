@@ -47,7 +47,7 @@ class VecConcaveFuncEnv(BaseEnv):
                 self._steps >= self.max_steps,
                 rewards <= self.min_reward).astype(float)
 
-        self._state = self.reset(dones)
+        self._state = self.reset(dones)['state']
 
         self.apply_boundary()
 
