@@ -1,5 +1,6 @@
 import tensorflow as tf
-import trfl
+from trfl import td_learning
+from trfl import dpg 
 
 class DDPG(object):
 
@@ -32,6 +33,9 @@ class DDPG(object):
           clip_norm: Whether to perform dqda clipping on the vector norm of the last
             dimension, or component wise (default).
 
+        References:
+        [1] Barth-Maron, Gabriel, et al. "Distributed distributional deterministic 
+            policy gradients." arXiv preprint arXiv:1804.08617 (2018).
         """
         self.state_shape = list(state_shape)
         self.action_shape = list(action_shape)
@@ -60,7 +64,7 @@ class DDPG(object):
 
     def build_model(self):
 
-        with tf.name_scope('DDPG') as scope:
+        with tf.name_scope('DDPG'):
 
             # inputs
             inputs = {
@@ -72,37 +76,39 @@ class DDPG(object):
             }
             self.inputs = inputs
 
+            # dont use tf.keras.models.clone_model, because it will not preserve
+            # uniqueness of shared objects within model
             policy_model, Q_model = self.build_net("main")
-            policy_target_model, Q_target_model = self.build_net("target")
+            policy_model_target, Q_model_target = self.build_net("target")
 
             self.weights = policy_model.weights + Q_model.weights
             self.trainable_weights = policy_model.trainable_weights + Q_model.trainable_weights
             self.non_trainable_weights = policy_model.non_trainable_weights + Q_model.non_trainable_weights
 
-            self.target_weights = policy_target_model.weights + Q_target_model.weights 
-            self.target_trainable_weights = policy_target_model.trainable_weights + Q_target_model.trainable_weights 
-            self.target_non_trainable_weights = policy_target_model.non_trainable_weights + Q_target_model.non_trainable_weights 
+            self.weights_target = policy_model_target.weights + Q_model_target.weights 
+            self.trainable_weights_target = policy_model_target.trainable_weights + Q_model_target.trainable_weights 
+            self.non_trainable_weights_target = policy_model_target.non_trainable_weights + Q_model_target.non_trainable_weights 
 
             # initialize target weights equal to main model
-            for v, vt in zip(self.trainable_weights, self.target_trainable_weights):
+            for v, vt in zip(self.trainable_weights, self.trainable_weights_target):
                 vt.assign(v)
 
-            policy_train, state_policy_train = policy_model(inputs['state'], training=True)
-            policy_eval, state_policy_eval = policy_model(inputs['state'], training=False)
+            policy_train = policy_model(inputs['state'], training=True)
+            policy_eval = policy_model(inputs['state'], training=False)
 
             # Q_policy_train has training=False, because it it's purpose is for training
             # the policy model, not the Q model
-            Q_policy_train, state_Q_policy_train = Q_model([inputs['state'], policy_train], training=False)
-            Q_policy_eval, state_Q_policy_eval = Q_model([inputs['state'], policy_eval], training=False)
+            Q_policy_train = Q_model([inputs['state'], policy_train], training=False)
+            Q_policy_eval = Q_model([inputs['state'], policy_eval], training=False)
 
-            Q_action_train, _ = Q_model([inputs['state'], inputs['action']], training=True)
-            Q_action_eval, _ = Q_model([inputs['state'], inputs['action']], training=False)
+            Q_action_train = Q_model([inputs['state'], inputs['action']], training=True)
+            Q_action_eval = Q_model([inputs['state'], inputs['action']], training=False)
 
-            policy_target, state_policy_target = policy_target_model(inputs['state'], training=False)
-            policy_target_state2, _ = policy_target_model(inputs['state2'], training=False)
+            policy_target = policy_model_target(inputs['state'], training=False)
+            policy_target_state2 = policy_model_target(inputs['state2'], training=False)
 
-            Q_target, state_Q_target = Q_target_model([inputs['state'], policy_target], training=False)
-            Q_target_state2, _ = Q_target_model([inputs['state2'], policy_target_state2], training=False)
+            Q_target = Q_model_target([inputs['state'], policy_target], training=False)
+            Q_target_state2 = Q_model_target([inputs['state2'], policy_target_state2], training=False)
 
             # make sure inputs to loss functions are in the correct shape
             # (to avoid erroneous broadcasting)
@@ -121,10 +127,6 @@ class DDPG(object):
                 'Q_target_state2': Q_target_state2,
                 'Q_policy_eval': Q_policy_eval,
                 'Q_policy_train': Q_policy_train,
-                'state/policy_train': state_policy_train,
-                'state/policy_eval': state_policy_eval,
-                'state/Q_policy_train': state_Q_policy_train,
-                'state/Q_policy_eval': state_Q_policy_eval,
             }
 
             self.policy_model = tf.keras.Model(inputs['state'], policy_eval)
@@ -146,12 +148,25 @@ class DDPG(object):
             state2,
             gamma=0.99,
             ema_decay=0.999,
-            weight_decay=0.1,
             policy_loss_weight=1.,
+            weight_decay=None,
             grad_clip_norm=None,
             importance_weight=None,
             outputs=['td_error'],
         ):
+
+        # autocast types
+        reward = tf.cast(reward, tf.float32)
+        done = tf.cast(done, tf.float32)
+        gamma = tf.cast(gamma, tf.float32)
+        ema_decay = tf.cast(ema_decay, tf.float32)
+        policy_loss_weight = tf.cast(policy_loss_weight, tf.float32)
+        if weight_decay is not None:
+            weight_decay = tf.cast(weight_decay, tf.float32)
+        if importance_weight is not None:
+            importance_weight = tf.cast(importance_weight, tf.float32)
+        if grad_clip_norm is not None:
+            grad_clip_norm = tf.cast(grad_clip_norm, tf.float32)
 
         with tf.GradientTape() as tape:
             # do not watch target network weights
@@ -165,22 +180,14 @@ class DDPG(object):
                 'state2': state2,
             })
 
-            # autocast types
-            reward = tf.cast(reward, tf.float32)
-            done = tf.cast(done, tf.float32)
-            gamma = tf.cast(gamma, tf.float32)
-            ema_decay = tf.cast(ema_decay, tf.float32)
-            weight_decay = tf.cast(weight_decay, tf.float32)
-            policy_loss_weight = tf.cast(policy_loss_weight, tf.float32)
-
             # loss functions
-            losses_Q, (y, td_error) = trfl.td_learning(
+            losses_Q, (y, td_error) = td_learning(
                 model_outputs['Q_action_train'],
                 reward,
                 gamma*(1-done),
                 model_outputs['Q_target_state2']
             )
-            losses_policy, _ = trfl.dpg(
+            losses_policy, _ = dpg(
                 model_outputs['Q_policy_train'],
                 model_outputs['policy_train'],
                 self.dqda_clipping,
@@ -204,17 +211,16 @@ class DDPG(object):
                     message = "shape of importance_weight and losses do not match")
 
                 # overall loss function (importance weighted)
-                importance_weight = tf.cast(importance_weight, tf.float32)
                 loss = tf.reduce_mean(importance_weight * losses)
 
-            loss = loss + self.l2_loss(weight_decay)
+            if weight_decay is not None:
+                loss = loss + self.l2_loss(weight_decay)
 
         # update model weights
         grads = tape.gradient(loss, self.trainable_weights)
 
         # gradient clipping
         if grad_clip_norm is not None:
-            grad_clip_norm = tf.cast(grad_clip_norm, tf.float32)
             grads, gnorm = tf.clip_by_global_norm(grads, grad_clip_norm)
         else:
             gnorm = tf.linalg.global_norm(grads)
@@ -222,10 +228,11 @@ class DDPG(object):
         self.optimizer.apply_gradients(zip(grads, self.trainable_weights))
 
         # ema update, zero debias not needed since we initialized identically
-        for v, vt in zip(self.trainable_weights, self.target_trainable_weights):
+        for v, vt in zip(self.trainable_weights, self.trainable_weights_target):
             vt.assign(ema_decay*vt + (1.0-ema_decay)*v)
 
-        for v, vt in zip(self.non_trainable_weights, self.target_non_trainable_weights):
+        # e.g. batchnorm moving avg should be same between main & target models
+        for v, vt in zip(self.non_trainable_weights, self.non_trainable_weights_target):
             vt.assign(v)
 
         # policy gradient
@@ -234,9 +241,9 @@ class DDPG(object):
 
         # parameter norms
         pnorm = tf.linalg.global_norm(self.trainable_weights)
-        pnorm_target = tf.linalg.global_norm(self.target_trainable_weights)
+        pnorm_target = tf.linalg.global_norm(self.trainable_weights_target)
         pnorm_nt = tf.linalg.global_norm(self.non_trainable_weights)
-        pnorm_target_nt = tf.linalg.global_norm(self.target_non_trainable_weights)
+        pnorm_target_nt = tf.linalg.global_norm(self.non_trainable_weights_target)
 
         model_outputs['pnorm/main/trainable_weights'] = pnorm
         model_outputs['pnorm/target/trainable_weights'] = pnorm_target

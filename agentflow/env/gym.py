@@ -12,8 +12,6 @@ class GymEnv(BaseEnv):
             self.fire_reset = 'FIRE' in self.env.unwrapped.get_action_meanings()
         else:
             self.fire_reset = False
-        if skip > 1:
-            assert 'NoFrameskip' in self.env.spec.id, "cannot specify skips if using NoFrameskip"
         self.skip = skip
 
     def _reshape_action(self, action):

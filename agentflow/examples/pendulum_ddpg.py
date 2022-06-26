@@ -73,7 +73,7 @@ def run(**cfg):
 
     if cfg['seed'] is not None:
         np.random.seed(cfg['seed'])
-        tf.random.set_seed(int(cfg['seed']))
+        tf.random.set_seed(int(10*cfg['seed']))
 
     ts = str(int(time.time()*1000))
     savedir = os.path.join(cfg['savedir'],'experiment' + ts)
@@ -86,12 +86,10 @@ def run(**cfg):
     # environment
     env = VecGymEnv('Pendulum-v1', n_envs=cfg['n_envs'], skip=1)
     env = NPrevFramesStateEnv(env, n_prev_frames=cfg['n_prev_frames'], flatten=True)
-    #env = TanhActionEnv(env, scale=2)
     env = PrevEpisodeReturnsEnv(env)
     env = PrevEpisodeLengthsEnv(env)
     test_env = VecGymEnv('Pendulum-v1', n_envs=1, skip=1)
     test_env = NPrevFramesStateEnv(test_env, n_prev_frames=cfg['n_prev_frames'], flatten=True)
-    #test_env = TanhActionEnv(test_env, scale=2)
 
     # state and action shapes
     state = env.reset()['state']
@@ -116,7 +114,7 @@ def run(**cfg):
         )
         #return tf.keras.layers.Dense(action_shape, name=f"{name}/dense/output")(h), state
         h = tf.keras.layers.Dense(action_shape, name=f"{name}/dense/output")(h)
-        return 2*tf.nn.tanh(h), state
+        return 2*tf.nn.tanh(h)
 
     def q_fn(state, action, name=None, **kwargs):
         if cfg['normalize_inputs']:
@@ -128,7 +126,7 @@ def run(**cfg):
             batchnorm = cfg['batchnorm'],
             name = name
         )
-        return tf.keras.layers.Dense(1, name=f"{name}/dense/output")(h), state
+        return tf.keras.layers.Dense(1, name=f"{name}/dense/output")(h)
 
     learning_rate_schedule = tf.keras.optimizers.schedules.ExponentialDecay(
         initial_learning_rate = cfg['learning_rate'],
@@ -263,10 +261,6 @@ def run(**cfg):
                             'policy_target_state2',
                             'policy_eval',
                             'policy_train',
-                            'state/policy_train',
-                            'state/policy_eval',
-                            'state/Q_policy_train',
-                            'state/Q_policy_eval'
                         ],
                         **sample)
 
