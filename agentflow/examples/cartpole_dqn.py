@@ -80,11 +80,11 @@ def run(**cfg):
         yaml.dump(cfg, f)
 
     # environment
-    env = VecGymEnv('CartPole-v1', n_envs=cfg['n_envs'])
+    env = VecGymEnv('CartPole-v1', n_envs=cfg['n_envs'], skip=1)
     env = NPrevFramesStateEnv(env, n_prev_frames=cfg['n_prev_frames'], flatten=True)
     env = PrevEpisodeReturnsEnv(env)
     env = PrevEpisodeLengthsEnv(env)
-    test_env = VecGymEnv('CartPole-v1', n_envs=1)
+    test_env = VecGymEnv('CartPole-v1', n_envs=1, skip=1)
     test_env = NPrevFramesStateEnv(test_env, n_prev_frames=cfg['n_prev_frames'], flatten=True)
 
     # state and action shapes

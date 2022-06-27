@@ -4,7 +4,7 @@ from .base_env import BaseEnv
 
 class GymEnv(BaseEnv):
 
-    def __init__(self, env_id, noops=30, skip=4):
+    def __init__(self, env_id, noops=30, skip=1):
         self.env_id = env_id
         self.env = gym.make(env_id)
         self.noops = noops
