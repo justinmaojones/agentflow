@@ -113,7 +113,7 @@ def run(**cfg):
     learning_rate_schedule = tf.keras.optimizers.schedules.ExponentialDecay(
         initial_learning_rate = cfg['learning_rate'],
         decay_rate = cfg['learning_rate_decay'],
-        decay_steps = cfg['n_update_steps']
+        decay_steps = cfg['n_update_steps'] / cfg['update_freq']
     )
 
     optimizer = tf.keras.optimizers.Adam(
