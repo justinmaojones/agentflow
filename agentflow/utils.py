@@ -184,23 +184,25 @@ class LogsTFSummary(object):
                     f[key].resize(n + m,axis=0)
                     f[key][n:] = data
 
-def load_hdf5(filepath):
-    def load_data(f):
+def load_hdf5(filepath, load_keys=None):
+    assert load_keys is None or isinstance(load_keys, list), "load_keys must be None or a list"
+    def load_data(f, keys=None):
         output = {}
         for k in f:
-            if isinstance(f[k],h5py.Group):
-                output[k] = load_data(f[k])
-            else:
-                output[k] = np.array(f[k])
+            if keys is None or k in keys:
+                if isinstance(f[k],h5py.Group):
+                    output[k] = load_data(f[k])
+                else:
+                    output[k] = np.array(f[k])
         return output
     with h5py.File(filepath,'r') as f:
-        return load_data(f)
+        return load_data(f, load_keys)
 
 def load_yaml(filepath):
     with open(filepath,'r') as f:
-        return yaml.load(f)
+        return yaml.load(f, Loader=yaml.Loader)
 
-def load_experiment_results(savedir,allow_load_partial=False):
+def load_experiment_results(savedir, allow_load_partial=False, load_keys=None):
     """
     load results for a single experiment directory
     """
@@ -214,10 +216,10 @@ def load_experiment_results(savedir,allow_load_partial=False):
     log_partial_filepath = os.path.join(savedir,'log_intermediate.h5')
 
     if os.path.exists(log_filepath):
-        logs = load_hdf5(log_filepath)
+        logs = load_hdf5(log_filepath, load_keys)
 
     elif allow_load_partial and os.path.exists(log_partial_filepath):
-        logs = load_hdf5(log_partial_filepath)
+        logs = load_hdf5(log_partial_filepath, load_keys)
 
     else:
         logs = {}
@@ -225,7 +227,7 @@ def load_experiment_results(savedir,allow_load_partial=False):
 
     return logs, config
 
-def load_multiple_experiments(resultsdir,allow_load_partial=False,load_empty=False):
+def load_multiple_experiments(resultsdir,allow_load_partial=False,load_empty=False, load_keys=None):
     """
     load results for a multiple experiment directories
     returns a dictionary keyed by the experiment directory 
@@ -235,7 +237,7 @@ def load_multiple_experiments(resultsdir,allow_load_partial=False,load_empty=Fal
     logs = {}
     for sd in sorted(savedirs):
         if os.path.isdir(savedirs[sd]):
-            log, config = load_experiment_results(savedirs[sd],allow_load_partial)
+            log, config = load_experiment_results(savedirs[sd],allow_load_partial,load_keys)
             if len(log) > 0 or load_empty:
                 logs[sd] = log
                 configs[sd] = config

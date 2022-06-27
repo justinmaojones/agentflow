@@ -109,11 +109,8 @@ def entropy_loss(logits,axis=-1):
     p = tf.nn.softmax(logits,axis=axis)
     return tf.nn.softmax_cross_entropy_with_logits(labels=p,logits=logits,dim=axis)
 
-def l2_loss(scope=None):
-    variables = []
-    for v in tf.trainable_variables(scope=scope):
-        variables.append(v)
-    return tf.reduce_sum([tf.nn.l2_loss(v) for v in variables])
+def l2_loss(weights):
+    return 0.5 * tf.reduce_sum([tf.nn.l2_loss(x) for x in weights])
 
 def onehot_argmax(x, axis=-1):
     assert isinstance(axis, int)
@@ -145,3 +142,7 @@ def not_trainable_getter(getter, name, shape, *args, **kwargs):
     if 'trainable' in kwargs:
         kwargs.pop('trainable')
     return getter(name=name,shape=shape,trainable=False,*args,**kwargs)
+
+def weighted_avg(x, weights, axis=-1):
+    return tf.reduce_sum(x*weights, axis=axis) / (1e-8 + tf.reduce_sum(weights, axis=axis))
+

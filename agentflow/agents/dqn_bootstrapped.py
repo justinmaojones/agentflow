@@ -1,36 +1,45 @@
 import numpy as np
 import tensorflow as tf
-from tensorflow.python.framework.errors_impl import InvalidArgumentError
+from trfl import td_learning
 
-from ..objectives import td_learning
-from ..tensorflow.ops import exponential_moving_average
-from ..tensorflow.ops import l2_loss
-from ..tensorflow.ops import not_trainable_getter 
-from ..tensorflow.ops import onehot_argmax
+from ..tensorflow.ops import l2_loss 
+from ..tensorflow.ops import weighted_avg 
 from ..tensorflow.ops import value_at_argmax 
 
 class BootstrappedDQN(object):
 
-    def __init__(self,state_shape,num_actions,num_heads,q_fn,q_prior_fn=None,double_q=False,random_prior=False,prior_scale=1.0,grad_clip_norm=None,td_loss='square'):
+    def __init__(self,
+            state_shape,
+            num_actions,
+            num_heads,
+            q_fn,
+            optimizer,
+            q_prior_fn=None,
+            double_q=False,
+            random_prior=False,
+            prior_scale=1.0,
+        ):
         """Implements Boostrapped Deep Q Networks [1] with Tensorflow
 
         This class builds a DDPG model with optimization update and action prediction steps.
 
         Args:
           state_shape: a tuple or list of the state shape, excluding the batch dimension.
-            For example, for images of size 28 x 28 x 3, state_shape=[28,28,3].
+            For example, for images of size 28 x 28 x 3, state_shape=[28, 28, 3].
           num_actions: an integer, representing the number of possible actions an agent can choose
             from, excluding the batch dimension. It is assumed that actions are one-hot, 
             i.e. "one of `num_actions`".
           num_heads: an integer, representing the number of Q functions used for bootstrapping.
           q_fn: a function that takes as input two tensors: the state and action,
-            and outputs an estimate Q(state,action)
+            and outputs an estimate Q(state, action)
+          optimizer: tf.keras.optimizers.Optimizer.
           q_prior_fn: a function that takes as input two tensors: the state and action,
-            and outputs an estimate Q(state,action)
+            and outputs an estimate Q(state, action)
           double_q: boolean, when true uses "double q-learning" from [2]. Otherwise uses
             standard q-learning.
           random_prior: boolean, when true builds a separate randomized prior function [3] 
             for each bootstrap head using q_fn.
+          prior_scale: float, controls the strength of the prior
             
         References:
         [1] Osband, Ian, et al. "Deep exploration via bootstrapped DQN." Advances in neural 
@@ -47,12 +56,11 @@ class BootstrappedDQN(object):
         self.num_actions = num_actions 
         self.num_heads = num_heads
         self.q_fn = q_fn
+        self.optimizer = optimizer
         self.q_prior_fn = q_prior_fn if q_prior_fn is not None else q_fn
         self.double_q = double_q
         self.random_prior = random_prior
         self.prior_scale = prior_scale
-        self.grad_clip_norm = grad_clip_norm
-        self.td_loss = td_loss
 
         self.build_model()
 
@@ -62,243 +70,262 @@ class BootstrappedDQN(object):
                         (self.num_actions, self.num_heads, str(Q.shape.as_list()))
             raise ValueError(err_msg)
 
+    def build_net(self, name):
+        state_input = tf.keras.Input(shape=tuple(self.state_shape))
+
+        Q_multihead = self.q_fn(state_input, name=f"{name}/Q")
+        self._validate_q_fn(Q_multihead)
+
+        if self.random_prior:
+            Q_prior_multihead = tf.stop_gradient(self.q_prior_fn(state_input, name=f"{name}/Q_prior"))
+            self._validate_q_fn(Q_prior_multihead)
+            Q_multihead = Q_multihead + self.prior_scale * Q_prior_multihead
+
+        Q_model = tf.keras.Model(
+            inputs=state_input,
+            outputs=Q_multihead
+        )
+
+        return Q_model
+
     def build_model(self):
 
-        with tf.variable_scope(None,default_name='BootstrappedDQN') as scope:
+        with tf.name_scope('BootstrappedDQN'):
 
-            # inputs
             inputs = {
-                'state': tf.placeholder(tf.float32,shape=tuple([None]+self.state_shape), name='state'),
-                'action': tf.placeholder(tf.float32,shape=[None, self.num_actions], name='action'),
-                'reward': tf.placeholder(tf.float32,shape=(None,), name='reward'),
-                'done': tf.placeholder(tf.float32,shape=(None,), name='done'),
-                'state2': tf.placeholder(tf.float32,shape=tuple([None]+self.state_shape), name='state2'),
-                'gamma': tf.placeholder(tf.float32, shape=(), name='gamma'),
-                'learning_rate': tf.placeholder(tf.float32, shape=(), name='learning_rate'),
-                'ema_decay': tf.placeholder(tf.float32, shape=(), name='ema_decay'),
-                'importance_weight': tf.placeholder(tf.float32,shape=(None,), name='importance_weight'),
-                'weight_decay': tf.placeholder(tf.float32,shape=(), name='weight_decay'),
-                'mask': tf.placeholder(tf.float32, shape=(None, self.num_heads), name='mask')
+                'state': tf.keras.Input(shape=tuple(self.state_shape), dtype=tf.float32, name='state'), 
+                'action': tf.keras.Input(shape=(self.num_actions, ), dtype=tf.float32, name='action'), 
+                'reward': tf.keras.Input(shape=(), dtype=tf.float32, name='reward'), 
+                'done': tf.keras.Input(shape=(), dtype=tf.float32, name='done'), 
+                'state2': tf.keras.Input(shape=tuple(self.state_shape), dtype=tf.float32, name='state2'), 
+                'mask': tf.keras.Input(shape=(self.num_heads, ), dtype=tf.float32, name='mask')
             }
             self.inputs = inputs
 
-            def weighted_avg(x, weights):
-                return tf.reduce_sum(x*weights,axis=-1) / tf.reduce_sum(weights,axis=-1)
 
-            if self.random_prior:
-                def q_fn(state, training):
-                    # since prior variables are not trainable, the exponential moving average
-                    # getter will not process prior variables, but instead just return the
-                    # prior variables themselves
-                    with tf.variable_scope('Q_prior',custom_getter=not_trainable_getter):
-                        Q_prior_multihead = tf.stop_gradient(self.q_prior_fn(state,training))
-                        self._validate_q_fn(Q_prior_multihead)
-                    Q_multihead = self.q_fn(state, training) 
-                    self._validate_q_fn(Q_multihead)
-                    return Q_multihead + self.prior_scale * Q_prior_multihead
+            # dont use tf.keras.models.clone_model, because it will not preserve
+            # uniqueness of shared objects within model
+            Q_model = self.build_net("BoostrappedDQN/main")
+            Q_model_target = self.build_net("BootstrappedDQN/target")
 
-            else:
-                def q_fn(state, training):
-                    Q_multihead = self.q_fn(state, training) 
-                    self._validate_q_fn(Q_multihead)
-                    return Q_multihead
+            self.weights = Q_model.weights
+            self.trainable_weights = Q_model.trainable_weights
+            self.non_trainable_weights = Q_model.non_trainable_weights
 
-            # training network: Q
-            # for computing TD (time-delay) learning loss
-            with tf.variable_scope('Q'):
-                # the bootstrapped heads should be in the last dimension
-                # Q_train_multihead is shape (None, num_actions, num_heads)
-                Q_train_multihead = q_fn(inputs['state'],training=True)
+            self.weights_target = Q_model_target.weights 
+            self.trainable_weights_target = Q_model_target.trainable_weights 
+            self.non_trainable_weights_target = Q_model_target.non_trainable_weights 
 
-                # Q_train is shape (None, num_actions)
-                Q_train = weighted_avg(Q_train_multihead, inputs['mask'][:,None,:]) 
+            # the bootstrapped heads should be in the last dimension
+            # Q_train_multihead is shape (None, num_actions, num_heads)
+            Q_train_multihead = Q_model(inputs['state'], training=True)
 
-                # Q_action_train_multihead is shape (None, num_heads) and represents Q(s,a) for each head
-                Q_action_train_multihead = tf.reduce_sum(Q_train_multihead*inputs['action'][:,:,None],axis=-2)
+            # Q_action_train_multihead is shape (None, num_actions, num_heads) 
+            # and represents Q(s, a) for each head
+            Q_action_train_multihead = tf.reduce_sum(
+                    Q_train_multihead*inputs['action'][:, :, None], axis=-2)
 
-                # Q_action_train is shape (None,) and represents the masked average
-                Q_action_train = tf.reduce_sum(Q_train*inputs['action'],axis=-1)
-                policy_train = tf.nn.softmax(Q_train,axis=-1)
+            # Q_eval_multihead is shape (None, num_actions, num_heads)
+            Q_eval_multihead = Q_model(inputs['state'], training=False)
 
-            with tf.variable_scope('Q',reuse=True):
-                # Q_eval_multihead is shape (None, num_actions, num_heads)
-                Q_eval_multihead = q_fn(inputs['state'],training=False)
+            # Q_eval is shape (None, num_actions)
+            Q_eval = tf.reduce_mean(Q_eval_multihead, axis=-1)
+            Q_eval_masked = weighted_avg(Q_eval_multihead, inputs['mask'][:, None, :], axis=-1)
+            Q_policy_eval = tf.reduce_max(Q_eval, axis=-1)
 
-                # Q_eval is shape (None, num_actions)
-                Q_eval = weighted_avg(Q_eval_multihead, inputs['mask'][:,None,:])
+            # policy_eval is the index of the action with the highest Q(s,a)
+            policy_eval = tf.argmax(Q_eval, axis=-1)
+            policy_eval_masked = tf.argmax(Q_eval_masked, axis=-1)
 
-                # Q_action_eval is shape (None,) and represents the masked average
-                Q_action_eval = tf.reduce_sum(Q_eval*inputs['action'],axis=-1)
-                Q_policy_eval = tf.reduce_max(Q_eval,axis=-1)
-                policy_eval = tf.nn.softmax(Q_eval,axis=-1)
+            # Q_state2_eval_multihead is shape (None, num_actions, num_heads)
+            Q_state2_eval_multihead = Q_model(inputs['state2'], training=False)
+            # Q_state2_eval is shape (None, num_actions)
+            Q_state2_eval = weighted_avg(Q_state2_eval_multihead, inputs['mask'][:, None, :])
 
-            with tf.variable_scope('Q',reuse=True):
-                # Q_state2_eval_multihead is shape (None, num_actions, num_heads)
-                Q_state2_eval_multihead = q_fn(inputs['state2'],training=False)
-                # Q_state2_eval is shape (None, num_actions)
-                Q_state2_eval = weighted_avg(Q_state2_eval_multihead, inputs['mask'][:,None,:])
+            # Q_state2_target_multihead is shape (None, num_actions, num_heads)
+            Q_state2_target_multihead = Q_model_target(inputs['state2'], training=False)
 
-            # target networks
-            ema, ema_op, ema_vars_getter = exponential_moving_average(
-                    scope.name,decay=inputs['ema_decay'],zero_debias=True)
-
-            with tf.variable_scope('Q',reuse=True,custom_getter=ema_vars_getter):
-                # Q_ema_state2_multihead is shape (None, num_actions, num_heads)
-                Q_ema_state2_multihead = q_fn(inputs['state2'],training=False)
-                # Q_ema_state2 is shape (None, num_actions)
-                Q_ema_state2 = weighted_avg(Q_ema_state2_multihead, inputs['mask'][:,None,:])
-
-            # target_Q_state2 is shape (None, num_heads)
+            # Q_state2_target_action is shape (None, num_heads)
             if self.double_q:
                 # use action = argmax(Q_state2_eval_multihead, axis=-2) to select Q 
-                # from axis 2 of Q_ema_state2_multihead
-                target_Q_state2 = value_at_argmax(Q_state2_eval_multihead, Q_ema_state2_multihead, axis=-2) 
+                # from axis -2 of Q_state2_target_multihead
+                Q_state2_target_action = value_at_argmax(
+                        Q_state2_eval_multihead, Q_state2_target_multihead, axis=-2) 
             else: 
-                target_Q_state2 = tf.reduce_max(Q_ema_state2_multihead,axis=-2)
-
-            # loss functions
-            losses_Q_multihead, y, td_error_multihead = td_learning(
-                Q_action_train_multihead,
-                inputs['reward'][:,None],
-                inputs['gamma'],
-                (1-inputs['done'][:,None])*target_Q_state2,
-                loss = self.td_loss
-            )
-
-            td_error = weighted_avg(td_error_multihead, inputs['mask']) 
-            abs_td_error = weighted_avg(tf.abs(td_error_multihead), inputs['mask']) 
-
-            losses_Q = tf.reduce_sum(losses_Q_multihead*inputs['mask'], axis=-1)
-            losses_Q /= self.num_heads # gradient normalization 
-            assert losses_Q.shape.as_list() == [None]
-
-            #loss = tf.reduce_mean(self.inputs['importance_weight']*losses_Q)
-            # overall loss function (importance weighted)
-            loss = tf.reduce_mean(
-                self.inputs['importance_weight']*losses_Q,
-            )
-
-            # weight decay
-            loss += inputs['weight_decay']*l2_loss(scope.name)
-
-            # gradient update for parameters of Q 
-            self.optimizer = tf.train.AdamOptimizer(inputs['learning_rate']) 
-            with tf.control_dependencies(tf.get_collection(tf.GraphKeys.UPDATE_OPS,scope=scope.name)):
-                var_list = tf.trainable_variables(scope=scope.name)
-                grad_list = tf.gradients(loss,var_list)
-                if self.grad_clip_norm is not None:
-                    grad_list_clipped, gnorm = tf.clip_by_global_norm(grad_list, self.grad_clip_norm)
-                    train_op = self.optimizer.apply_gradients(zip(grad_list_clipped,var_list))
-                else:
-                    gnorm = tf.linalg.global_norm(grad_list)
-                    train_op = self.optimizer.minimize(loss)
-
-            # used in update step
-            self.update_ops = {
-                'ema': ema_op,
-                'train': train_op
-            }
-
-
-            self.var_list = tf.global_variables(scope=scope.name)
-            self._pnorms = {v.name: tf.sqrt(tf.reduce_mean(tf.square(v))) for v in self.var_list} 
-            self._gnorm = {v.name: tf.sqrt(tf.reduce_mean(tf.square(v))) for v in self.var_list} 
+                Q_state2_target_action = tf.reduce_max(Q_state2_target_multihead, axis=-2)
 
             # store attributes for later use
-            self.outputs = {
-                'loss': loss,
-                'losses_Q': losses_Q,
-                'policy_train': policy_train,
+            self.train_outputs = {
                 'policy_eval': policy_eval,
-                'Q_action_eval': Q_action_eval,
-                'Q_action_train': Q_action_train,
+                'policy_eval_masked': policy_eval_masked,
+                'Q_action_train_multihead': Q_action_train_multihead,
+                'Q_eval': Q_eval,
+                'Q_eval_masked': Q_eval_masked,
                 'Q_policy_eval': Q_policy_eval,
                 'Q_state2_eval': Q_state2_eval,
-                'Q_ema_state2': Q_ema_state2,
-                'target_Q_state2': target_Q_state2,
-                'abs_td_error': abs_td_error,
-                'td_error': td_error,
-                'y': y,
-                'gnorm': gnorm,
+                'Q_state2_target_action': Q_state2_target_action,
             }
 
-    def act(self,state,mask=None,session=None,addl_outputs=None):
-        if session is None:
-            session = tf.get_default_session()
+            self.policy_model = tf.keras.Model(inputs['state'], policy_eval)
+            self.policy_masked_model = tf.keras.Model([inputs['state'], inputs['mask']], policy_eval_masked)
+            self.policy_logits_model = tf.keras.Model(inputs['state'], Q_eval)
+            self.policy_logits_masked_model = tf.keras.Model([inputs['state'], inputs['mask']], Q_eval_masked)
+            self.train_model = tf.keras.Model(inputs, self.train_outputs)
+
+    def _loss_fn(self, Q_action_train_multihead, reward, gamma, done, Q_state2_target_action, **kwargs):
+        y = tf.stop_gradient(reward + gamma*done*Q_state2_target_action)
+        td_error = Q_action_train_multihead - y
+        loss = 0.5 * tf.square(td_error)
+        return loss, (y, td_error)
+
+    @tf.function
+    def act(self, state, mask=None):
         if mask is None:
-            mask = np.ones((len(state),self.num_heads))
-        if addl_outputs is None:
-            addl_outputs = []
-        assert isinstance(addl_outputs, list)
-
-        outputs = ['policy_eval'] + addl_outputs
-        output = session.run(
-            {k: self.outputs[k] for k in outputs},
-            {
-                self.inputs['state']:state,
-                self.inputs['mask']:mask,
-            }
-        )
-        output['action'] = output['policy_eval'].argmax(axis=-1).ravel()
-        return output
-        
-    def act_probs(self,state,mask=None,session=None):
-        if mask is None:
-            mask = np.ones((len(state),self.num_heads))
-        session = session or tf.get_default_session()
-        output = session.run(
-            self.outputs['policy_eval'],
-            {
-                self.inputs['state']:state,
-                self.inputs['mask']:mask,
-            }
-        )
-        return output
-        
-    def get_inputs(self,**inputs):
-        return {self.inputs[k]: inputs[k] for k in inputs}
-
-    def infer(self,outputs=None,session=None,**inputs):
-        session = session or tf.get_default_session()
-        inputs = self.get_inputs(**inputs)
-        if outputs is None:
-            outputs = self.outputs
+            return self.policy_model(state)
         else:
-            outputs = {k:self.outputs[k] for k in outputs}
-        return session.run(outputs,inputs)
+            return self.policy_masked_model([state, mask])
 
-    def pnorms(self,session=None):
-        session = session or tf.get_default_session()
-        return session.run(self._pnorms)
+    @tf.function
+    def policy_logits(self, state, mask=None):
+        if mask is None:
+            return self.policy_logits_model(state)
+        else:
+            return self.policy_logits_masked_model([state, mask])
+        
+    @tf.function
+    def pnorms(self, per_layer=False):
+        """
+        Returns the 2-norm of every trainable and non trainable weight
+        in main and target graphs. Typically useful for debugging.
+        """
 
-    def update(self,state,action,reward,done,state2,mask,gamma=0.99,learning_rate=1.,ema_decay=0.999,weight_decay=0.1,importance_weight=None,session=None,outputs=['td_error']):
-        session = session or tf.get_default_session()
-        if importance_weight is None:
-            importance_weight = np.ones_like(reward)
-        inputs = {
-            self.inputs['state']:state,
-            self.inputs['action']:action,
-            self.inputs['reward']:reward,
-            self.inputs['done']:done,
-            self.inputs['state2']:state2,
-            self.inputs['mask']:mask,
-            self.inputs['gamma']:gamma,
-            self.inputs['learning_rate']:learning_rate,
-            self.inputs['ema_decay']:ema_decay,
-            self.inputs['weight_decay']:weight_decay,
-            self.inputs['importance_weight']:importance_weight,
+        weight_classes = {
+            'trainable_weights/main': self.trainable_weights,
+            'trainable_weights/target': self.trainable_weights_target,
+            'non_trainable_weights/main': self.non_trainable_weights,
+            'non_trainable_weights/target': self.non_trainable_weights_target,
         }
 
-        updates = [self.update_ops['train']]
-        if ema_decay < 1:
-            updates.append(self.update_ops['ema'])
+        pnorms = {}
+        if per_layer:
+            for c in weight_classes:
+                weights = weight_classes[c]
+                for k in weights:
+                    w = self.trainable_weights[k]
+                    pnorms[f"pnorms/{c}/{w.name}"] = tf.norm(w)
 
+        # overall parameter norms
+        for c in weight_classes:
+            pnorms[f"pnorm/overall/{c}"] = tf.linalg.global_norm(weight_classes[c])
 
-        my_outputs, _ = session.run(
-            [
-                {k:self.outputs[k] for k in outputs},
-                self.update_ops
-            ],
-            inputs
-        )
-        return my_outputs
+        return pnorms
+
+    @tf.function
+    def update(self,
+            state,
+            action,
+            reward,
+            done,
+            state2,
+            mask,
+            gamma=0.99,
+            ema_decay=0.999,
+            weight_decay=None,
+            grad_clip_norm=None,
+            importance_weight=None,
+            outputs=['td_error']
+        ):
+
+        # autocast types
+        reward = tf.cast(reward, tf.float32)
+        done = tf.cast(done, tf.float32)
+        gamma = tf.cast(gamma, tf.float32)
+        mask = tf.cast(mask, tf.float32)
+        ema_decay = tf.cast(ema_decay, tf.float32)
+        if weight_decay is not None:
+            weight_decay = tf.cast(weight_decay, tf.float32)
+        if importance_weight is not None:
+            importance_weight = tf.cast(importance_weight, tf.float32)
+        if grad_clip_norm is not None:
+            grad_clip_norm = tf.cast(grad_clip_norm, tf.float32)
+
+        with tf.GradientTape() as tape:
+            # do not watch target network weights
+            tape.watch(self.trainable_weights)
+
+            model_outputs = self.train_model({
+                'state': state,
+                'action': action,
+                'reward': reward,
+                'done': done,
+                'state2': state2,
+                'mask': mask,
+            })
+
+            # loss functions
+            losses_Q_multihead, (y, td_error_multihead) = self._loss_fn(
+                model_outputs['Q_action_train_multihead'],
+                reward[:, None],
+                gamma,
+                (1-done[:, None]),
+                model_outputs['Q_state2_target_action'],
+            )
+            td_error = weighted_avg(td_error_multihead, mask) 
+
+            # mask losses and normalize by number of active heads in mask
+            # note: the original paper normalizes by total number of heads,
+            # but this seemed more intuitive to me...choice probably doesn't
+            # matter too much
+            losses = weighted_avg(losses_Q_multihead, mask, axis=-1)
+
+            # check shapes
+            tf.debugging.assert_rank(losses, 1)
+
+            if importance_weight is None:
+                loss = tf.reduce_mean(losses)
+            else:
+                # check shapes
+                tf.debugging.assert_equal(
+                    tf.shape(importance_weight),
+                    tf.shape(losses),
+                    message = "shape of importance_weight and losses do not match")
+
+                # overall loss function (importance weighted)
+                loss = tf.reduce_mean(importance_weight * losses)
+
+            if weight_decay is not None:
+                loss = loss + weight_decay * l2_loss(self.trainable_weights)
+
+        # update model weights
+        grads = tape.gradient(loss, self.trainable_weights)
+
+        # gradient clipping
+        if grad_clip_norm is not None:
+            grads, gnorm = tf.clip_by_global_norm(grads, grad_clip_norm)
+        else:
+            gnorm = tf.linalg.global_norm(grads)
+
+        self.optimizer.apply_gradients(zip(grads, self.trainable_weights))
+
+        # ema update, zero debias not needed since we initialized identically
+        for v, vt in zip(self.trainable_weights, self.trainable_weights_target):
+            vt.assign(ema_decay*vt + (1.0-ema_decay)*v)
+
+        # e.g. batchnorm moving avg should be same between main & target models
+        for v, vt in zip(self.non_trainable_weights, self.non_trainable_weights_target):
+            vt.assign(v)
+
+        # parameter norms
+        model_outputs['gnorm'] = gnorm
+        model_outputs['losses'] = losses
+        model_outputs['td_error'] = td_error
+        model_outputs['y'] = y
+
+        # collect output
+        rvals = {}
+        rvals['loss'] = loss
+        for k in outputs:
+            rvals[k] = model_outputs[k]
+
+        return rvals
+

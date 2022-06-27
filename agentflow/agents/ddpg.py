@@ -2,6 +2,8 @@ import tensorflow as tf
 from trfl import td_learning
 from trfl import dpg 
 
+from ..tensorflow.ops import l2_loss 
+
 class DDPG(object):
 
     def __init__(self,
@@ -132,9 +134,6 @@ class DDPG(object):
             self.policy_model = tf.keras.Model(inputs['state'], policy_eval)
             self.train_model = tf.keras.Model(inputs, self.train_outputs)
 
-    def l2_loss(self, weight_decay):
-        return 0.5 * tf.reduce_sum([tf.nn.l2_loss(x) for x in self.trainable_weights])
-
     @tf.function
     def act(self, state):
         return self.policy_model(state)
@@ -214,7 +213,7 @@ class DDPG(object):
                 loss = tf.reduce_mean(importance_weight * losses)
 
             if weight_decay is not None:
-                loss = loss + self.l2_loss(weight_decay)
+                loss = loss + weight_decay * l2_loss(self.trainable_weights)
 
         # update model weights
         grads = tape.gradient(loss, self.trainable_weights)

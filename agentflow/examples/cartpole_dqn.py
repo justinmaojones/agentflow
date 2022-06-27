@@ -180,8 +180,6 @@ def run(**cfg):
 
         start_step_time = time.time()
 
-        action = agent.act(state).numpy()
-
         if len(replay_buffer) >= cfg['begin_learning_at_step']:
             if cfg['noise'] == 'eps_greedy':
                 logits = agent.policy_logits(state).numpy()

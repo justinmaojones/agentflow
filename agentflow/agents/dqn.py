@@ -3,6 +3,7 @@ import tensorflow as tf
 from tensorflow.python.framework.errors_impl import InvalidArgumentError
 from trfl import td_learning
 
+from ..tensorflow.ops import l2_loss 
 from ..tensorflow.ops import value_at_argmax 
 
 class DQN(object):
@@ -60,7 +61,6 @@ class DQN(object):
 
         with tf.name_scope('DQN'):
 
-            # inputs
             inputs = {
                 'state': tf.keras.Input(shape=tuple(self.state_shape), dtype=tf.float32, name='state'), 
                 'action': tf.keras.Input(shape=(self.num_actions, ), dtype=tf.float32, name='action'), 
@@ -149,7 +149,6 @@ class DQN(object):
             grad_clip_norm=None,
             importance_weight=None, 
             outputs=['td_error'], 
-            returns=None
         ):
 
         # autocast types
@@ -200,7 +199,7 @@ class DQN(object):
                 loss = tf.reduce_mean(importance_weight * losses)
 
             if weight_decay is not None:
-                loss = loss + self.l2_loss(weight_decay)
+                loss = loss + weight_decay * l2_loss(self.trainable_weights)
 
         # update model weights
         grads = tape.gradient(loss, self.trainable_weights)
