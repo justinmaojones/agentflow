@@ -4,7 +4,7 @@ from .base_env import BaseEnv
 
 class GymEnv(BaseEnv):
 
-    def __init__(self, env_id, noops=30, skip=1):
+    def __init__(self, env_id, noops=30, frames_per_action=1):
         self.env_id = env_id
         self.env = gym.make(env_id)
         self.noops = noops
@@ -12,14 +12,13 @@ class GymEnv(BaseEnv):
             self.fire_reset = 'FIRE' in self.env.unwrapped.get_action_meanings()
         else:
             self.fire_reset = False
-        self.skip = skip
+        self.frames_per_action = frames_per_action
 
     def _reshape_action(self, action):
         return np.reshape(action, self.action_space.shape)
 
     def reset(self):
         ob = self.env.reset()
-        self._obs_buf = np.stack([np.zeros_like(ob)]*2)
         for i in range(self.noops):
             ob, _, done, _ = self.env.step(self._reshape_action(0))
             if done:
@@ -35,17 +34,13 @@ class GymEnv(BaseEnv):
 
     def step(self, action):
         total_reward = 0
-        for i in range(self.skip):
+        for i in range(self.frames_per_action):
             ob, reward, done, info = self.env.step(self._reshape_action(action))
             total_reward += reward
-            if i >= self.skip - 2:
-                self._obs_buf[i - (self.skip - 2)] = ob
             if done:
                 break
         if done:
             ob = self.reset()
-        else:
-            ob = self._obs_buf.max(axis=0)
         return ob, total_reward, done, info
 
     @property
@@ -60,17 +55,19 @@ class GymEnv(BaseEnv):
 
 class VecGymEnv(BaseEnv):
 
-    def __init__(self,env_id,n_envs=4,noops=30,skip=4):
+    def __init__(self, env_id, n_envs=4, noops=30, frames_per_action=4):
         self.env_id = env_id
         self.n_envs = n_envs
-        self.envs = [GymEnv(env_id,noops,skip) for i in range(n_envs)]
+        self.noops = noops
+        self.frames_per_action = frames_per_action
+        self.envs = [GymEnv(env_id, noops, frames_per_action) for i in range(n_envs)]
 
     def reset(self):
         return {'state': np.stack([env.reset() for env in self.envs])}
 
-    def step(self,action):
-        assert len(action) == len(self.envs), '%d %d'%(len(action),len(self.envs))
-        obs, rewards, dones, infos = zip(*[env.step(a) for a,env in zip(action,self.envs)])
+    def step(self, action):
+        assert len(action) == len(self.envs), '%d %d'%(len(action), len(self.envs))
+        obs, rewards, dones, infos = zip(*[env.step(a) for a, env in zip(action, self.envs)])
         return {
             'state': np.stack(obs), 
             'reward': np.stack(rewards), 

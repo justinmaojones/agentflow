@@ -90,7 +90,7 @@ def run(**cfg):
 
     if cfg['seed'] is not None:
         np.random.seed(cfg['seed'])
-        tf.set_random_seed(int(10*cfg['seed']))
+        tf.random.set_seed(int(10*cfg['seed']))
 
      
     ts = str(int(time.time()*1000))
@@ -119,18 +119,18 @@ def run(**cfg):
 
     # build agent
     if not cfg['dueling']:
-        def q_fn(state, training=False, **kwargs):
+        def q_fn(state, name=None, **kwargs):
             state = state/255.
             if cfg['normalize_inputs']:
-                state, _ = normalize_ema(state, training)
+                state = normalize_ema(state)
             h = dqn_atari_paper_net(state, cfg['network_scale'])
-            output = tf.layers.dense(h,action_shape*cfg['bootstrap_num_heads'])
+            output = tf.keras.layers.dense(h, action_shape*cfg['bootstrap_num_heads'])
             return tf.reshape(output,[-1,action_shape,cfg['bootstrap_num_heads']])
     else:
-        def q_fn(state, training=False, **kwargs):
+        def q_fn(state, name=None, **kwargs):
             state = state/255.
             if cfg['normalize_inputs']:
-                state, _ = normalize_ema(state, training)
+                state = normalize_ema(state)
             h_val, h_adv = dqn_atari_paper_net_dueling(state, cfg['network_scale'])
             val_flat = tf.layers.dense(h_val, cfg['bootstrap_num_heads'])
             val = val_flat[:,None,:]

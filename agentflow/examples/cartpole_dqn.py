@@ -50,6 +50,7 @@ from agentflow.utils import LogsTFSummary
 @click.option('--begin_learning_at_step', default=200)
 @click.option('--learning_rate', default=1e-4)
 @click.option('--learning_rate_decay', default=0.99995)
+@click.option('--adam_eps', default=1e-7)
 @click.option('--gamma', default=0.99)
 @click.option('--weight_decay', default=1e-4)
 @click.option('--entropy_loss_weight', default=1e-5, type=float)
@@ -80,11 +81,11 @@ def run(**cfg):
         yaml.dump(cfg, f)
 
     # environment
-    env = VecGymEnv('CartPole-v1', n_envs=cfg['n_envs'], skip=1)
+    env = VecGymEnv('CartPole-v1', n_envs=cfg['n_envs'], noops=0, frames_per_action=1)
     env = NPrevFramesStateEnv(env, n_prev_frames=cfg['n_prev_frames'], flatten=True)
     env = PrevEpisodeReturnsEnv(env)
     env = PrevEpisodeLengthsEnv(env)
-    test_env = VecGymEnv('CartPole-v1', n_envs=1, skip=1)
+    test_env = VecGymEnv('CartPole-v1', n_envs=1, noops=0, frames_per_action=1)
     test_env = NPrevFramesStateEnv(test_env, n_prev_frames=cfg['n_prev_frames'], flatten=True)
 
     # state and action shapes
@@ -118,6 +119,7 @@ def run(**cfg):
 
     optimizer = tf.keras.optimizers.Adam(
         learning_rate=learning_rate_schedule,
+        epsilon=cfg['adam_eps'],
     )
 
     agent = DQN(
@@ -204,6 +206,8 @@ def run(**cfg):
             'state2':step_output['state'],
         }
         log.append_dict(data)
+        log.append('train/ep_return',step_output['prev_episode_return'])
+        log.append('train/ep_length',step_output['prev_episode_length'])
         replay_buffer.append(data)
         state = data['state2']
 
