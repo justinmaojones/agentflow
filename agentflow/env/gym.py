@@ -83,3 +83,11 @@ class VecGymEnv(BaseEnv):
 
     def action_shape(self):
         return tuple([self.n_envs]+list(self.envs[0].action_space.shape))
+
+class CartpoleGymEnv(VecGymEnv):
+    def __init__(self, n_envs=1):
+        super().__init__('CartPole-v1', n_envs, noops=0, frames_per_action=1)
+
+class PendulumGymEnv(VecGymEnv):
+    def __init__(self, n_envs=1):
+        super().__init__('Pendulum-v1', n_envs, noops=0, frames_per_action=1)

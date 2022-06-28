@@ -6,7 +6,7 @@ import tensorflow as tf
 import time
 import yaml 
 
-from agentflow.env import VecGymEnv
+from agentflow.env import CartpoleGymEnv
 from agentflow.agents import BootstrappedDQN
 from agentflow.agents.utils import test_agent
 from agentflow.buffers import BufferMap
@@ -18,6 +18,8 @@ from agentflow.numpy.ops import gumbel_softmax_noise
 from agentflow.numpy.schedules import ExponentialDecaySchedule 
 from agentflow.numpy.schedules import LinearAnnealingSchedule
 from agentflow.state import NPrevFramesStateEnv
+from agentflow.state import PrevEpisodeReturnsEnv 
+from agentflow.state import PrevEpisodeLengthsEnv 
 from agentflow.state import RandomOneHotMaskEnv 
 from agentflow.tensorflow.nn import dense_net
 from agentflow.tensorflow.ops import normalize_ema
@@ -82,10 +84,12 @@ def run(**cfg):
         yaml.dump(cfg, f)
 
     # environment
-    env = VecGymEnv('CartPole-v1', n_envs=cfg['n_envs'], frames_per_action=1)
+    env = CartpoleGymEnv(n_envs=cfg['n_envs'])
     env = NPrevFramesStateEnv(env, n_prev_frames=cfg['n_prev_frames'], flatten=True)
     env = RandomOneHotMaskEnv(env, dim=cfg['bootstrap_num_heads'])
-    test_env = VecGymEnv('CartPole-v1', n_envs=1, frames_per_action=1)
+    env = PrevEpisodeReturnsEnv(env)
+    env = PrevEpisodeLengthsEnv(env)
+    test_env = CartpoleGymEnv(n_envs=1)
     test_env = NPrevFramesStateEnv(test_env, n_prev_frames=cfg['n_prev_frames'], flatten=True)
 
     # state and action shapes
@@ -207,6 +211,8 @@ def run(**cfg):
             'mask':bootstrap_mask,
         }
         log.append_dict(data)
+        log.append('train/ep_return',step_output['prev_episode_return'])
+        log.append('train/ep_length',step_output['prev_episode_length'])
         replay_buffer.append(data)
         state = data['state2']
 

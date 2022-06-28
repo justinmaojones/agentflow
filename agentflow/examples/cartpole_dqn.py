@@ -6,7 +6,7 @@ import tensorflow as tf
 import time
 import yaml 
 
-from agentflow.env import VecGymEnv
+from agentflow.env import CartpoleGymEnv
 from agentflow.agents import DQN
 from agentflow.agents.utils import test_agent
 from agentflow.buffers import BufferMap
@@ -81,11 +81,11 @@ def run(**cfg):
         yaml.dump(cfg, f)
 
     # environment
-    env = VecGymEnv('CartPole-v1', n_envs=cfg['n_envs'], noops=0, frames_per_action=1)
+    env = CartpoleGymEnv(n_envs=cfg['n_envs'])
     env = NPrevFramesStateEnv(env, n_prev_frames=cfg['n_prev_frames'], flatten=True)
     env = PrevEpisodeReturnsEnv(env)
     env = PrevEpisodeLengthsEnv(env)
-    test_env = VecGymEnv('CartPole-v1', n_envs=1, noops=0, frames_per_action=1)
+    test_env = CartpoleGymEnv(n_envs=1)
     test_env = NPrevFramesStateEnv(test_env, n_prev_frames=cfg['n_prev_frames'], flatten=True)
 
     # state and action shapes
