@@ -23,22 +23,15 @@ class TestAgentEnv(BaseEnv):
     def step(self, action):
         return self.env.step(action)
 
-    def test(self, agent, session=None, noise_scale=0.0):
+    def test(self, agent, noise_scale=0.0):
         state = self.reset()['state']
         all_done = None
         while all_done is None or np.mean(all_done) < 1:
             if noise_scale > 0:
-                action_probs = agent.act_probs(
-                    state=state, 
-                    session=session, 
-                )
-                action = eps_greedy_noise(action_probs, eps=noise_scale)
+                logits = agent.policy_logits(state).numpy()
+                action = eps_greedy_noise(logits, eps=noise_scale)
             else:
-                agent_output = agent.act(
-                    state=state, 
-                    session=session, 
-                )
-                action = agent_output['action']
+                action = agent.act(state).numpy()
             step_output = self.step(action)
             state = step_output['state']
             done = step_output['done']

@@ -193,9 +193,7 @@ def run(**cfg):
                 raise NotImplementedError("unknown noise type %s" % cfg['noise'])
         else:
             # completely random action choices
-            logits = agent.policy_logits(state).numpy()
-            action = eps_greedy_noise(logits, eps=1.0)
-
+            action = np.random.choice(action_shape, size=cfg['n_envs'])
 
         step_output = env.step(action.astype('int').ravel())
         bootstrap_mask_probs = (1-cfg['bootstrap_mask_prob'], cfg['bootstrap_mask_prob'])
@@ -214,9 +212,13 @@ def run(**cfg):
         log.append('train/ep_return',step_output['prev_episode_return'])
         log.append('train/ep_length',step_output['prev_episode_length'])
         replay_buffer.append(data)
-        state = data['state2']
+        state = step_output['state']
+        mask = step_output['mask']
 
-        pb_input = []
+        pb_input = [
+            ('train_ep_return', step_output['prev_episode_return'].mean()),
+            ('train_ep_length', step_output['prev_episode_length'].mean()),
+        ]
         if t >= cfg['begin_learning_at_step'] and t % cfg['update_freq'] == 0:
 
             for i in range(cfg['n_update_steps']):

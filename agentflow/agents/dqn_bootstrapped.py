@@ -317,6 +317,7 @@ class BootstrappedDQN(object):
 
         # parameter norms
         model_outputs['gnorm'] = gnorm
+        model_outputs['loss'] = loss
         model_outputs['losses'] = losses
         model_outputs['td_error'] = td_error
         model_outputs['y'] = y

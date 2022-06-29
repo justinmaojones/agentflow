@@ -83,7 +83,7 @@ class BufferMap(object):
         return {k:self._buffers[k].get_sequence(time_idx,seq_size,batch_idx) for k in self._buffers}
 
     def sample(self,nsamples):
-        idx_time = np.random.choice(self._n-1,size=nsamples,replace=True)
+        idx_time = np.random.choice(self._n,size=nsamples,replace=True)
         idx_batch = np.random.choice(self.first_dim_size,size=nsamples,replace=True)
         output = {k:self._buffers[k].get(idx_time,idx_batch) for k in self._buffers}
         return output

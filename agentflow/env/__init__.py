@@ -1,5 +1,6 @@
 from .binary_pendulum import VecBinaryPendulumEnv
 from .chain import ChainEnv
+from .gym import AtariGymEnv 
 from .gym import CartpoleGymEnv 
 from .gym import GymEnv
 from .gym import PendulumGymEnv
