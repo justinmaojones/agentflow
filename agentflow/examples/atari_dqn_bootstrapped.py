@@ -148,6 +148,7 @@ def run(**cfg):
                 scale=cfg['network_scale'],
                 name=name
             )
+
     learning_rate_schedule = tf.keras.optimizers.schedules.ExponentialDecay(
         initial_learning_rate = cfg['learning_rate'],
         decay_rate = cfg['learning_rate_decay'],
@@ -328,7 +329,7 @@ def run(**cfg):
                 if cfg['buffer_type'] == 'prioritized' and not cfg['prioritized_replay_simple']:
                     replay_buffer.update_priorities(update_outputs['abs_td_error'])
 
-            log.append('learning_rate', optimizer.learning_rate(optimizer.iterations))
+            log.append('learning_rate', agent.learning_rate)
             log.append_dict(update_outputs)
 
             if cfg['log_pnorms']:

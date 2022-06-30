@@ -116,6 +116,8 @@ class BootstrappedDQN(object):
             self.trainable_weights_target = Q_model_target.trainable_weights 
             self.non_trainable_weights_target = Q_model_target.non_trainable_weights 
 
+            self.global_weights = self.weights + self.weights_target
+
             # the bootstrapped heads should be in the last dimension
             # Q_train_multihead is shape (None, num_actions, num_heads)
             Q_train_multihead = Q_model(inputs['state'], training=True)
@@ -172,6 +174,18 @@ class BootstrappedDQN(object):
             self.policy_logits_masked_model = tf.keras.Model([inputs['state'], inputs['mask']], Q_eval_masked)
             self.train_model = tf.keras.Model(inputs, self.train_outputs)
 
+    def set_weights(self, weights):
+        self.train_model.set_weights(weights)
+
+    def get_weights(self):
+        return self.train_model.get_weights()
+
+    def save_weights(self, filepath):
+        self.train_model.save_weights(filepath)
+
+    def load_weights(self, filepath):
+        self.train_model.load_weights(filepath)
+
     def _loss_fn(self, Q_action_train_multihead, reward, gamma, done, Q_state2_target_action, **kwargs):
         y = tf.stop_gradient(reward + gamma*done*Q_state2_target_action)
         td_error = Q_action_train_multihead - y
@@ -219,6 +233,15 @@ class BootstrappedDQN(object):
             pnorms[f"pnorm/overall/{c}"] = tf.linalg.global_norm(weight_classes[c])
 
         return pnorms
+
+    @property
+    def learning_rate(self):
+        if isinstance(self.optimizer.learning_rate, tf.Variable):
+            return self.optimizer.learning_rate.numpy()
+        elif isinstance(self.optimizer.learning_rate, tf.keras.optimizers.schedules.LearningRateSchedule):
+            return self.optimizer.learning_rate(self.optimizer.iterations).numpy()
+        else:
+            raise NotImplementedError("Unhandled type of learning rate in {self}")
 
     @tf.function
     def update(self,

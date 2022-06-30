@@ -134,6 +134,9 @@ class DDPG(object):
             self.policy_model = tf.keras.Model(inputs['state'], policy_eval)
             self.train_model = tf.keras.Model(inputs, self.train_outputs)
 
+    def set_weights(self, weights):
+        self.train_model.set_weights(weights)
+
     @tf.function
     def act(self, state):
         return self.policy_model(state)

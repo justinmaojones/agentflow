@@ -147,6 +147,9 @@ class LogsTFSummary(object):
             else:
                 self.append(k, inp[k], summary_only)
 
+    def set_step(self, t):
+        tf.summary.experimental.set_step(t)
+
     def stack(self,key=None):
         if key is None:
             return {key:self.stack(key) for key in self.logs}

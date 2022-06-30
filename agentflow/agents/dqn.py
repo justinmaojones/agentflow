@@ -125,6 +125,9 @@ class DQN(object):
             self.policy_logits_model = tf.keras.Model(inputs['state'], Q_eval)
             self.train_model = tf.keras.Model(inputs, self.train_outputs)
 
+    def set_weights(self, weights):
+        self.train_model.set_weights(weights)
+
     def l2_loss(self, weight_decay):
         return 0.5 * tf.reduce_sum([tf.nn.l2_loss(x) for x in self.trainable_weights])
 
