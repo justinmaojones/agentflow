@@ -35,6 +35,7 @@ from agentflow.utils import LogsTFSummary
 @click.option('--double_q', default=True, type=bool)
 @click.option('--bootstrap_num_heads', default=16, type=int)
 @click.option('--bootstrap_mask_prob', default=0.5, type=float)
+@click.option('--bootstrap_prior_scale', default=1.0, type=float)
 @click.option('--bootstrap_random_prior', default=False, type=bool)
 @click.option('--hidden_dims', default=64, type=int)
 @click.option('--hidden_layers', default=4, type=int)
@@ -134,6 +135,7 @@ def run(**cfg):
         double_q=cfg['double_q'],
         num_heads=cfg['bootstrap_num_heads'],
         random_prior=cfg['bootstrap_random_prior'],
+        prior_scale=cfg['bootstrap_prior_scale'],
     )
 
     # Replay Buffer
