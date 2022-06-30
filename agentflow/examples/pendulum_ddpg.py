@@ -20,7 +20,7 @@ from agentflow.state import PrevEpisodeReturnsEnv
 from agentflow.state import PrevEpisodeLengthsEnv 
 from agentflow.state import TanhActionEnv 
 from agentflow.tensorflow.nn import dense_net
-from agentflow.tensorflow.ops import normalize_ema
+from agentflow.tensorflow.nn import normalize_ema
 from agentflow.utils import LogsTFSummary
 
 
@@ -104,7 +104,7 @@ def run(**cfg):
     # build agent
     def policy_fn(state, name=None):
         if cfg['normalize_inputs']:
-            state = normalize_ema(state)
+            state = normalize_ema(state, name=name)
         h = dense_net(
             state, 
             cfg['hidden_dims'],
@@ -118,7 +118,7 @@ def run(**cfg):
 
     def q_fn(state, action, name=None, **kwargs):
         if cfg['normalize_inputs']:
-            state = normalize_ema(state)
+            state = normalize_ema(state, name=name)
         h = dense_net(
             tf.concat([state,action],axis=1),
             cfg['hidden_dims'],
@@ -201,13 +201,12 @@ def run(**cfg):
 
         start_step_time = time.time()
 
-        action = agent.act(state).numpy()
-
         if len(replay_buffer) >= cfg['begin_learning_at_step']:
+            action = agent.act(state).numpy()
             action += cfg['noise_eps']*np.random.randn(*action.shape)
         else:
             # completely random action choices
-            action = np.random.randn(*action.shape)
+            action = np.random.randn(cfg['n_envs'], action_shape)
 
         step_output = env.step(action)
 

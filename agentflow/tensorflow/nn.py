@@ -35,3 +35,14 @@ def dense_net(
 
     return h
 
+def normalize_ema(input_tensor, ema_decay=0.999, name=None, axis=-1):
+    bn = tf.keras.layers.BatchNormalization(
+        axis=-1, 
+        momentum=ema_decay,
+        center=False, 
+        scale=False,
+        name=f"{name}/batch_norm" if name else None
+    )
+    return bn(input_tensor)
+
+

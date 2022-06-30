@@ -21,7 +21,7 @@ from agentflow.state import NPrevFramesStateEnv
 from agentflow.state import PrevEpisodeReturnsEnv 
 from agentflow.state import PrevEpisodeLengthsEnv 
 from agentflow.tensorflow.nn import dense_net
-from agentflow.tensorflow.ops import normalize_ema
+from agentflow.tensorflow.nn import normalize_ema
 from agentflow.utils import LogsTFSummary
 
 @click.option('--num_steps', default=30000, type=int)
@@ -101,7 +101,7 @@ def run(**cfg):
     # build agent
     def q_fn(state, name=None, **kwargs):
         if cfg['normalize_inputs']:
-            state = normalize_ema(state)
+            state = normalize_ema(state, name=name)
         h = dense_net(
             state,
             cfg['hidden_dims'],

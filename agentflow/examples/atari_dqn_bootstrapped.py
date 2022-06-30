@@ -25,13 +25,14 @@ from agentflow.state import PrevEpisodeLengthsEnv
 from agentflow.state import RandomOneHotMaskEnv 
 from agentflow.state import TestAgentEnv 
 from agentflow.tensorflow.nn import dense_net
-from agentflow.tensorflow.ops import normalize_ema
+from agentflow.tensorflow.nn import normalize_ema
 from agentflow.transform import ImgDecoder
 from agentflow.transform import ImgEncoder
 from agentflow.utils import LogsTFSummary
 
 
 @click.option('--env_id', default='PongNoFrameskip-v4', type=str)
+@click.option('--frames_per_action', default=1, type=int)
 @click.option('--num_steps', default=30000, type=int)
 @click.option('--num_frames_max', default=None, type=int)
 @click.option('--n_envs', default=1)
@@ -100,11 +101,21 @@ def run(**cfg):
         yaml.dump(cfg, f)
 
     # environment
-    env = dqn_atari_paper_env(cfg['env_id'], n_envs=cfg['n_envs'], n_prev_frames=cfg['n_prev_frames'])
+    env = dqn_atari_paper_env(
+        cfg['env_id'], 
+        n_envs=cfg['n_envs'], 
+        n_prev_frames=cfg['n_prev_frames'], 
+        frames_per_action=cfg['frames_per_action']
+    )
     env = RandomOneHotMaskEnv(env, dim=cfg['bootstrap_num_heads'])
     env = PrevEpisodeReturnsEnv(env)
     env = PrevEpisodeLengthsEnv(env)
-    test_env = dqn_atari_paper_env(cfg['env_id'], n_envs=1, n_prev_frames=cfg['n_prev_frames'])
+    test_env = dqn_atari_paper_env(
+        cfg['env_id'], 
+        n_envs=1, 
+        n_prev_frames=cfg['n_prev_frames'], 
+        frames_per_action=cfg['frames_per_action']
+    )
     test_env = TestAgentEnv(test_env)
 
     # state and action shapes
@@ -120,7 +131,7 @@ def run(**cfg):
     def q_fn(state, name=None, **kwargs):
         state = state/255.
         if cfg['normalize_inputs']:
-            state = normalize_ema(state)
+            state = normalize_ema(state, name=name)
         if cfg['dueling']:
             return dqn_atari_paper_net_dueling(
                 state,
@@ -329,6 +340,7 @@ def run(**cfg):
             log.append('test_ep_length', test_output['length'])
             log.append('test_ep_t', t)
             log.append('test_ep_steps', frame_counter)
+            avg_test_ep_length = np.mean(log['test_ep_length'][-1:])
             avg_test_ep_returns = np.mean(log['test_ep_returns'][-1:])
             pb_input.append(('test_ep_length', avg_test_ep_length))
             pb_input.append(('test_ep_returns', avg_test_ep_returns))
