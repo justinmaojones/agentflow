@@ -6,7 +6,7 @@ import tensorflow as tf
 import time
 import yaml 
 
-from agentflow.env import VecGymEnv
+from agentflow.env import CartpoleGymEnv
 from agentflow.agents import DQN
 from agentflow.agents.utils import test_agent
 from agentflow.buffers import BufferMap
@@ -18,15 +18,17 @@ from agentflow.numpy.ops import gumbel_softmax_noise
 from agentflow.numpy.schedules import ExponentialDecaySchedule 
 from agentflow.numpy.schedules import LinearAnnealingSchedule
 from agentflow.state import NPrevFramesStateEnv
+from agentflow.state import PrevEpisodeReturnsEnv 
+from agentflow.state import PrevEpisodeLengthsEnv 
 from agentflow.tensorflow.nn import dense_net
-from agentflow.tensorflow.ops import normalize_ema
+from agentflow.tensorflow.nn import normalize_ema
 from agentflow.utils import LogsTFSummary
 
 @click.option('--num_steps', default=30000, type=int)
 @click.option('--n_envs', default=1)
 @click.option('--n_prev_frames', default=16)
 @click.option('--ema_decay', default=0.95, type=float)
-@click.option('--noise', default='eps_greedy', type=click.Choice(['eps_greedy','gumbel_softmax']))
+@click.option('--noise', default='eps_greedy', type=click.Choice(['eps_greedy', 'gumbel_softmax']))
 @click.option('--noise_eps', default=0.05, type=float)
 @click.option('--noise_temperature', default=1.0, type=float)
 @click.option('--double_q', default=True, type=bool)
@@ -34,7 +36,7 @@ from agentflow.utils import LogsTFSummary
 @click.option('--hidden_layers', default=4)
 @click.option('--normalize_inputs', default=True, type=bool)
 @click.option('--batchnorm', default=False, type=bool)
-@click.option('--buffer_type', default='normal', type=click.Choice(['normal','prioritized','delayed','delayed_prioritized']))
+@click.option('--buffer_type', default='normal', type=click.Choice(['normal', 'prioritized', 'delayed', 'delayed_prioritized']))
 @click.option('--buffer_size', default=30000, type=int)
 @click.option('--enable_n_step_return_publisher', default=True, type=bool)
 @click.option('--n_step_return', default=8, type=int)
@@ -48,6 +50,7 @@ from agentflow.utils import LogsTFSummary
 @click.option('--begin_learning_at_step', default=200)
 @click.option('--learning_rate', default=1e-4)
 @click.option('--learning_rate_decay', default=0.99995)
+@click.option('--adam_eps', default=1e-7)
 @click.option('--gamma', default=0.99)
 @click.option('--weight_decay', default=1e-4)
 @click.option('--entropy_loss_weight', default=1e-5, type=float)
@@ -57,30 +60,32 @@ from agentflow.utils import LogsTFSummary
 @click.option('--n_steps_per_eval', default=100, type=int)
 @click.option('--batchsize', default=64)
 @click.option('--savedir', default='results')
-@click.option('--seed',default=None, type=int)
+@click.option('--seed', default=None, type=int)
 def run(**cfg):
 
     for k in sorted(cfg):
-        print('CONFIG: ',k,str(cfg[k]))
+        print('CONFIG: ', k, str(cfg[k]))
 
     if cfg['seed'] is not None:
         np.random.seed(cfg['seed'])
-        tf.set_random_seed(int(10*cfg['seed']))
+        tf.random.set_seed(int(10*cfg['seed']))
 
      
     ts = str(int(time.time()*1000))
     suff = str(np.random.choice(np.iinfo(np.int64).max))
-    savedir = os.path.join(cfg['savedir'],'experiment' + ts + '_' + suff)
+    savedir = os.path.join(cfg['savedir'], 'experiment' + ts + '_' + suff)
     print('SAVING TO: {savedir}'.format(**locals()))
     os.system('mkdir -p {savedir}'.format(**locals()))
 
-    with open(os.path.join(savedir,'config.yaml'),'w') as f:
+    with open(os.path.join(savedir, 'config.yaml'), 'w') as f:
         yaml.dump(cfg, f)
 
     # environment
-    env = VecGymEnv('CartPole-v1', n_envs=cfg['n_envs'])
+    env = CartpoleGymEnv(n_envs=cfg['n_envs'])
     env = NPrevFramesStateEnv(env, n_prev_frames=cfg['n_prev_frames'], flatten=True)
-    test_env = VecGymEnv('CartPole-v1', n_envs=1)
+    env = PrevEpisodeReturnsEnv(env)
+    env = PrevEpisodeLengthsEnv(env)
+    test_env = CartpoleGymEnv(n_envs=1)
     test_env = NPrevFramesStateEnv(test_env, n_prev_frames=cfg['n_prev_frames'], flatten=True)
 
     # state and action shapes
@@ -88,26 +93,40 @@ def run(**cfg):
     state_shape = state.shape
     print('STATE SHAPE: ', state_shape)
 
-    action_shape = 2
-    print('ACTION SHAPE: ', action_shape)
+    num_actions = 2
+    print('ACTION SHAPE: ', num_actions)
+
+    log = LogsTFSummary(savedir)
 
     # build agent
-    def q_fn(state, training=False, **kwargs):
+    def q_fn(state, name=None, **kwargs):
         if cfg['normalize_inputs']:
-            state, _ = normalize_ema(state, training)
+            state = normalize_ema(state, name=name)
         h = dense_net(
             state,
             cfg['hidden_dims'],
             cfg['hidden_layers'],
             batchnorm = cfg['batchnorm'],
-            training = training
+            name = name
         )
-        return tf.layers.dense(h,action_shape)
+        return tf.keras.layers.Dense(num_actions, name=f"{name}/dense/output")(h)
+
+    learning_rate_schedule = tf.keras.optimizers.schedules.ExponentialDecay(
+        initial_learning_rate = cfg['learning_rate'],
+        decay_rate = cfg['learning_rate_decay'],
+        decay_steps = cfg['n_update_steps'] / cfg['update_freq']
+    )
+
+    optimizer = tf.keras.optimizers.Adam(
+        learning_rate=learning_rate_schedule,
+        epsilon=cfg['adam_eps'],
+    )
 
     agent = DQN(
         state_shape=state_shape[1:],
-        num_actions=action_shape,
+        num_actions=num_actions,
         q_fn=q_fn,
+        optimizer=optimizer,
         double_q=cfg['double_q'],
     )
 
@@ -151,96 +170,84 @@ def run(**cfg):
         begin_at_step = cfg['begin_learning_at_step']
     )
 
-    entropy_loss_weight_schedule = ExponentialDecaySchedule(
-        initial_value = cfg['entropy_loss_weight'],
-        final_value = 0.0,
-        decay_rate = cfg['learning_rate_decay'],
-        begin_at_step = cfg['begin_learning_at_step']
-    )
-
-    log = LogsTFSummary(savedir)
-
     state = env.reset()['state']
 
     start_time = time.time()
 
-    with tf.Session(config=tf.ConfigProto(allow_soft_placement=True)) as sess:
-        sess.run(tf.global_variables_initializer())
+    T = cfg['num_steps']
 
-        T = cfg['num_steps']
+    pb = tf.keras.utils.Progbar(T, stateful_metrics=['test_ep_returns'])
+    for t in range(T):
+        tf.summary.experimental.set_step(t)
 
-        pb = tf.keras.utils.Progbar(T,stateful_metrics=['test_ep_returns'])
-        for t in range(T):
-            start_step_time = time.time()
+        start_step_time = time.time()
 
-            action_probs = agent.act_probs(state)
-
-            if len(replay_buffer) >= cfg['begin_learning_at_step']:
-                if cfg['noise'] == 'eps_greedy':
-                    action = eps_greedy_noise(action_probs, eps=cfg['noise_eps'])
-                elif cfg['noise'] == 'gumbel_softmax':
-                    action = gumbel_softmax_noise(action_probs, temperature=cfg['noise_temperature'])
-                else:
-                    raise NotImplementedError("unknown noise type %s" % cfg['noise'])
+        if len(replay_buffer) >= cfg['begin_learning_at_step']:
+            if cfg['noise'] == 'eps_greedy':
+                logits = agent.policy_logits(state).numpy()
+                action = eps_greedy_noise(logits, eps=cfg['noise_eps'])
+            elif cfg['noise'] == 'gumbel_softmax':
+                logits = agent.policy_logits(state).numpy()
+                action = gumbel_softmax_noise(logits, temperature=cfg['noise_temperature'])
             else:
-                # completely random action choices
-                action = eps_greedy_noise(action_probs, eps=1.0)
+                raise NotImplementedError("unknown noise type %s" % cfg['noise'])
+        else:
+            # completely random action choices
+            logits = agent.policy_logits(state).numpy()
+            action = eps_greedy_noise(logits, eps=1.0)
 
-            step_output = env.step(action.astype('int').ravel())
+        step_output = env.step(action.astype('int').ravel())
 
-            data = {
-                'state':state,
-                'action':onehot(action),
-                'reward':step_output['reward'],
-                'done':step_output['done'],
-                'state2':step_output['state'],
-            }
-            log.append_dict(data)
-            replay_buffer.append(data)
-            state = data['state2']
+        data = {
+            'state':state,
+            'action':onehot(action),
+            'reward':step_output['reward'],
+            'done':step_output['done'],
+            'state2':step_output['state'],
+        }
+        log.append_dict(data)
+        log.append('train/ep_return',step_output['prev_episode_return'])
+        log.append('train/ep_length',step_output['prev_episode_length'])
+        replay_buffer.append(data)
+        state = data['state2']
 
-            pb_input = []
-            if t >= cfg['begin_learning_at_step'] and t % cfg['update_freq'] == 0:
+        pb_input = []
+        if t >= cfg['begin_learning_at_step'] and t % cfg['update_freq'] == 0:
 
-                learning_rate = learning_rate_schedule(t)
-                entropy_loss_weight = entropy_loss_weight_schedule(t)
+            for i in range(cfg['n_update_steps']):
+                if cfg['buffer_type'] == 'prioritized':
+                    beta = beta_schedule(t)
+                    sample = replay_buffer.sample(cfg['batchsize'], beta=beta)
+                    log.append('beta', beta)
+                    log.append('max_importance_weight', sample['importance_weight'].max())
+                else:
+                    sample = replay_buffer.sample(cfg['batchsize'])
 
-                for i in range(cfg['n_update_steps']):
-                    if cfg['buffer_type'] == 'prioritized':
-                        beta = beta_schedule(t)
-                        sample = replay_buffer.sample(cfg['batchsize'],beta=beta)
-                        log.append('beta',beta)
-                        log.append('max_importance_weight',sample['importance_weight'].max())
-                    else:
-                        sample = replay_buffer.sample(cfg['batchsize'])
+                update_outputs = agent.update(
+                        ema_decay=cfg['ema_decay'],
+                        gamma=cfg['gamma'],
+                        weight_decay=cfg['weight_decay'],
+                        outputs=['td_error', 'Q_policy_eval'],
+                        **sample)
 
-                    update_outputs = agent.update(
-                            learning_rate=learning_rate,
-                            ema_decay=cfg['ema_decay'],
-                            gamma=cfg['gamma'],
-                            weight_decay=cfg['weight_decay'],
-                            entropy_loss_weight=entropy_loss_weight,
-                            outputs=['td_error','Q_policy_eval'],
-                            **sample)
+                if cfg['buffer_type'] == 'prioritized' and not cfg['prioritized_replay_simple']:
+                    replay_buffer.update_priorities(update_outputs['td_error'])
 
-                    if cfg['buffer_type'] == 'prioritized' and not cfg['prioritized_replay_simple']:
-                        replay_buffer.update_priorities(update_outputs['td_error'])
+            log.append_dict(update_outputs)
 
-                log.append_dict(update_outputs)
+        if t % cfg['n_steps_per_eval'] == 0 and t > 0:
+            log.append('test_ep_returns', test_agent(test_env, agent))
+            log.append('test_ep_steps', t)
+            avg_test_ep_returns = np.mean(log['test_ep_returns'][-1:])
+            pb_input.append(('test_ep_returns', avg_test_ep_returns))
+        end_time = time.time()
+        log.append('step_duration_sec', end_time-start_step_time)
+        log.append('duration_cumulative', end_time-start_time)
 
-            if t % cfg['n_steps_per_eval'] == 0 and t > 0:
-                log.append('test_ep_returns',test_agent(test_env,agent))
-                log.append('test_ep_steps',t)
-                avg_test_ep_returns = np.mean(log['test_ep_returns'][-1:])
-                pb_input.append(('test_ep_returns', avg_test_ep_returns))
-            end_time = time.time()
-            log.append('step_duration_sec',end_time-start_step_time)
-            log.append('duration_cumulative',end_time-start_time)
+        pb.add(1, pb_input)
+        log.flush()
 
-            pb.add(1,pb_input)
-            log.flush(step=t)
-
-    log.write(os.path.join(savedir,'log.h5'))
+    log.write(os.path.join(savedir, 'log.h5'))
 
 if __name__=='__main__':
     click.command()(run)()

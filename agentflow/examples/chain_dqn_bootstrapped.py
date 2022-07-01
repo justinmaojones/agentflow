@@ -20,7 +20,6 @@ from agentflow.numpy.schedules import LinearAnnealingSchedule
 from agentflow.state import NPrevFramesStateEnv
 from agentflow.state import RandomOneHotMaskEnv 
 from agentflow.tensorflow.nn import dense_net
-from agentflow.tensorflow.ops import normalize_ema
 from agentflow.utils import LogsTFSummary
 
 @click.option('--num_steps', default=30000, type=int)
@@ -28,7 +27,7 @@ from agentflow.utils import LogsTFSummary
 @click.option('--chain_env_length', default=8)
 @click.option('--chain_env_random_action_mask', default=False, type=bool)
 @click.option('--ema_decay', default=0.95, type=float)
-@click.option('--noise', default='eps_greedy', type=click.Choice(['eps_greedy','gumbel_softmax']))
+@click.option('--noise', default='eps_greedy', type=click.Choice(['eps_greedy', 'gumbel_softmax']))
 @click.option('--noise_eps', default=0.05, type=float)
 @click.option('--noise_temperature', default=1.0, type=float)
 @click.option('--double_q', default=True, type=bool)
@@ -40,7 +39,7 @@ from agentflow.utils import LogsTFSummary
 @click.option('--hidden_layers', default=4, type=int)
 @click.option('--normalize_inputs', default=True, type=bool)
 @click.option('--batchnorm', default=False, type=bool)
-@click.option('--buffer_type', default='normal', type=click.Choice(['normal','prioritized','delayed','delayed_prioritized']))
+@click.option('--buffer_type', default='normal', type=click.Choice(['normal', 'prioritized', 'delayed', 'delayed_prioritized']))
 @click.option('--buffer_size', default=30000, type=int)
 @click.option('--enable_n_step_return_publisher', default=True, type=bool)
 @click.option('--n_step_return', default=8, type=int)
@@ -64,24 +63,24 @@ from agentflow.utils import LogsTFSummary
 @click.option('--batchsize', default=64)
 @click.option('--log_everything', default=False, type=bool)
 @click.option('--savedir', default='results')
-@click.option('--seed',default=None, type=int)
+@click.option('--seed', default=None, type=int)
 def run(**cfg):
 
     for k in sorted(cfg):
-        print('CONFIG: ',k,str(cfg[k]))
+        print('CONFIG: ', k, str(cfg[k]))
 
     if cfg['seed'] is not None:
         np.random.seed(cfg['seed'])
-        tf.set_random_seed(int(10*cfg['seed']))
+        tf.random.set_seed(int(10*cfg['seed']))
 
      
     ts = str(int(time.time()*1000))
     suff = str(np.random.choice(np.iinfo(np.int64).max))
-    savedir = os.path.join(cfg['savedir'],'experiment' + ts + '_' + suff)
+    savedir = os.path.join(cfg['savedir'], 'experiment' + ts + '_' + suff)
     print('SAVING TO: {savedir}'.format(**locals()))
     os.system('mkdir -p {savedir}'.format(**locals()))
 
-    with open(os.path.join(savedir,'config.yaml'),'w') as f:
+    with open(os.path.join(savedir, 'config.yaml'), 'w') as f:
         yaml.dump(cfg, f)
 
     # environment
@@ -99,29 +98,38 @@ def run(**cfg):
     print('ACTION SHAPE: ', action_shape)
 
     # build agent
-    def q_fn(state, training=False, **kwargs):
+    def q_fn(state, name=None, **kwargs):
         h = dense_net(
             state,
             cfg['hidden_dims'],
             cfg['hidden_layers'],
             batchnorm = cfg['batchnorm'],
-            training = training
+            name = name
         )
-        output = tf.layers.dense(h,action_shape*cfg['bootstrap_num_heads'])
-        return tf.reshape(output,[-1,action_shape,cfg['bootstrap_num_heads']])
+        output = tf.keras.layers.Dense(action_shape*cfg['bootstrap_num_heads'])(h)
+        return tf.reshape(output, [-1, action_shape, cfg['bootstrap_num_heads']])
+
+    learning_rate_schedule = tf.keras.optimizers.schedules.ExponentialDecay(
+        initial_learning_rate = cfg['learning_rate'],
+        decay_rate = cfg['learning_rate_decay'],
+        decay_steps = cfg['n_update_steps']
+    )
+
+    optimizer = tf.keras.optimizers.Adam(
+        learning_rate=learning_rate_schedule,
+    )
+
 
     agent = BootstrappedDQN(
         state_shape=state_shape[1:],
         num_actions=action_shape,
         q_fn=q_fn,
+        optimizer=optimizer,
         double_q=cfg['double_q'],
         num_heads=cfg['bootstrap_num_heads'],
         random_prior=cfg['bootstrap_random_prior'],
         prior_scale=cfg['bootstrap_prior_scale'],
     )
-
-    for v in tf.global_variables():
-        print(v.name, v.shape)
 
     # Replay Buffer
     if cfg['buffer_type'] == 'prioritized':
@@ -155,21 +163,6 @@ def run(**cfg):
             gamma=cfg['gamma'],
         )
 
-    # Annealed parameters
-    learning_rate_schedule = ExponentialDecaySchedule(
-        initial_value = cfg['learning_rate'],
-        final_value = 0.0,
-        decay_rate = cfg['learning_rate_decay'],
-        begin_at_step = cfg['begin_learning_at_step']
-    )
-
-    entropy_loss_weight_schedule = ExponentialDecaySchedule(
-        initial_value = cfg['entropy_loss_weight'],
-        final_value = 0.0,
-        decay_rate = cfg['learning_rate_decay'],
-        begin_at_step = cfg['begin_learning_at_step']
-    )
-
     log = LogsTFSummary(savedir)
 
     state_and_mask = env.reset()
@@ -178,99 +171,93 @@ def run(**cfg):
 
     start_time = time.time()
 
-    with tf.Session(config=tf.ConfigProto(allow_soft_placement=True)) as sess:
-        sess.run(tf.global_variables_initializer())
+    T = cfg['num_steps']
 
-        T = cfg['num_steps']
+    pb = tf.keras.utils.Progbar(T, stateful_metrics=['test_ep_returns'])
+    for t in range(T):
+        tf.summary.experimental.set_step(t)
 
-        pb = tf.keras.utils.Progbar(T,stateful_metrics=['test_ep_returns'])
-        for t in range(T):
-            start_step_time = time.time()
+        start_step_time = time.time()
 
-            action_probs = agent.act_probs(state, mask)
+        if cfg['noise'] == 'eps_greedy':
+            logits = agent.policy_logits(state, mask).numpy()
+            action = eps_greedy_noise(logits, eps=cfg['noise_eps'])
+        elif cfg['noise'] == 'gumbel_softmax':
+            logits = agent.policy_logits(state, mask).numpy()
+            action = gumbel_softmax_noise(logits, temperature=cfg['noise_temperature'])
+        else:
+            raise NotImplementedError("unknown noise type %s" % cfg['noise'])
 
-            if cfg['noise'] == 'eps_greedy':
-                action = eps_greedy_noise(action_probs, eps=cfg['noise_eps'])
-            elif cfg['noise'] == 'gumbel_softmax':
-                action = gumbel_softmax_noise(action_probs, temperature=cfg['noise_temperature'])
-            else:
-                raise NotImplementedError("unknown noise type %s" % cfg['noise'])
+        step_output = env.step(action.astype('int').ravel())
+        bootstrap_mask_probs = (1-cfg['bootstrap_mask_prob'], cfg['bootstrap_mask_prob'])
+        bootstrap_mask_shape = (len(state), cfg['bootstrap_num_heads'])
+        bootstrap_mask = np.random.choice(2, size=bootstrap_mask_shape, p=bootstrap_mask_probs)
 
-            step_output = env.step(action.astype('int').ravel())
-            bootstrap_mask_probs = (1-cfg['bootstrap_mask_prob'],cfg['bootstrap_mask_prob'])
-            bootstrap_mask_shape = (len(state),cfg['bootstrap_num_heads'])
-            bootstrap_mask = np.random.choice(2, size=bootstrap_mask_shape, p=bootstrap_mask_probs)
+        data = {
+            'state':state,
+            'action':onehot(action),
+            'reward':step_output['reward'],
+            'done':step_output['done'],
+            'state2':step_output['state'],
+            'mask':bootstrap_mask,
+        }
+        replay_buffer.append(data)
+        state = step_output['state']
+        mask = step_output['mask']
 
-            data = {
-                'state':state,
-                'action':onehot(action),
-                'reward':step_output['reward'],
-                'done':step_output['done'],
-                'state2':step_output['state'],
-                'mask':bootstrap_mask,
-            }
-            replay_buffer.append(data)
-            state = step_output['state']
-            mask = step_output['mask']
+        log.append('reward', data['reward'], summary_only=not cfg['log_everything'])
+        log.append('action', data['action'], summary_only=not cfg['log_everything'])
+        log.append('done', data['done'], summary_only=not cfg['log_everything'])
+        log.append('position', step_output['position'], summary_only=not cfg['log_everything'])
+        log.append('time', step_output['time'], summary_only=not cfg['log_everything'])
+        log.append('mask', step_output['mask'], summary_only=not cfg['log_everything'])
 
-            log.append('reward',data['reward'],summary_only=not cfg['log_everything'])
-            log.append('action',data['action'],summary_only=not cfg['log_everything'])
-            log.append('done',data['done'],summary_only=not cfg['log_everything'])
-            log.append('position',step_output['position'],summary_only=not cfg['log_everything'])
-            log.append('time',step_output['time'],summary_only=not cfg['log_everything'])
-            log.append('mask',step_output['mask'],summary_only=not cfg['log_everything'])
+        pb_input = []
+        if t >= cfg['begin_learning_at_step'] and t % cfg['update_freq'] == 0:
 
-            pb_input = []
-            if t >= cfg['begin_learning_at_step'] and t % cfg['update_freq'] == 0:
+            for i in range(cfg['n_update_steps']):
+                if cfg['buffer_type'] == 'prioritized':
+                    beta = beta_schedule(t)
+                    sample = replay_buffer.sample(cfg['batchsize'], beta=beta)
+                    log.append('beta', beta)
+                    log.append('max_importance_weight', sample['importance_weight'].max())
+                else:
+                    sample = replay_buffer.sample(cfg['batchsize'])
 
-                learning_rate = learning_rate_schedule(t)
-                entropy_loss_weight = entropy_loss_weight_schedule(t)
+                if cfg['log_everything']:
+                    outputs_to_get = list(agent.train_outputs.keys())
+                else:
+                    outputs_to_get = ['td_error', 'Q_policy_eval']
 
-                for i in range(cfg['n_update_steps']):
-                    if cfg['buffer_type'] == 'prioritized':
-                        beta = beta_schedule(t)
-                        sample = replay_buffer.sample(cfg['batchsize'],beta=beta)
-                        log.append('beta',beta)
-                        log.append('max_importance_weight',sample['importance_weight'].max())
-                    else:
-                        sample = replay_buffer.sample(cfg['batchsize'])
+                update_outputs = agent.update(
+                        ema_decay=cfg['ema_decay'],
+                        gamma=cfg['gamma'],
+                        weight_decay=cfg['weight_decay'],
+                        outputs=outputs_to_get,
+                        **sample)
 
-                    if cfg['log_everything']:
-                        outputs_to_get = list(agent.outputs.keys())
-                    else:
-                        outputs_to_get = ['td_error','Q_policy_eval']
+                if cfg['buffer_type'] == 'prioritized' and not cfg['prioritized_replay_simple']:
+                    replay_buffer.update_priorities(update_outputs['td_error'])
 
-                    update_outputs = agent.update(
-                            learning_rate=learning_rate,
-                            ema_decay=cfg['ema_decay'],
-                            gamma=cfg['gamma'],
-                            weight_decay=cfg['weight_decay'],
-                            entropy_loss_weight=entropy_loss_weight,
-                            outputs=outputs_to_get,
-                            **sample)
+            pb_input.append(('Q_policy_eval', update_outputs['Q_policy_eval']))
+            log.append_dict(update_outputs)
 
-                    if cfg['buffer_type'] == 'prioritized' and not cfg['prioritized_replay_simple']:
-                        replay_buffer.update_priorities(update_outputs['td_error'])
+        if cfg['log_everything']:
+            log.append_dict(agent.pnorms())
 
-                pb_input.append(('Q_policy_eval', update_outputs['Q_policy_eval']))
-                log.append_dict(update_outputs)
+        if t % cfg['n_steps_per_eval'] == 0 and t > 0:
+            log.append('test_ep_returns', test_agent(test_env, agent), summary_only=False)
+            log.append('test_ep_steps', t)
+            avg_test_ep_returns = np.mean(log['test_ep_returns'][-1:])
+            pb_input.append(('test_ep_returns', avg_test_ep_returns))
+        end_time = time.time()
+        log.append('step_duration_sec', end_time-start_step_time)
+        log.append('duration_cumulative', end_time-start_time)
 
-            if cfg['log_everything']:
-                log.append_dict(agent.pnorms())
+        pb.add(1, pb_input)
+        log.flush()
 
-            if t % cfg['n_steps_per_eval'] == 0 and t > 0:
-                log.append('test_ep_returns',test_agent(test_env,agent),summary_only=False)
-                log.append('test_ep_steps',t)
-                avg_test_ep_returns = np.mean(log['test_ep_returns'][-1:])
-                pb_input.append(('test_ep_returns', avg_test_ep_returns))
-            end_time = time.time()
-            log.append('step_duration_sec',end_time-start_step_time)
-            log.append('duration_cumulative',end_time-start_time)
-
-            pb.add(1,pb_input)
-            log.flush(step=t)
-
-    log.write(os.path.join(savedir,'log.h5'))
+    log.write(os.path.join(savedir, 'log.h5'))
 
 if __name__=='__main__':
     click.command()(run)()

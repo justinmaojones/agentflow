@@ -6,7 +6,7 @@ import tensorflow as tf
 import time
 import yaml 
 
-from agentflow.env import VecGymEnv
+from agentflow.env import PendulumGymEnv
 from agentflow.agents import DDPG
 from agentflow.agents.utils import test_agent
 from agentflow.buffers import BufferMap
@@ -16,9 +16,11 @@ from agentflow.numpy.ops import onehot
 from agentflow.numpy.schedules import ExponentialDecaySchedule 
 from agentflow.numpy.schedules import LinearAnnealingSchedule
 from agentflow.state import NPrevFramesStateEnv
+from agentflow.state import PrevEpisodeReturnsEnv 
+from agentflow.state import PrevEpisodeLengthsEnv 
 from agentflow.state import TanhActionEnv 
 from agentflow.tensorflow.nn import dense_net
-from agentflow.tensorflow.ops import normalize_ema
+from agentflow.tensorflow.nn import normalize_ema
 from agentflow.utils import LogsTFSummary
 
 
@@ -53,6 +55,7 @@ from agentflow.utils import LogsTFSummary
 @click.option('--learning_rate', default=1e-4)
 @click.option('--learning_rate_decay', default=1.)
 @click.option('--policy_loss_weight', default=1e-3)
+@click.option('--grad_clip_norm', default=None)
 @click.option('--gamma', default=0.99)
 @click.option('--weight_decay', default=0.0)
 @click.option('--regularize_policy', default=False, type=bool)
@@ -70,7 +73,7 @@ def run(**cfg):
 
     if cfg['seed'] is not None:
         np.random.seed(cfg['seed'])
-        tf.set_random_seed(int(10*cfg['seed']))
+        tf.random.set_seed(int(10*cfg['seed']))
 
     ts = str(int(time.time()*1000))
     savedir = os.path.join(cfg['savedir'],'experiment' + ts)
@@ -81,51 +84,66 @@ def run(**cfg):
         yaml.dump(cfg, f)
 
     # environment
-    env = VecGymEnv('Pendulum-v0', n_envs=cfg['n_envs'])
+    env = PendulumGymEnv(n_envs=cfg['n_envs'])
     env = NPrevFramesStateEnv(env, n_prev_frames=cfg['n_prev_frames'], flatten=True)
-    env = TanhActionEnv(env, scale=2)
-    test_env = VecGymEnv('Pendulum-v0', n_envs=1)
+    env = PrevEpisodeReturnsEnv(env)
+    env = PrevEpisodeLengthsEnv(env)
+    test_env = PendulumGymEnv(n_envs=1)
     test_env = NPrevFramesStateEnv(test_env, n_prev_frames=cfg['n_prev_frames'], flatten=True)
-    test_env = TanhActionEnv(test_env, scale=2)
 
     # state and action shapes
-    state = env.reset()
+    state = env.reset()['state']
     state_shape = state.shape
     print('STATE SHAPE: ', state_shape)
 
     action_shape = 1
     print('ACTION SHAPE: ', action_shape)
 
+    log = LogsTFSummary(savedir)
+
     # build agent
-    def policy_fn(state, training=False):
+    def policy_fn(state, name=None):
         if cfg['normalize_inputs']:
-            state, _ = normalize_ema(state, training)
+            state = normalize_ema(state, name=name)
         h = dense_net(
             state, 
             cfg['hidden_dims'],
             cfg['hidden_layers'],
-            batchnorm = cfg['batchnorm'],
-            training = training
+            cfg['batchnorm'],
+            name = name
         )
-        return tf.layers.dense(h, action_shape)
+        #return tf.keras.layers.Dense(action_shape, name=f"{name}/dense/output")(h), state
+        h = tf.keras.layers.Dense(action_shape, name=f"{name}/dense/output")(h)
+        return 2*tf.nn.tanh(h)
 
-    def q_fn(state, action, training=False, **kwargs):
+    def q_fn(state, action, name=None, **kwargs):
         if cfg['normalize_inputs']:
-            state, _ = normalize_ema(state, training)
+            state = normalize_ema(state, name=name)
         h = dense_net(
             tf.concat([state,action],axis=1),
             cfg['hidden_dims'],
             cfg['hidden_layers'],
             batchnorm = cfg['batchnorm'],
-            training = training
+            name = name
         )
-        return tf.layers.dense(h,1)
+        return tf.keras.layers.Dense(1, name=f"{name}/dense/output")(h)
+
+    learning_rate_schedule = tf.keras.optimizers.schedules.ExponentialDecay(
+        initial_learning_rate = cfg['learning_rate'],
+        decay_rate = cfg['learning_rate_decay'],
+        decay_steps = cfg['n_update_steps']
+    )
+
+    optimizer = tf.keras.optimizers.Adam(
+        learning_rate=learning_rate_schedule,
+    )
 
     agent = DDPG(
         state_shape=state_shape[1:],
         action_shape=[action_shape],
         policy_fn=policy_fn,
         q_fn=q_fn,
+        optimizer=optimizer,
         dqda_clipping=cfg['dqda_clipping'],
         clip_norm=cfg['clip_norm'],
     )
@@ -170,81 +188,99 @@ def run(**cfg):
         begin_at_step = cfg['begin_learning_at_step']
     )
 
-    log = LogsTFSummary(savedir)
 
-    state = env.reset()
+    state = env.reset()['state']
 
     start_time = time.time()
 
-    with tf.Session(config=tf.ConfigProto(allow_soft_placement=True)) as sess:
-        sess.run(tf.global_variables_initializer())
+    T = cfg['num_steps']
 
-        T = cfg['num_steps']
+    pb = tf.keras.utils.Progbar(T,stateful_metrics=['test_ep_returns'])
+    for t in range(T):
+        tf.summary.experimental.set_step(t)
 
-        pb = tf.keras.utils.Progbar(T,stateful_metrics=['test_ep_returns'])
-        for t in range(T):
-            start_step_time = time.time()
+        start_step_time = time.time()
 
-            action = agent.act(state)
+        if len(replay_buffer) >= cfg['begin_learning_at_step']:
+            action = agent.act(state).numpy()
+            action += cfg['noise_eps']*np.random.randn(*action.shape)
+        else:
+            # completely random action choices
+            action = np.random.randn(cfg['n_envs'], action_shape)
 
-            if len(replay_buffer) >= cfg['begin_learning_at_step']:
-                action += cfg['noise_eps']*np.random.randn(*action.shape)
-            else:
-                # completely random action choices
-                action = np.random.randn(*action.shape)
+        step_output = env.step(action)
 
-            step_output = env.step(action)
+        data = {
+            'state':state,
+            'action':action,
+            'reward':step_output['reward'],
+            'done':step_output['done'],
+            'state2':step_output['state'],
+        }
+        log.append_dict(data)
+        log.append('train/ep_return',step_output['prev_episode_return'])
+        log.append('train/ep_length',step_output['prev_episode_length'])
+        replay_buffer.append(data)
+        state = data['state2']
 
-            data = {
-                'state':state,
-                'action':action,
-                'reward':step_output['reward'],
-                'done':step_output['done'],
-                'state2':step_output['state'],
-            }
-            log.append_dict(data)
-            replay_buffer.append(data)
-            state = data['state2']
+        pb_input = []
+        if t >= cfg['begin_learning_at_step'] and t % cfg['update_freq'] == 0:
 
-            pb_input = []
-            if t >= cfg['begin_learning_at_step'] and t % cfg['update_freq'] == 0:
+            for i in range(cfg['n_update_steps']):
+                if cfg['buffer_type'] == 'prioritized':
+                    beta = beta_schedule(t)
+                    sample = replay_buffer.sample(cfg['batchsize'],beta=beta)
+                    log.append('beta',beta)
+                    log.append('max_importance_weight',sample['importance_weight'].max())
+                else:
+                    sample = replay_buffer.sample(cfg['batchsize'])
 
-                learning_rate = learning_rate_schedule(t)
+                update_outputs = agent.update(
+                        ema_decay=cfg['ema_decay'],
+                        gamma=cfg['gamma'],
+                        weight_decay=cfg['weight_decay'],
+                        policy_loss_weight=cfg['policy_loss_weight'],
+                        grad_clip_norm=cfg['grad_clip_norm'],
+                        outputs=[
+                            'td_error',
+                            'y',
+                            'Q_policy_eval', 
+                            'pnorm/main/trainable_weights',
+                            'pnorm/target/trainable_weights',
+                            'pnorm/main/non_trainable_weights',
+                            'pnorm/target/non_trainable_weights',
+                            'gnorm',
+                            'losses_policy', 
+                            'losses_Q',
+                            'Q_action_train',
+                            'Q_policy_eval',
+                            'Q_policy_train',
+                            'Q_target_state2',
+                            'policy_target',
+                            'policy_target_state2',
+                            'policy_eval',
+                            'policy_train',
+                        ],
+                        **sample)
 
-                for i in range(cfg['n_update_steps']):
-                    if cfg['buffer_type'] == 'prioritized':
-                        beta = beta_schedule(t)
-                        sample = replay_buffer.sample(cfg['batchsize'],beta=beta)
-                        log.append('beta',beta)
-                        log.append('max_importance_weight',sample['importance_weight'].max())
-                    else:
-                        sample = replay_buffer.sample(cfg['batchsize'])
+                if cfg['buffer_type'] == 'prioritized' and not cfg['prioritized_replay_simple']:
+                    replay_buffer.update_priorities(update_outputs['td_error'])
 
-                    update_outputs = agent.update(
-                            learning_rate=learning_rate,
-                            ema_decay=cfg['ema_decay'],
-                            gamma=cfg['gamma'],
-                            weight_decay=cfg['weight_decay'],
-                            policy_loss_weight=cfg['policy_loss_weight'],
-                            outputs=['td_error','Q_policy_eval'],
-                            **sample)
+            log.append('learning_rate', optimizer.learning_rate(optimizer.iterations))
+            log.append_dict(update_outputs)
 
-                    if cfg['buffer_type'] == 'prioritized' and not cfg['prioritized_replay_simple']:
-                        replay_buffer.update_priorities(update_outputs['td_error'])
+        if t % cfg['n_steps_per_eval'] == 0 and t > 0:
+            log.append('test_ep_returns',test_agent(test_env,agent))
+            log.append('test_ep_steps',t)
+            avg_test_ep_returns = np.mean(log['test_ep_returns'][-1:])
+            pb_input.append(('test_ep_returns', avg_test_ep_returns))
 
-                log.append_dict(update_outputs)
+        end_time = time.time()
+        log.append('step_duration_sec',end_time-start_step_time)
+        log.append('duration_cumulative',end_time-start_time)
 
-            if t % cfg['n_steps_per_eval'] == 0 and t > 0:
-                log.append('test_ep_returns',test_agent(test_env,agent))
-                log.append('test_ep_steps',t)
-                avg_test_ep_returns = np.mean(log['test_ep_returns'][-1:])
-                pb_input.append(('test_ep_returns', avg_test_ep_returns))
-            end_time = time.time()
-            log.append('step_duration_sec',end_time-start_step_time)
-            log.append('duration_cumulative',end_time-start_time)
-
-            pb.add(1,pb_input)
-            log.flush(step=t)
+        pb.add(1, pb_input)
+        log.flush()
 
     log.write(os.path.join(savedir,'log.h5'))
 

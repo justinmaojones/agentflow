@@ -100,13 +100,11 @@ class LogsTFSummary(object):
     def __init__(self,savedir,**kwargs):
         self.logs = {}
         self.savedir = savedir
-        self.summary_writer = tf.summary.FileWriter(savedir,**kwargs)
-        self.summary = tf.Summary()
+        self.summary_writer = tf.summary.create_file_writer(savedir,**kwargs)
         self._other_array_metrics = {
             'min': np.min,
             'max': np.max,
-            'l2norm': lambda x: np.sqrt(np.sum(np.square(x))),
-            'max-min': lambda x: np.max(x.astype(float)) - np.min(x.astype(float)),
+            'std': np.std,
         }
         self._log_filepath = os.path.join(self.savedir,'log.h5')
 
@@ -115,19 +113,21 @@ class LogsTFSummary(object):
             self.logs[key] = []
         return self.logs[key]
 
-    def _append(self,key,val):
+    def _append(self, key, val):
         if key not in self.logs:
             self.logs[key] = []
         self.logs[key].append(val)
-        self.summary.value.add(
-                tag=key,
-                simple_value=np.mean(val))
+        with self.summary_writer.as_default():
+            tf.summary.scalar(key, np.mean(val))
 
-    def append(self,key,val,summary_only=True):
+    def append(self, key, val, summary_only=True):
+        # TODO: very hacky converting tensors to numpy
+        if isinstance(val, tf.Tensor):
+            val = val.numpy()
         if summary_only:
-            self._append(key,np.mean(val))
+            self._append(key, np.mean(val))
         else:
-            self._append(key,val)
+            self._append(key, val)
 
         if np.size(val) > 1:
             for m in self._other_array_metrics:
@@ -139,9 +139,16 @@ class LogsTFSummary(object):
         for i in range(len(vals)):
             self.append(key, vals[i])
 
-    def append_dict(self,inp,summary_only=True):
+    def append_dict(self, inp, summary_only=True):
         for k in inp:
-            self.append(k,inp[k],summary_only)
+            if isinstance(inp[k], dict):
+                v = {f"{k}/{k2}":inp[k][k2] for k2 in inp[k]}
+                self.append_dict(v, summary_only)
+            else:
+                self.append(k, inp[k], summary_only)
+
+    def set_step(self, t):
+        tf.summary.experimental.set_step(t)
 
     def stack(self,key=None):
         if key is None:
@@ -149,10 +156,8 @@ class LogsTFSummary(object):
         else:
             return np.stack(self.logs[key])
 
-    def flush(self, step=None, verbose=False):
-        self.summary_writer.add_summary(self.summary, step)
+    def flush(self, verbose=False):
         self.summary_writer.flush()
-        self.summary = tf.Summary()
         self.write(self._log_filepath, verbose)
         self.logs = {}
 
@@ -182,23 +187,25 @@ class LogsTFSummary(object):
                     f[key].resize(n + m,axis=0)
                     f[key][n:] = data
 
-def load_hdf5(filepath):
-    def load_data(f):
+def load_hdf5(filepath, load_keys=None):
+    assert load_keys is None or isinstance(load_keys, list), "load_keys must be None or a list"
+    def load_data(f, keys=None):
         output = {}
         for k in f:
-            if isinstance(f[k],h5py.Group):
-                output[k] = load_data(f[k])
-            else:
-                output[k] = np.array(f[k])
+            if keys is None or k in keys:
+                if isinstance(f[k],h5py.Group):
+                    output[k] = load_data(f[k])
+                else:
+                    output[k] = np.array(f[k])
         return output
     with h5py.File(filepath,'r') as f:
-        return load_data(f)
+        return load_data(f, load_keys)
 
 def load_yaml(filepath):
     with open(filepath,'r') as f:
-        return yaml.load(f)
+        return yaml.load(f, Loader=yaml.Loader)
 
-def load_experiment_results(savedir,allow_load_partial=False):
+def load_experiment_results(savedir, allow_load_partial=False, load_keys=None):
     """
     load results for a single experiment directory
     """
@@ -212,10 +219,10 @@ def load_experiment_results(savedir,allow_load_partial=False):
     log_partial_filepath = os.path.join(savedir,'log_intermediate.h5')
 
     if os.path.exists(log_filepath):
-        logs = load_hdf5(log_filepath)
+        logs = load_hdf5(log_filepath, load_keys)
 
     elif allow_load_partial and os.path.exists(log_partial_filepath):
-        logs = load_hdf5(log_partial_filepath)
+        logs = load_hdf5(log_partial_filepath, load_keys)
 
     else:
         logs = {}
@@ -223,7 +230,7 @@ def load_experiment_results(savedir,allow_load_partial=False):
 
     return logs, config
 
-def load_multiple_experiments(resultsdir,allow_load_partial=False,load_empty=False):
+def load_multiple_experiments(resultsdir,allow_load_partial=False,load_empty=False, load_keys=None):
     """
     load results for a multiple experiment directories
     returns a dictionary keyed by the experiment directory 
@@ -233,7 +240,7 @@ def load_multiple_experiments(resultsdir,allow_load_partial=False,load_empty=Fal
     logs = {}
     for sd in sorted(savedirs):
         if os.path.isdir(savedirs[sd]):
-            log, config = load_experiment_results(savedirs[sd],allow_load_partial)
+            log, config = load_experiment_results(savedirs[sd],allow_load_partial,load_keys)
             if len(log) > 0 or load_empty:
                 logs[sd] = log
                 configs[sd] = config

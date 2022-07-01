@@ -2,10 +2,10 @@ click
 gym>=0.17
 gym[classic_control]>=0.17
 gym[atari]>=0.17
+gym[accept-rom-license]
 h5py
 jupyter
 matplotlib
-numpy==1.16.4
 pandas
 pyyaml
 opencv-python
@@ -13,4 +13,6 @@ ray[rllib]
 scikit-learn
 seaborn
 starr
-tensorflow==1.15.0
+tensorflow
+tensorflow-probability
+trfl

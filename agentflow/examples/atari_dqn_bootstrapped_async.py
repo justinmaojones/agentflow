@@ -8,7 +8,6 @@ import tensorflow as tf
 import time
 import yaml 
 
-from agentflow.env import VecGymEnv
 from agentflow.agents import BootstrappedDQN
 from agentflow.agents.utils import test_agent
 from agentflow.buffers import BufferMap
@@ -28,7 +27,7 @@ from agentflow.state import PrevEpisodeLengthsEnv
 from agentflow.state import RandomOneHotMaskEnv 
 from agentflow.state import TestAgentEnv 
 from agentflow.tensorflow.nn import dense_net
-from agentflow.tensorflow.ops import normalize_ema
+from agentflow.tensorflow.nn import normalize_ema
 from agentflow.transform import ImgDecoder
 from agentflow.transform import ImgEncoder
 from agentflow.utils import IdleTimer 
@@ -46,6 +45,7 @@ def timed(func):
     return wrapper
 
 @click.option('--env_id', default='PongNoFrameskip-v4', type=str)
+@click.option('--frames_per_action', default=1, type=int)
 @click.option('--num_steps', default=30000, type=int)
 @click.option('--num_frames_max', default=None, type=int)
 @click.option('--n_runners', default=1, type=int)
@@ -55,7 +55,6 @@ def timed(func):
 @click.option('--n_prev_frames', default=4, type=int)
 @click.option('--ema_decay', default=0.95, type=float)
 @click.option('--target_network_copy_freq', default=None, type=int)
-@click.option('--noise_fancy', default=False, type=bool)
 @click.option('--noise_type', default='eps_greedy', type=click.Choice(['eps_greedy','gumbel_softmax']))
 @click.option('--noise_scale_anneal_steps', default=int(1e6), type=int)
 @click.option('--noise_scale_init', default=1.0, type=float)
@@ -115,7 +114,7 @@ def run(**cfg):
 
     if cfg['seed'] is not None:
         np.random.seed(cfg['seed'])
-        tf.set_random_seed(int(10*cfg['seed']))
+        tf.random.set_seed(int(10*cfg['seed']))
 
      
     ts = str(int(time.time()*1000))
@@ -128,11 +127,21 @@ def run(**cfg):
         yaml.dump(cfg, f)
 
     # environment
-    env = dqn_atari_paper_env(cfg['env_id'], n_envs=cfg['n_envs'], n_prev_frames=cfg['n_prev_frames'])
+    env = dqn_atari_paper_env(
+        cfg['env_id'], 
+        n_envs=cfg['n_envs'], 
+        n_prev_frames=cfg['n_prev_frames'], 
+        frames_per_action=cfg['frames_per_action']
+    )
+    env = RandomOneHotMaskEnv(env, dim=cfg['bootstrap_num_heads'])
     env = PrevEpisodeReturnsEnv(env)
     env = PrevEpisodeLengthsEnv(env)
-    env = RandomOneHotMaskEnv(env, dim=cfg['bootstrap_num_heads'])
-    test_env = dqn_atari_paper_env(cfg['env_id'], n_envs=8, n_prev_frames=cfg['n_prev_frames'])
+    test_env = dqn_atari_paper_env(
+        cfg['env_id'], 
+        n_envs=1, 
+        n_prev_frames=cfg['n_prev_frames'], 
+        frames_per_action=cfg['frames_per_action']
+    )
     test_env = TestAgentEnv(test_env)
 
     @ray.remote
@@ -154,46 +163,58 @@ def run(**cfg):
     print('STATE SHAPE: ', state_shape)
     print('ACTION SHAPE: ', action_shape)
 
-    if not cfg['dueling']:
-        def q_fn(state, training=False, **kwargs):
-            state = state/255. - 0.5
+    # build agent
+    def build_agent(training=True):
+        def q_fn(state, name=None, **kwargs):
+            state = state/255.
             if cfg['normalize_inputs']:
-                state, _ = normalize_ema(state, training)
-            h = dqn_atari_paper_net(state, cfg['network_scale'])
-            output = tf.layers.dense(h,action_shape*cfg['bootstrap_num_heads'])
-            return tf.reshape(output,[-1,action_shape,cfg['bootstrap_num_heads']])
-    else:
-        def q_fn(state, training=False, **kwargs):
-            state = state/255. - 0.5
-            if cfg['normalize_inputs']:
-                state, _ = normalize_ema(state, training)
-            h_val, h_adv = dqn_atari_paper_net_dueling(state, cfg['network_scale'])
-            val_flat = tf.layers.dense(h_val, cfg['bootstrap_num_heads'])
-            val = val_flat[:,None,:]
-            adv_flat = tf.layers.dense(h_adv, action_shape*cfg['bootstrap_num_heads'])
-            adv = tf.reshape(adv_flat, [-1,action_shape,cfg['bootstrap_num_heads']])
-            adv_avg = tf.reduce_mean(adv, axis=-2, keepdims=True)
-            adv_normed = adv - adv_avg
-            return val + adv_normed 
+                state = normalize_ema(state, name=name)
+            if cfg['dueling']:
+                return dqn_atari_paper_net_dueling(
+                    state,
+                    n_actions=action_shape,
+                    n_heads=cfg['bootstrap_num_heads'],
+                    scale=cfg['network_scale'],
+                    name=name
+                )
+            else:
+                return dqn_atari_paper_net(
+                    state,
+                    n_actions=action_shape,
+                    n_heads=cfg['bootstrap_num_heads'],
+                    scale=cfg['network_scale'],
+                    name=name
+                )
 
-    def build_agent():
+        if training:
+            learning_rate_schedule = tf.keras.optimizers.schedules.ExponentialDecay(
+                initial_learning_rate = cfg['learning_rate'],
+                decay_rate = cfg['learning_rate_decay'],
+                decay_steps = cfg['n_update_steps']
+            )
+
+            optimizer = tf.keras.optimizers.Adam(
+                learning_rate=learning_rate_schedule,
+            )
+        else:
+            optimizer = None
+
+
         return BootstrappedDQN(
             state_shape=state_shape[1:],
             num_actions=action_shape,
             q_fn=q_fn,
+            optimizer=optimizer,
             double_q=cfg['double_q'],
             num_heads=cfg['bootstrap_num_heads'],
             random_prior=cfg['bootstrap_random_prior'],
             prior_scale=cfg['bootstrap_prior_scale'],
-            grad_clip_norm=cfg['grad_clip_norm'],
-            td_loss=cfg['td_loss'],
         )
 
     @ray.remote(num_cpus=1)
     class Runner(object):
 
         import tensorflow as tf
-        import ray.experimental.tf_utils
 
         def __init__(self, env, log):
             self.log = log
@@ -203,11 +224,6 @@ def run(**cfg):
 
             # build agent
             self.agent = build_agent()
-
-            self.sess = tf.Session()
-            self.sess.run(tf.global_variables_initializer())
-            self.variables = ray.experimental.tf_utils.TensorFlowVariables(
-                    self.agent.outputs['loss'], self.sess)
 
             # Delays publishing of records to the underlying replay buffer for n steps
             # then publishes the discounted n-step return
@@ -227,11 +243,10 @@ def run(**cfg):
             self._name = 'Runner'
 
             self.noise_scale = None
-            self.update_noise_scale(t=cfg['begin_at_step'])
 
         @timed
         def set_weights(self, weights):
-            self.variables.set_weights(weights)
+            self.agent.set_weights(weights)
             self._set_weights_counter += 1
             self.log.append.remote('set_weights/' + self._name, self._set_weights_counter)
 
@@ -241,33 +256,23 @@ def run(**cfg):
             bootstrap_mask_shape = (len(state),cfg['bootstrap_num_heads'])
             return np.random.choice(2, size=bootstrap_mask_shape, p=bootstrap_mask_probs)
 
-        def update_noise_scale(self, done=None, t=0):
-            if cfg['noise_fancy']:
-                noise_scale = self.noise_scale_schedule(t)
-                eps = np.random.rand(cfg['n_envs'])*noise_scale
-                if self.noise_scale is None:
-                    self.noise_scale = eps
-                else:
-                    self.noise_scale = done*eps + (1-done)*self.noise_scale
-            else:
-                self.noise_scale = self.noise_scale_schedule(t)
-
         @timed
         def step(self, t):
             while True:
+                self.noise_scale = self.noise_scale_schedule(t)
+
                 # do-while to initially fill the buffer
-                action_probs = self.agent.act_probs(self.next['state'], self.next['mask'], self.sess)
                 if cfg['noise_type'] == 'eps_greedy':
-                    action = eps_greedy_noise(action_probs, eps=self.noise_scale)
+                    logits = agent.policy_logits(state, mask).numpy()
+                    action = eps_greedy_noise(logits, eps=self.noise_scale)
                 elif cfg['noise_type'] == 'gumbel_softmax':
-                    action = gumbel_softmax_noise(action_probs, temperature=cfg['noise_temperature'])
+                    logits = agent.policy_logits(state, mask).numpy()
+                    action = gumbel_softmax_noise(logits, temperature=cfg['noise_temperature'])
                 else:
                     raise NotImplementedError("unknown noise type %s" % cfg['noise_type'])
 
                 self.prev = self.next
                 self.next = env.step(action.astype('int').ravel())
-
-                self.update_noise_scale(self.next['done'], t=t)
 
                 data = {
                     'state':self.prev['state'],
@@ -282,7 +287,6 @@ def run(**cfg):
                     data['priority'] = self.agent.infer(
                         outputs=['abs_td_error'], 
                         gamma=cfg['gamma'],
-                        session=self.sess,
                         **data
                     )['abs_td_error']
 
@@ -306,22 +310,17 @@ def run(**cfg):
     class TestRunner(object):
 
         import tensorflow as tf
-        import ray.experimental.tf_utils
 
         def __init__(self, env, log):
             self.log = log
             self.env = env
             self.agent = build_agent()
-            self.sess = tf.Session()
-            self.sess.run(tf.global_variables_initializer())
-            self.variables = ray.experimental.tf_utils.TensorFlowVariables(
-                    self.agent.outputs['loss'], self.sess)
 
             self._set_weights_counter = 0
             self._name = 'TestRunner'
 
         def test(self, t, frame_counter):
-            test_output = self.env.test(self.agent, self.sess, noise_scale=cfg['noise_scale_test'])
+            test_output = self.env.test(self.agent, noise_scale=cfg['noise_scale_test'])
             self.log.append_dict.remote({
                 'test_ep_returns': test_output['return'],
                 'test_ep_length': test_output['length'],
@@ -330,7 +329,7 @@ def run(**cfg):
             })
 
         def set_weights(self, weights):
-            self.variables.set_weights(weights)
+            self.agent.set_weights(weights)
             self._set_weights_counter += 1
             self.log.append.remote('set_weights/' + self._name, self._set_weights_counter)
 
@@ -404,7 +403,6 @@ def run(**cfg):
     class ParameterServer(object):
 
         import tensorflow as tf
-        import ray.experimental.tf_utils
 
         def __init__(self, log):
 
@@ -412,35 +410,21 @@ def run(**cfg):
             self.scoped_timer = ScopedIdleTimer("ScopedIdleTimer/ParameterServer", start_on_create=False)
 
             # build agent
-            self.agent = build_agent()
-            self.sess = tf.Session(config=tf.ConfigProto(allow_soft_placement=True))
-            self.sess.run(tf.global_variables_initializer())
-            self.saver = tf.train.Saver()
+            self.agent = build_agent(training=True)
             self.checkpoint_prefix = os.path.join(savedir,'ckpt')
             if cfg['restore_from_ckpt'] is not None:
                 self.restore(cfg['restore_from_ckpt'])
-            self.variables = ray.experimental.tf_utils.TensorFlowVariables(
-                    self.agent.outputs['loss'], self.sess)
-
-            # Annealed parameters
-            self.learning_rate_schedule = ExponentialDecaySchedule(
-                initial_value = cfg['learning_rate'],
-                final_value = cfg['learning_rate_final'],
-                decay_rate = cfg['learning_rate_decay'],
-                begin_at_step = cfg['begin_learning_at_step']
-            )
 
             self.t = cfg['begin_at_step']
 
             self.timer = IdleTimer(start_on_create=False) 
 
-            for v in tf.trainable_variables():
-                print(v)
+            for v in self.agent.weights + self.agent.weights_target:
+                print(v.name, v.shape)
 
         @timed
         def update(self, sample):
             self.timer(idle=False)
-            learning_rate = self.learning_rate_schedule(self.t)
             weight_decay = cfg['weight_decay']
             gamma = cfg['gamma']
 
@@ -454,22 +438,21 @@ def run(**cfg):
                 indices = sample.pop('indices')
 
             update_outputs = self.agent.update(
-                session = self.sess,
-                learning_rate = learning_rate,
                 ema_decay = ema_decay,
                 gamma = gamma,
                 weight_decay = weight_decay,
+                grad_clip_norm=cfg['grad_clip_norm'],
                 outputs = ['abs_td_error', 'Q_policy_eval', 'loss', 'gnorm'],
                 **sample)
 
             update_outputs['weight_decay'] = weight_decay
             update_outputs['gamma'] = gamma
             update_outputs['ema_decay'] = ema_decay
-            update_outputs['learning_rate'] = learning_rate
+            update_outputs['learning_rate'] = self.agent.learning_rate
             self.log.append_dict.remote(update_outputs)
 
             if cfg['log_pnorms']:
-                log.append_dict.remote(agent.pnorms(self.sess))
+                log.append_dict.remote(agent.pnorms())
 
             self.t += 1
             if cfg['buffer_type'] == 'prioritized' and not cfg['prioritized_replay_simple']:
@@ -485,14 +468,14 @@ def run(**cfg):
 
         @timed
         def get_weights(self):
-            return self.variables.get_weights()
+            return self.agent.get_weights()
 
         @timed
         def save(self):
-            self.saver.save(self.sess, self.checkpoint_prefix)
+            self.agent.save_weights(self.checkpoint_prefix)
 
         def restore(self, checkpoint_prefix):
-            self.saver.restore(self.sess, checkpoint_prefix)
+            self.agent.load_weights(self.checkpoint_prefix)
 
     class Task(object):
 
@@ -577,6 +560,7 @@ def run(**cfg):
     print("BUILD ACTORS")
     RemoteLogsTFSummary = ray.remote(LogsTFSummary)
     log = RemoteLogsTFSummary.remote(savedir)
+    log.set_step.remote(0)
     runners = [Runner.remote(env, log) for i in range(cfg['n_runners'])]
     test_runner = TestRunner.remote(test_env, log)
     parameter_server = ParameterServer.remote(log)
@@ -607,6 +591,7 @@ def run(**cfg):
     frame_steps_per_env_per_update = 0
     while t < T and (cfg['num_frames_max'] is None or frame_counter < cfg['num_frames_max']):
         start_step_time = time.time()
+        log.set_step.remote(t)
 
         # add update op
         if t == cfg['begin_at_step'] and frame_counter >= cfg['begin_learning_at_step']:
@@ -634,7 +619,7 @@ def run(**cfg):
                     test_runner.test.remote(t, frame_counter)
 
                 if t % cfg['log_flush_freq'] == 0:
-                    log.flush.remote(step=t)
+                    log.flush.remote()
                     if cfg['savemodel']:
                         parameter_server.save.remote()
 
