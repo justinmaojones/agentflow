@@ -4,7 +4,7 @@ import numpy as np
 from typing import Dict, List
 
 from agentflow.buffers.nd_array_buffer import NDArrayBuffer
-from agentflow.flow import Source
+from agentflow.source import Source
 
 
 @dataclass

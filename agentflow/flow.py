@@ -4,13 +4,7 @@ from abc import ABC
 from dataclasses import dataclass
 from typing import Union
 
-@dataclass
-class Source(ABC):
-    """
-    Abstract class for source nodes in the flow graph
-    """
-    ...
-    
+from agentflow.source import Source
 
 @dataclass
 class Flow(ABC):
