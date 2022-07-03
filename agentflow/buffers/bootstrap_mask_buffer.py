@@ -12,7 +12,7 @@ class BootstrapMaskBuffer(BufferFlow):
 
     def append(self, data: Dict[str, np.ndarray]):
         assert 'state' in data, "missing required key 'state' in data"
-        mask_probs = (1-sample_prob, sample_prob)
+        mask_probs = (1-self.sample_prob, self.sample_prob)
         mask_shape = (len(data['state']), self.depth) 
         mask = np.random.choice(2, size=mask_shape, p=mask_probs)
 
@@ -20,3 +20,7 @@ class BootstrapMaskBuffer(BufferFlow):
         data['mask'] = mask
 
         self.source.append(data)
+
+    def append_sequence(self, data: Dict[str, np.ndarray]):
+        raise NotImplementedError 
+
