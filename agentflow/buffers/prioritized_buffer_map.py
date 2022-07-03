@@ -1,8 +1,8 @@
 import numpy as np
 from starr import SumTreeArray
 
-from .nd_array_buffer import NDArrayBuffer
-from .buffer_map import BufferMap
+from agentflow.buffers.nd_array_buffer import NDArrayBuffer
+from agentflow.buffers.buffer_map import BufferMap
 
 class PrioritizedSamplingBuffer(NDArrayBuffer):
 
@@ -34,9 +34,10 @@ class PrioritizedBufferMap(BufferMap):
             priority_key = None
             ):
 
-        super(PrioritizedBufferMap,self).__init__(max_length)
+        super(PrioritizedBufferMap, self).__init__(max_length)
 
-        assert alpha >= 0
+        assert alpha > 0, f"alpha={alpha} is invalid, alpha must be positive"
+
         self._alpha = alpha
         self._eps = eps
         self._wclip = wclip
@@ -44,9 +45,10 @@ class PrioritizedBufferMap(BufferMap):
         self._default_non_zero_reward_priority = default_non_zero_reward_priority
         self._default_done_priority = default_done_priority
 
+        self._priority_key = priority_key
+
         self._idx_sample = None 
         self._sumtree = None 
-        self._priority_key = priority_key
 
     def _compute_default_priority(self, data):
         priority = self._default_priority*np.ones_like(data['reward'], dtype=float)
@@ -59,7 +61,7 @@ class PrioritizedBufferMap(BufferMap):
 
         return priority
 
-    def _smooth_and_warp_priority(self,priority):
+    def _smooth_and_warp_priority(self, priority):
         return (np.abs(priority)+self._eps)**self._alpha
 
     def append(self, data, priority=None):
@@ -69,37 +71,37 @@ class PrioritizedBufferMap(BufferMap):
         else:
             assert self._priority_key is None, "cannot supply priority when priority key already set, instead provide priority in data"
 
-        super(PrioritizedBufferMap,self).append(data)
+        super(PrioritizedBufferMap, self).append(data)
 
         if priority is None:
             priority = self._compute_default_priority(data)
 
         if self._sumtree is None:
-            self._sumtree = PrioritizedSamplingBuffer(self._max_length)
+            self._sumtree = PrioritizedSamplingBuffer(self.max_length)
 
         p = self._smooth_and_warp_priority(priority)
         self._sumtree.append(p)
 
-    def append_sequence(self,data,priority=None):
-        super(PrioritizedBufferMap,self).append_sequence(data)
+    def append_sequence(self, data, priority=None):
+        super(PrioritizedBufferMap, self).append_sequence(data)
 
         if priority is None:
             t = list(data.values())[0].shape[-1]
-            priority = np.ones((t,self.first_dim_size),dtype=float)
+            priority = np.ones((t, self.first_dim_size), dtype=float)
 
         if self._sumtree is None:
-            self._sumtree = PrioritizedSamplingBuffer(self._max_length)
+            self._sumtree = PrioritizedSamplingBuffer(self.max_length)
 
         p = self._smooth_and_warp_priority(priority)
         self._sumtree.append_sequence(p)
 
         assert self._index == self._sumtree._index, "index mismatch (%d, %d)" % (self._index, self._sumtree._index)
 
-    def extend(self,X,priorities):
-        for x,p in zip(X,priorities):
-            self.append(x,p)
+    def extend(self, X, priorities):
+        for x, p in zip(X, priorities):
+            self.append(x, p)
 
-    def sample(self,nsamples,beta=None,normalized=True,with_indices=False):
+    def sample(self, nsamples, beta=None, normalized=True, with_indices=False):
 
         assert self._sumtree is not None, "cannot sample without first appending"
 
@@ -122,7 +124,7 @@ class PrioritizedBufferMap(BufferMap):
 
         # clip large importance weights
         if self._wclip is not None:
-            w = np.minimum(w,self._wclip)
+            w = np.minimum(w, self._wclip)
 
         # annealing
         w = w ** beta
@@ -140,7 +142,7 @@ class PrioritizedBufferMap(BufferMap):
 
         return output
 
-    def update_priorities(self,priorities,indices=None):
+    def update_priorities(self, priorities, indices=None):
         idx = indices if indices is not None else self._idx_sample
         if idx is None:
             raise ValueError("update_priorities must be called after sample or indices provided")

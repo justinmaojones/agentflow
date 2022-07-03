@@ -1,8 +1,12 @@
 import numpy as np
-from agentflow.buffers.buffer_map import BufferMap
 from collections import deque
+from typing import Union
 
-class NStepReturnBuffer(object):
+from agentflow.buffers.buffer_map import BufferMap
+from agentflow.buffers.flow import BufferFlow
+from agentflow.buffers.source import BufferSource
+
+class _NStepReturnDelayedPublisher(object):
     
     def __init__(self,
             n_steps=1,
@@ -68,10 +72,10 @@ class NStepReturnBuffer(object):
     def __len__(self):
         return len(self._delayed_buffer)
 
-class NStepReturnPublisher(object):
+class NStepReturnBuffer(BufferFlow):
 
     def __init__(self,
-            buffer_map,
+            source: Union[BufferFlow, BufferSource],
             n_steps=1,
             gamma=0.99,
             reward_key="reward",
@@ -79,11 +83,8 @@ class NStepReturnPublisher(object):
             delayed_keys=['state2'],
             ):
 
-        if not isinstance(buffer_map, BufferMap):
-            raise TypeError("buffer_map must be a type of BufferMap")
-
-        self._buffer_map = buffer_map
-        self._n_step_return_buffer = NStepReturnBuffer(
+        self.source = source 
+        self._n_step_return_buffer = _NStepReturnDelayedPublisher(
                 n_steps=n_steps, 
                 gamma=gamma, 
                 reward_key=reward_key,
@@ -95,19 +96,16 @@ class NStepReturnPublisher(object):
         self._n_step_return_buffer.append(data, **kwargs)
         if self._n_step_return_buffer.full():
             delayed_data, delayed_kwargs = self._n_step_return_buffer.latest_data() 
-            self._buffer_map.append(delayed_data, **delayed_kwargs)
+            self.source.append(delayed_data, **delayed_kwargs)
 
-    def __len__(self):
-        return len(self._buffer_map)
-
-    def sample(self,nsamples,**kwargs):
-        return self._buffer_map.sample(nsamples,**kwargs)
+    def append_sequence(self, data):
+        raise NotImplementedError("NStepReturnBuffer.append_sequence is not currently supported")
 
     def update_priorities(self,priority):
-        return self._buffer_map.update_priorities(priority)
+        return self.source.update_priorities(priority)
 
     def priorities(self):
-        return self._buffer_map.priorities()
+        return self.source.priorities()
 
 if __name__ == '__main__':
     import unittest
@@ -121,7 +119,7 @@ if __name__ == '__main__':
             NSTEPS = 10
             gamma = 0.99
             buf = PrioritizedBufferMap(1000,eps=0.0,alpha=1.0)
-            pub = NStepReturnPublisher(buf,n_steps=NSTEPS,gamma=gamma)
+            pub = NStepReturnBuffer(buf,n_steps=NSTEPS,gamma=gamma)
 
             data = {
                 'state': np.random.randn(T,B,2,3),

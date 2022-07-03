@@ -10,7 +10,7 @@ import yaml
 from agentflow.agents import BootstrappedDQN
 from agentflow.buffers import BufferMap
 from agentflow.buffers import PrioritizedBufferMap
-from agentflow.buffers import NStepReturnPublisher
+from agentflow.buffers import NStepReturnBuffer
 from agentflow.examples.env import dqn_atari_paper_env
 from agentflow.examples.nn import dqn_atari_paper_net
 from agentflow.examples.nn import dqn_atari_paper_net_dueling
@@ -197,18 +197,20 @@ def run(**cfg):
         # Normal Buffer
         replay_buffer = BufferMap(cfg['buffer_size'] // cfg['n_envs'])
 
+
+
     # Delays publishing of records to the underlying replay buffer for n steps
     # then publishes the discounted n-step return
     if cfg['n_step_return'] > 1:
         if cfg['encode_obs']:
-            replay_buffer = NStepReturnPublisher(
+            replay_buffer = NStepReturnBuffer(
                 replay_buffer,
                 n_steps=cfg['n_step_return'],
                 gamma=cfg['gamma'],
                 delayed_keys=['state2_encoded', 'state2_encoding_length']
             )
         else:
-            replay_buffer = NStepReturnPublisher(
+            replay_buffer = NStepReturnBuffer(
                 replay_buffer,
                 n_steps=cfg['n_step_return'],
                 gamma=cfg['gamma'],

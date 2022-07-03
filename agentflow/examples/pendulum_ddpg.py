@@ -11,7 +11,7 @@ from agentflow.agents import DDPG
 from agentflow.agents.utils import test_agent
 from agentflow.buffers import BufferMap
 from agentflow.buffers import PrioritizedBufferMap
-from agentflow.buffers import NStepReturnPublisher
+from agentflow.buffers import NStepReturnBuffer
 from agentflow.numpy.ops import onehot
 from agentflow.numpy.schedules import ExponentialDecaySchedule 
 from agentflow.numpy.schedules import LinearAnnealingSchedule
@@ -174,7 +174,7 @@ def run(**cfg):
     # Delays publishing of records to the underlying replay buffer for n steps
     # then publishes the discounted n-step return
     if cfg['enable_n_step_return_publisher']:
-        replay_buffer = NStepReturnPublisher(
+        replay_buffer = NStepReturnBuffer(
             replay_buffer,
             n_steps=cfg['n_step_return'],
             gamma=cfg['gamma'],
