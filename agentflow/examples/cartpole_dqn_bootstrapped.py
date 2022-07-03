@@ -9,6 +9,7 @@ import yaml
 from agentflow.env import CartpoleGymEnv
 from agentflow.agents import BootstrappedDQN
 from agentflow.agents.utils import test_agent
+from agentflow.buffers import BootstrapMaskBuffer 
 from agentflow.buffers import BufferMap
 from agentflow.buffers import PrioritizedBufferMap
 from agentflow.buffers import NStepReturnBuffer
@@ -170,6 +171,12 @@ def run(**cfg):
             gamma=cfg['gamma'],
         )
 
+    replay_buffer = BootstrapMaskBuffer(
+        replay_buffer,
+        depth = cfg['bootstrap_num_heads'],
+        sample_prob = cfg['bootstrap_mask_prob']
+    )
+
     state_and_mask = env.reset()
     state = state_and_mask['state']
     mask = state_and_mask['mask']
@@ -198,9 +205,6 @@ def run(**cfg):
             action = np.random.choice(action_shape, size=cfg['n_envs'])
 
         step_output = env.step(action.astype('int').ravel())
-        bootstrap_mask_probs = (1-cfg['bootstrap_mask_prob'], cfg['bootstrap_mask_prob'])
-        bootstrap_mask_shape = (len(state), cfg['bootstrap_num_heads'])
-        bootstrap_mask = np.random.choice(2, size=bootstrap_mask_shape, p=bootstrap_mask_probs)
 
         data = {
             'state':state,
@@ -208,7 +212,6 @@ def run(**cfg):
             'reward':step_output['reward'],
             'done':step_output['done'],
             'state2':step_output['state'],
-            'mask':bootstrap_mask,
         }
         log.append_dict(data)
         log.append('train/ep_return',step_output['prev_episode_return'])

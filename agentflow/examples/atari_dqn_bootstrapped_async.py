@@ -10,6 +10,7 @@ import yaml
 
 from agentflow.agents import BootstrappedDQN
 from agentflow.agents.utils import test_agent
+from agentflow.buffers import BootstrapMaskBuffer 
 from agentflow.buffers import BufferMap
 from agentflow.buffers import CompressedImageBuffer 
 from agentflow.buffers import PrioritizedBufferMap
@@ -231,11 +232,6 @@ def run(**cfg):
             self.log.append.remote('set_weights/' + self._name, self._set_weights_counter)
 
 
-        def bootstrap_mask(self):
-            bootstrap_mask_probs = (1-cfg['bootstrap_mask_prob'],cfg['bootstrap_mask_prob'])
-            bootstrap_mask_shape = (len(state),cfg['bootstrap_num_heads'])
-            return np.random.choice(2, size=bootstrap_mask_shape, p=bootstrap_mask_probs)
-
         @timed
         def step(self, t):
             self.noise_scale = self.noise_scale_schedule(t)
@@ -349,6 +345,12 @@ def run(**cfg):
                 replay_buffer,
                 n_steps=cfg['n_step_return'],
                 gamma=cfg['gamma'],
+            )
+
+            replay_buffer = BootstrapMaskBuffer(
+                replay_buffer,
+                depth = cfg['bootstrap_num_heads'],
+                sample_prob = cfg['bootstrap_mask_prob']
             )
 
             self.t = cfg['begin_at_step']
