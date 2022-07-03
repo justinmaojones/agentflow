@@ -1,7 +1,6 @@
 from .bootstrap_mask_buffer import BootstrapMaskBuffer
 from .buffer_map import BufferMap
 from .delayed_buffer_map import DelayedBufferMap
-from .delayed_buffer_map import DelayedPrioritizedBufferMap
 from .nd_array_buffer import NDArrayBuffer
 from .n_step_return_buffer_map import NStepReturnBuffer
 from .n_step_return_buffer_map import NStepReturnPublisher

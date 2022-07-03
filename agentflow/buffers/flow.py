@@ -35,7 +35,6 @@ class BufferFlow(Flow):
     def get_sequence(self, time_idx: np.ndarray, seq_size: int, batch_idx: np.ndarray = None):
         return self.source.get_sequence(time_idx, seq_size, batch_idx)
 
-    @abstractmethod
     def sample(self, n_samples: int):
         return self.source.sample(n_samples)
 
