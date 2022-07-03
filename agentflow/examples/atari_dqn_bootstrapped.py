@@ -8,6 +8,7 @@ import time
 import yaml 
 
 from agentflow.agents import BootstrappedDQN
+from agentflow.buffers import BootstrapMaskBuffer
 from agentflow.buffers import BufferMap
 from agentflow.buffers import CompressedImageBuffer 
 from agentflow.buffers import PrioritizedBufferMap
