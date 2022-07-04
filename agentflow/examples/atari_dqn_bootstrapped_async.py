@@ -11,6 +11,7 @@ import yaml
 from agentflow.agents import BootstrappedDQN
 from agentflow.agents.utils import test_agent
 from agentflow.buffers import BufferMap
+from agentflow.buffers import CompressedImageBuffer 
 from agentflow.buffers import PrioritizedBufferMap
 from agentflow.buffers import NStepReturnBuffer
 from agentflow.examples.env import dqn_atari_paper_env
@@ -28,8 +29,6 @@ from agentflow.state import RandomOneHotMaskEnv
 from agentflow.state import TestAgentEnv 
 from agentflow.tensorflow.nn import dense_net
 from agentflow.tensorflow.nn import normalize_ema
-from agentflow.transform import ImgDecoder
-from agentflow.transform import ImgEncoder
 from agentflow.utils import IdleTimer 
 from agentflow.utils import ScopedIdleTimer
 from agentflow.utils import LogsTFSummary
@@ -144,18 +143,6 @@ def run(**cfg):
     )
     test_env = TestAgentEnv(test_env)
 
-    @ray.remote
-    def encode(data):
-        data = ImgEncoder('state', 2000)(data) 
-        data = ImgEncoder('state2', 2000)(data) 
-        return data
-
-    @ray.remote
-    def decode(sample):
-        sample = ImgDecoder('state')(sample) 
-        sample = ImgDecoder('state2')(sample) 
-        return sample
-
     # state and action shapes
     state = env.reset()['state']
     state_shape = state.shape
@@ -225,13 +212,6 @@ def run(**cfg):
             # build agent
             self.agent = build_agent()
 
-            # Delays publishing of records to the underlying replay buffer for n steps
-            # then publishes the discounted n-step return
-            self.n_step_return_buffer = NStepReturnBuffer(
-                n_steps=cfg['n_step_return'],
-                gamma=cfg['gamma'],
-            )
-
             self.noise_scale_schedule = LinearAnnealingSchedule(
                 initial_value = cfg['noise_scale_init'],
                 final_value = cfg['noise_scale_final'],
@@ -258,42 +238,36 @@ def run(**cfg):
 
         @timed
         def step(self, t):
-            while True:
-                self.noise_scale = self.noise_scale_schedule(t)
+            self.noise_scale = self.noise_scale_schedule(t)
 
-                # do-while to initially fill the buffer
-                if cfg['noise_type'] == 'eps_greedy':
-                    logits = agent.policy_logits(state, mask).numpy()
-                    action = eps_greedy_noise(logits, eps=self.noise_scale)
-                elif cfg['noise_type'] == 'gumbel_softmax':
-                    logits = agent.policy_logits(state, mask).numpy()
-                    action = gumbel_softmax_noise(logits, temperature=cfg['noise_temperature'])
-                else:
-                    raise NotImplementedError("unknown noise type %s" % cfg['noise_type'])
+            # do-while to initially fill the buffer
+            if cfg['noise_type'] == 'eps_greedy':
+                logits = agent.policy_logits(state, mask).numpy()
+                action = eps_greedy_noise(logits, eps=self.noise_scale)
+            elif cfg['noise_type'] == 'gumbel_softmax':
+                logits = agent.policy_logits(state, mask).numpy()
+                action = gumbel_softmax_noise(logits, temperature=cfg['noise_temperature'])
+            else:
+                raise NotImplementedError("unknown noise type %s" % cfg['noise_type'])
 
-                self.prev = self.next
-                self.next = env.step(action.astype('int').ravel())
+            self.prev = self.next
+            self.next = env.step(action.astype('int').ravel())
 
-                data = {
-                    'state':self.prev['state'],
-                    'action':onehot(action, depth=action_shape),
-                    'reward':self.next['reward'],
-                    'done':self.next['done'],
-                    'state2':self.next['state'],
-                    'mask':self.bootstrap_mask(),
-                }
+            data = {
+                'state':self.prev['state'],
+                'action':onehot(action, depth=action_shape),
+                'reward':self.next['reward'],
+                'done':self.next['done'],
+                'state2':self.next['state'],
+                'mask':self.bootstrap_mask(),
+            }
 
-                if cfg['buffer_type'] == 'prioritized' and not cfg['prioritized_replay_simple']:
-                    data['priority'] = self.agent.infer(
-                        outputs=['abs_td_error'], 
-                        gamma=cfg['gamma'],
-                        **data
-                    )['abs_td_error']
-
-                self.n_step_return_buffer.append(data)
-                if self.n_step_return_buffer.full():
-                    # buffer is initialized
-                    break
+            if cfg['buffer_type'] == 'prioritized' and not cfg['prioritized_replay_simple']:
+                data['priority'] = self.agent.infer(
+                    outputs=['abs_td_error'], 
+                    gamma=cfg['gamma'],
+                    **data
+                )['abs_td_error']
 
             self.log.append_dict.remote({
                 'noise_scale': self.noise_scale,
@@ -303,8 +277,7 @@ def run(**cfg):
                 'prev_episode_length': self.next['prev_episode_length'], # for backwards compatibility
             })
 
-            delayed_data, _ = self.n_step_return_buffer.latest_data() 
-            return delayed_data 
+            return data
 
     @ray.remote(num_cpus=1)
     class TestRunner(object):
@@ -365,6 +338,18 @@ def run(**cfg):
             else:
                 # Normal Buffer
                 replay_buffer = BufferMap(cfg['buffer_size'] // cfg['n_envs'])
+
+            replay_buffer = CompressedImageBuffer(
+                replay_buffer, 
+                max_encoding_size=10000,
+                keys_to_encode = ['state', 'state2']
+            )
+
+            replay_buffer = NStepReturnBuffer(
+                replay_buffer,
+                n_steps=cfg['n_step_return'],
+                gamma=cfg['gamma'],
+            )
 
             self.t = cfg['begin_at_step']
             self.replay_buffer = replay_buffer
@@ -490,7 +475,6 @@ def run(**cfg):
 
         def run(self, t):
             data = self.runner.step.remote(t)
-            data = encode.remote(data)
             return self.replay_buffer.append.remote(data)
 
     class UpdateAgentTask(Task):
@@ -502,9 +486,9 @@ def run(**cfg):
 
         def sample(self):
             if self._sample is None:
-                self._sample = decode.remote(self.replay_buffer.sample.remote())
+                self._sample = self.replay_buffer.sample.remote()
             sample = self._sample
-            self._sample = decode.remote(self.replay_buffer.sample.remote())
+            self._sample = self.replay_buffer.sample.remote()
             return sample
 
         def run(self, t):

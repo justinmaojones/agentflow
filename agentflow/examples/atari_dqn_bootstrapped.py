@@ -9,6 +9,7 @@ import yaml
 
 from agentflow.agents import BootstrappedDQN
 from agentflow.buffers import BufferMap
+from agentflow.buffers import CompressedImageBuffer 
 from agentflow.buffers import PrioritizedBufferMap
 from agentflow.buffers import NStepReturnBuffer
 from agentflow.examples.env import dqn_atari_paper_env
@@ -26,8 +27,6 @@ from agentflow.state import RandomOneHotMaskEnv
 from agentflow.state import TestAgentEnv 
 from agentflow.tensorflow.nn import dense_net
 from agentflow.tensorflow.nn import normalize_ema
-from agentflow.transform import ImgDecoder
-from agentflow.transform import ImgEncoder
 from agentflow.utils import LogsTFSummary
 
 
@@ -197,24 +196,21 @@ def run(**cfg):
         # Normal Buffer
         replay_buffer = BufferMap(cfg['buffer_size'] // cfg['n_envs'])
 
-
+    if cfg['encode_obs']:
+        replay_buffer = CompressedImageBuffer(
+            replay_buffer, 
+            max_encoding_size=10000,
+            keys_to_encode = ['state', 'state2']
+        )
 
     # Delays publishing of records to the underlying replay buffer for n steps
     # then publishes the discounted n-step return
     if cfg['n_step_return'] > 1:
-        if cfg['encode_obs']:
-            replay_buffer = NStepReturnBuffer(
-                replay_buffer,
-                n_steps=cfg['n_step_return'],
-                gamma=cfg['gamma'],
-                delayed_keys=['state2_encoded', 'state2_encoding_length']
-            )
-        else:
-            replay_buffer = NStepReturnBuffer(
-                replay_buffer,
-                n_steps=cfg['n_step_return'],
-                gamma=cfg['gamma'],
-            )
+        replay_buffer = NStepReturnBuffer(
+            replay_buffer,
+            n_steps=cfg['n_step_return'],
+            gamma=cfg['gamma'],
+        )
 
     # Annealed parameters
     noise_scale_schedule = LinearAnnealingSchedule(
@@ -283,9 +279,6 @@ def run(**cfg):
                 **data
             )['abs_td_error']
 
-        if cfg['encode_obs']:
-            data = ImgEncoder('state', 2000)(data) 
-            data = ImgEncoder('state2', 2000)(data) 
         log.append('train/ep_return', step_output['prev_episode_return'])
         log.append('train/ep_length', step_output['prev_episode_length'])
         replay_buffer.append(data)
@@ -308,10 +301,6 @@ def run(**cfg):
                     log.append('max_importance_weight', sample['importance_weight'].max())
                 else:
                     sample = replay_buffer.sample(cfg['batchsize'])
-
-                if cfg['encode_obs']:
-                    sample = ImgDecoder('state')(sample) 
-                    sample = ImgDecoder('state2')(sample) 
 
                 ema_decay = cfg['ema_decay']
                 if cfg['target_network_copy_freq'] is not None:
