@@ -1,12 +1,10 @@
-import numpy as np
 import tensorflow as tf
-from trfl import td_learning
 
-from ..tensorflow.ops import l2_loss 
+from .base_agent import BaseAgent
 from ..tensorflow.ops import weighted_avg 
 from ..tensorflow.ops import value_at_argmax 
 
-class BootstrappedDQN(object):
+class BootstrappedDQN(BaseAgent):
 
     def __init__(self,
             state_shape,
@@ -116,8 +114,6 @@ class BootstrappedDQN(object):
             self.trainable_weights_target = Q_model_target.trainable_weights 
             self.non_trainable_weights_target = Q_model_target.non_trainable_weights 
 
-            self.global_weights = self.weights + self.weights_target
-
             # the bootstrapped heads should be in the last dimension
             # Q_train_multihead is shape (None, num_actions, num_heads)
             Q_train_multihead = Q_model(inputs['state'], training=True)
@@ -174,30 +170,34 @@ class BootstrappedDQN(object):
             self.policy_logits_masked_model = tf.keras.Model([inputs['state'], inputs['mask']], Q_eval_masked)
             self.train_model = tf.keras.Model(inputs, self.train_outputs)
 
-    def set_weights(self, weights):
-        self.train_model.set_weights(weights)
-
-    def get_weights(self):
-        return self.train_model.get_weights()
-
-    def save_weights(self, filepath):
-        self.train_model.save_weights(filepath)
-
-    def load_weights(self, filepath):
-        self.train_model.load_weights(filepath)
-
     def _loss_fn(self, Q_action_train_multihead, reward, gamma, done, Q_state2_target_action, **kwargs):
         y = tf.stop_gradient(reward + gamma*done*Q_state2_target_action)
         td_error = Q_action_train_multihead - y
         loss = 0.5 * tf.square(td_error)
         return loss, (y, td_error)
 
-    @tf.function
-    def act(self, state, mask=None):
-        if mask is None:
-            return self.policy_model(state)
-        else:
-            return self.policy_masked_model([state, mask])
+    def compute_losses(self, model_outputs, reward, gamma, done, mask):
+        # loss functions
+        losses_Q_multihead, (y, td_error_multihead) = self._loss_fn(
+            model_outputs['Q_action_train_multihead'],
+            reward[:, None],
+            gamma,
+            (1-done[:, None]),
+            model_outputs['Q_state2_target_action'],
+        )
+        td_error = weighted_avg(td_error_multihead, mask) 
+
+        # mask losses and normalize by number of active heads in mask
+        # note: the original paper normalizes by total number of heads,
+        # but this seemed more intuitive to me...choice probably doesn't
+        # matter too much
+        losses = weighted_avg(losses_Q_multihead, mask, axis=-1)
+        
+        addl_output = {
+            'td_error': td_error,
+            'y': y
+        }
+        return losses, addl_output
 
     @tf.function
     def policy_logits(self, state, mask=None):
@@ -205,151 +205,3 @@ class BootstrappedDQN(object):
             return self.policy_logits_model(state)
         else:
             return self.policy_logits_masked_model([state, mask])
-        
-    @tf.function
-    def pnorms(self, per_layer=False):
-        """
-        Returns the 2-norm of every trainable and non trainable weight
-        in main and target graphs. Typically useful for debugging.
-        """
-
-        weight_classes = {
-            'trainable_weights/main': self.trainable_weights,
-            'trainable_weights/target': self.trainable_weights_target,
-            'non_trainable_weights/main': self.non_trainable_weights,
-            'non_trainable_weights/target': self.non_trainable_weights_target,
-        }
-
-        pnorms = {}
-        if per_layer:
-            for c in weight_classes:
-                weights = weight_classes[c]
-                for k in weights:
-                    w = self.trainable_weights[k]
-                    pnorms[f"pnorms/{c}/{w.name}"] = tf.norm(w)
-
-        # overall parameter norms
-        for c in weight_classes:
-            pnorms[f"pnorm/overall/{c}"] = tf.linalg.global_norm(weight_classes[c])
-
-        return pnorms
-
-    @property
-    def learning_rate(self):
-        if isinstance(self.optimizer.learning_rate, tf.Variable):
-            return self.optimizer.learning_rate.numpy()
-        elif isinstance(self.optimizer.learning_rate, tf.keras.optimizers.schedules.LearningRateSchedule):
-            return self.optimizer.learning_rate(self.optimizer.iterations).numpy()
-        else:
-            raise NotImplementedError("Unhandled type of learning rate in {self}")
-
-    @tf.function
-    def update(self,
-            state,
-            action,
-            reward,
-            done,
-            state2,
-            mask,
-            gamma=0.99,
-            ema_decay=0.999,
-            weight_decay=None,
-            grad_clip_norm=None,
-            importance_weight=None,
-            outputs=['td_error']
-        ):
-
-        # autocast types
-        reward = tf.cast(reward, tf.float32)
-        done = tf.cast(done, tf.float32)
-        gamma = tf.cast(gamma, tf.float32)
-        mask = tf.cast(mask, tf.float32)
-        ema_decay = tf.cast(ema_decay, tf.float32)
-        if weight_decay is not None:
-            weight_decay = tf.cast(weight_decay, tf.float32)
-        if importance_weight is not None:
-            importance_weight = tf.cast(importance_weight, tf.float32)
-        if grad_clip_norm is not None:
-            grad_clip_norm = tf.cast(grad_clip_norm, tf.float32)
-
-        with tf.GradientTape() as tape:
-            # do not watch target network weights
-            tape.watch(self.trainable_weights)
-
-            model_outputs = self.train_model({
-                'state': state,
-                'action': action,
-                'reward': reward,
-                'done': done,
-                'state2': state2,
-                'mask': mask,
-            })
-
-            # loss functions
-            losses_Q_multihead, (y, td_error_multihead) = self._loss_fn(
-                model_outputs['Q_action_train_multihead'],
-                reward[:, None],
-                gamma,
-                (1-done[:, None]),
-                model_outputs['Q_state2_target_action'],
-            )
-            td_error = weighted_avg(td_error_multihead, mask) 
-
-            # mask losses and normalize by number of active heads in mask
-            # note: the original paper normalizes by total number of heads,
-            # but this seemed more intuitive to me...choice probably doesn't
-            # matter too much
-            losses = weighted_avg(losses_Q_multihead, mask, axis=-1)
-
-            # check shapes
-            tf.debugging.assert_rank(losses, 1)
-
-            if importance_weight is None:
-                loss = tf.reduce_mean(losses)
-            else:
-                # check shapes
-                tf.debugging.assert_equal(
-                    tf.shape(importance_weight),
-                    tf.shape(losses),
-                    message = "shape of importance_weight and losses do not match")
-
-                # overall loss function (importance weighted)
-                loss = tf.reduce_mean(importance_weight * losses)
-
-            if weight_decay is not None:
-                loss = loss + weight_decay * l2_loss(self.trainable_weights)
-
-        # update model weights
-        grads = tape.gradient(loss, self.trainable_weights)
-
-        # gradient clipping
-        if grad_clip_norm is not None:
-            grads, gnorm = tf.clip_by_global_norm(grads, grad_clip_norm)
-        else:
-            gnorm = tf.linalg.global_norm(grads)
-
-        self.optimizer.apply_gradients(zip(grads, self.trainable_weights))
-
-        # ema update, zero debias not needed since we initialized identically
-        for v, vt in zip(self.trainable_weights, self.trainable_weights_target):
-            vt.assign(ema_decay*vt + (1.0-ema_decay)*v)
-
-        # e.g. batchnorm moving avg should be same between main & target models
-        for v, vt in zip(self.non_trainable_weights, self.non_trainable_weights_target):
-            vt.assign(v)
-
-        # parameter norms
-        model_outputs['gnorm'] = gnorm
-        model_outputs['loss'] = loss
-        model_outputs['losses'] = losses
-        model_outputs['td_error'] = td_error
-        model_outputs['y'] = y
-
-        # collect output
-        rvals = {}
-        rvals['loss'] = loss
-        for k in outputs:
-            rvals[k] = model_outputs[k]
-
-        return rvals
-

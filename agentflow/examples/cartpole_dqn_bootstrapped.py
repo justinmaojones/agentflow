@@ -239,7 +239,6 @@ def run(**cfg):
                         ema_decay=cfg['ema_decay'],
                         gamma=cfg['gamma'],
                         weight_decay=cfg['weight_decay'],
-                        outputs=['td_error', 'Q_policy_eval'],
                         **sample)
 
                 if cfg['buffer_type'] == 'prioritized' and not cfg['prioritized_replay_simple']:

@@ -429,7 +429,6 @@ def run(**cfg):
                 gamma = gamma,
                 weight_decay = weight_decay,
                 grad_clip_norm=cfg['grad_clip_norm'],
-                outputs = ['abs_td_error', 'Q_policy_eval', 'loss', 'gnorm'],
                 **sample)
 
             update_outputs['weight_decay'] = weight_decay

@@ -3,10 +3,11 @@ import tensorflow as tf
 from tensorflow.python.framework.errors_impl import InvalidArgumentError
 from trfl import td_learning
 
+from .base_agent import BaseAgent
 from ..tensorflow.ops import l2_loss 
 from ..tensorflow.ops import value_at_argmax 
 
-class DQN(object):
+class DQN(BaseAgent):
 
     def __init__(self,
             state_shape,
@@ -54,8 +55,6 @@ class DQN(object):
         )
 
         return Q_model
-
-
 
     def build_model(self):
 
@@ -125,123 +124,21 @@ class DQN(object):
             self.policy_logits_model = tf.keras.Model(inputs['state'], Q_eval)
             self.train_model = tf.keras.Model(inputs, self.train_outputs)
 
-    def set_weights(self, weights):
-        self.train_model.set_weights(weights)
+    def compute_losses(self, model_outputs, reward, gamma, done, mask):
+        # loss functions
+        losses, (y, td_error) = td_learning(
+            model_outputs['Q_action_train'],
+            reward,
+            gamma*(1-done),
+            model_outputs['Q_state2_target_action'],
+        )
 
-    def l2_loss(self, weight_decay):
-        return 0.5 * tf.reduce_sum([tf.nn.l2_loss(x) for x in self.trainable_weights])
-
-    @tf.function
-    def act(self, state):
-        return self.policy_model(state)
+        addl_output = {
+            'td_error': td_error,
+            'y': y
+        }
+        return losses, addl_output
 
     @tf.function
     def policy_logits(self, state):
         return self.policy_logits_model(state)
-        
-    @tf.function
-    def update(self, 
-            state, 
-            action, 
-            reward, 
-            done, 
-            state2, 
-            gamma=0.99, 
-            ema_decay=0.999, 
-            weight_decay=None, 
-            grad_clip_norm=None,
-            importance_weight=None, 
-            outputs=['td_error'], 
-        ):
-
-        # autocast types
-        reward = tf.cast(reward, tf.float32)
-        done = tf.cast(done, tf.float32)
-        gamma = tf.cast(gamma, tf.float32)
-        ema_decay = tf.cast(ema_decay, tf.float32)
-        if weight_decay is not None:
-            weight_decay = tf.cast(weight_decay, tf.float32)
-        if importance_weight is not None:
-            importance_weight = tf.cast(importance_weight, tf.float32)
-        if grad_clip_norm is not None:
-            grad_clip_norm = tf.cast(grad_clip_norm, tf.float32)
-
-        with tf.GradientTape() as tape:
-            # do not watch target network weights
-            tape.watch(self.trainable_weights)
-
-            model_outputs = self.train_model({
-                'state': state,
-                'action': action,
-                'reward': reward,
-                'done': done,
-                'state2': state2,
-            })
-
-            # loss functions
-            losses, (y, td_error) = td_learning(
-                model_outputs['Q_action_train'],
-                reward,
-                gamma*(1-done),
-                model_outputs['Q_state2_target_action'],
-            )
-
-            # check shapes
-            tf.debugging.assert_rank(losses, 1)
-
-            if importance_weight is None:
-                loss = tf.reduce_mean(losses)
-            else:
-                # check shapes
-                tf.debugging.assert_equal(
-                    tf.shape(importance_weight),
-                    tf.shape(losses),
-                    message = "shape of importance_weight and losses do not match")
-
-                # overall loss function (importance weighted)
-                loss = tf.reduce_mean(importance_weight * losses)
-
-            if weight_decay is not None:
-                loss = loss + weight_decay * l2_loss(self.trainable_weights)
-
-        # update model weights
-        grads = tape.gradient(loss, self.trainable_weights)
-
-        # gradient clipping
-        if grad_clip_norm is not None:
-            grads, gnorm = tf.clip_by_global_norm(grads, grad_clip_norm)
-        else:
-            gnorm = tf.linalg.global_norm(grads)
-
-        self.optimizer.apply_gradients(zip(grads, self.trainable_weights))
-
-        # ema update, zero debias not needed since we initialized identically
-        for v, vt in zip(self.trainable_weights, self.trainable_weights_target):
-            vt.assign(ema_decay*vt + (1.0-ema_decay)*v)
-
-        # e.g. batchnorm moving avg should be same between main & target models
-        for v, vt in zip(self.non_trainable_weights, self.non_trainable_weights_target):
-            vt.assign(v)
-
-        # parameter norms
-        pnorm = tf.linalg.global_norm(self.trainable_weights)
-        pnorm_target = tf.linalg.global_norm(self.trainable_weights_target)
-        pnorm_nt = tf.linalg.global_norm(self.non_trainable_weights)
-        pnorm_target_nt = tf.linalg.global_norm(self.non_trainable_weights_target)
-
-        model_outputs['pnorm/main/trainable_weights'] = pnorm
-        model_outputs['pnorm/target/trainable_weights'] = pnorm_target
-        model_outputs['pnorm/main/non_trainable_weights'] = pnorm_nt
-        model_outputs['pnorm/target/non_trainable_weights'] = pnorm_target_nt
-        model_outputs['gnorm'] = gnorm
-        model_outputs['losses'] = losses
-        model_outputs['td_error'] = td_error
-        model_outputs['y'] = y
-
-        # collect output
-        rvals = {}
-        rvals['loss'] = loss
-        for k in outputs:
-            rvals[k] = model_outputs[k]
-
-        return rvals
