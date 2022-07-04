@@ -114,8 +114,6 @@ class BootstrappedDQN(BaseAgent):
             self.trainable_weights_target = Q_model_target.trainable_weights 
             self.non_trainable_weights_target = Q_model_target.non_trainable_weights 
 
-            self.global_weights = self.weights + self.weights_target
-
             # the bootstrapped heads should be in the last dimension
             # Q_train_multihead is shape (None, num_actions, num_heads)
             Q_train_multihead = Q_model(inputs['state'], training=True)
@@ -178,7 +176,7 @@ class BootstrappedDQN(BaseAgent):
         loss = 0.5 * tf.square(td_error)
         return loss, (y, td_error)
 
-    def compute_losses(self, reward, gamma, done, model_outputs):
+    def compute_losses(self, model_outputs, reward, gamma, done):
         # loss functions
         losses_Q_multihead, (y, td_error_multihead) = self._loss_fn(
             model_outputs['Q_action_train_multihead'],
@@ -207,4 +205,3 @@ class BootstrappedDQN(BaseAgent):
             return self.policy_logits_model(state)
         else:
             return self.policy_logits_masked_model([state, mask])
-        

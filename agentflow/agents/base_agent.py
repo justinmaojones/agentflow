@@ -1,6 +1,7 @@
 from abc import abstractmethod
 from dataclasses import dataclass
 import tensorflow as tf
+from typing import Dict, List
 
 from agentflow.agents.source import AgentSource
 from ..tensorflow.ops import l2_loss 
@@ -27,14 +28,14 @@ class BaseAgent(AgentSource):
         if mask is None:
             return self.policy_model(state)
         else:
-            return self.policy_masked_model([state, mask])
+            return self.policy_model([state, mask])
         
     @abstractmethod
     def build_model(self):
         ...
 
     @abstractmethod
-    def compute_losses(self, reward, gamma, done, model_outputs):
+    def compute_losses(self, model_outputs, reward, gamma, done):
         ...
 
     def get_weights(self):
