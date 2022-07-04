@@ -205,6 +205,3 @@ class BootstrappedDQN(BaseAgent):
             return self.policy_logits_model(state)
         else:
             return self.policy_logits_masked_model([state, mask])
-
-    def __hash__(self):
-        return hash(1)
