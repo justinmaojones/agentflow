@@ -1,38 +1,35 @@
 import numpy as np
 import cv2
 
+from agentflow.transform.img_encoder import _ENCODING_LENGTH_BYTES
+
+
+def _decode_length(x):
+    y = 0
+    for e in x:
+        y |= e
+    return y
 
 class ImgDecoder(object):
 
     def __init__(self, key_to_decode):
         self.key_to_decode = key_to_decode
 
-    @property
-    def _key_encoded(self):
-        return self.key_to_decode + '_encoded'
-
-    @property
-    def _key_encoding_length(self):
-        return self.key_to_decode + '_encoding_length'
-
     def transform(self, data):
-        x_encoded = data[self._key_encoded]
-        x_enc_len = data[self._key_encoding_length]
+        x_encoded = data[self.key_to_decode]
         assert x_encoded.dtype == np.uint8, "encoded data must be uint8"
-        assert x_enc_len.dtype in (np.int32, np.int64), "encoding length must be int32 or int64"
         assert x_encoded.ndim == 2, "encoded data must be 1d, excluding batch dimension"
-        assert x_enc_len.ndim == 1, "encoded data lengths must be 1d, including batch dimension"
-        assert len(x_encoded) == len(x_enc_len), "encoded data and lengths must have same batch size"
         n = len(x_encoded)
         decodings = []
         for i in range(n):
-            xl = x_enc_len[i]
-            decodings.append(cv2.imdecode(x_encoded[i][:xl], cv2.IMREAD_UNCHANGED))
-        output = {k:data[k] for k in data}
-        output.pop(self._key_encoded)
-        output.pop(self._key_encoding_length)
-        assert self.key_to_decode not in output
-        output[self.key_to_decode] = np.stack(decodings)
+            # length of encoding
+            xl = _decode_length(x_encoded[i, :_ENCODING_LENGTH_BYTES])
+            # decode
+            left = _ENCODING_LENGTH_BYTES
+            right = xl + _ENCODING_LENGTH_BYTES
+            decodings.append(cv2.imdecode(x_encoded[i][left:right], cv2.IMREAD_UNCHANGED))
+        decoded_array = np.stack(decodings)
+        output = {k: decoded_array if k==self.key_to_decode else data[k] for k in data}
         return output
 
     def __call__(self, data):
@@ -47,10 +44,14 @@ if __name__ == '__main__':
         def test_normal(self):
             img_encoder = ImgEncoder('state', 3000)
             img_decoder = ImgDecoder('state')
-            x = {'state':  np.random.choice(10,size=(3,4,5)).astype('uint8')}
+            x = {
+                'state':  np.random.choice(10,size=(3,4,5)).astype('uint8'),
+                'something_else': np.array([1,2,3])
+            }
             x2 = img_decoder(img_encoder(x))
             np.testing.assert_array_equal(x2['state'], x['state'])
-            self.assertEqual(set(x2.keys()), set(('state',)))
+            np.testing.assert_array_equal(x2['something_else'], x['something_else'])
+            self.assertEqual(set(x2.keys()), set(('state', 'something_else')))
 
     unittest.main()
 
