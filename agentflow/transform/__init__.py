@@ -1,2 +1,2 @@
-from .img_encoder import ImgEncoder
-from .img_decoder import ImgDecoder
+from .img_compression import ImgEncoder
+from .img_compression import ImgDecoder
