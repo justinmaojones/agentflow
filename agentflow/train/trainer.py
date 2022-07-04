@@ -1,17 +1,17 @@
 
 
-class Trainer(object):
+class Trainer:
 
     def __init__(self, env, agent, replay_buffer, preprocess_fn=None):
         self.env = env
         self.agent = agent
         self.replay_buffer = replay_buffer
-        self.preprocess_fn = preprocess_fn
+        self._t
 
-    def reset(self):
-        self.state = self.preprocess(self.env.reset())
+    def train_step(self):
 
-    def step(self, sess):
+
+    def step(self):
         action = self.agent.act(sess, self.state)
         obs, reward, done, info = self.env.step(action)
         self.replay_buffer.append({'state':state, 'action':action, 'reward':reward, 'done':done})
