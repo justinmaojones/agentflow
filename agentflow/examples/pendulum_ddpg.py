@@ -146,6 +146,7 @@ def run(**cfg):
         optimizer=optimizer,
         dqda_clipping=cfg['dqda_clipping'],
         clip_norm=cfg['clip_norm'],
+        policy_loss_weight=cfg['policy_loss_weight']
     )
 
     # Replay Buffer
@@ -239,28 +240,7 @@ def run(**cfg):
                         ema_decay=cfg['ema_decay'],
                         gamma=cfg['gamma'],
                         weight_decay=cfg['weight_decay'],
-                        policy_loss_weight=cfg['policy_loss_weight'],
                         grad_clip_norm=cfg['grad_clip_norm'],
-                        outputs=[
-                            'td_error',
-                            'y',
-                            'Q_policy_eval', 
-                            'pnorm/main/trainable_weights',
-                            'pnorm/target/trainable_weights',
-                            'pnorm/main/non_trainable_weights',
-                            'pnorm/target/non_trainable_weights',
-                            'gnorm',
-                            'losses_policy', 
-                            'losses_Q',
-                            'Q_action_train',
-                            'Q_policy_eval',
-                            'Q_policy_train',
-                            'Q_target_state2',
-                            'policy_target',
-                            'policy_target_state2',
-                            'policy_eval',
-                            'policy_train',
-                        ],
                         **sample)
 
                 if cfg['buffer_type'] == 'prioritized' and not cfg['prioritized_replay_simple']:
