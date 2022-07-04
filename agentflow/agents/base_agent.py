@@ -23,6 +23,9 @@ class BaseAgent(AgentSource):
     trainable_weights_target: List[tf.Variable]
     non_trainable_weights_target: List[tf.Variable]
 
+    def __hash__(self):
+        return hash(self.__class__.__name__)
+
     @tf.function
     def act(self, state, mask=None):
         if mask is None:
