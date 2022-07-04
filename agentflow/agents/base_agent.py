@@ -35,7 +35,7 @@ class BaseAgent(AgentSource):
         ...
 
     @abstractmethod
-    def compute_losses(self, model_outputs, reward, gamma, done):
+    def compute_losses(self, model_outputs, reward, gamma, done, mask=None):
         ...
 
     def get_weights(self):
@@ -48,9 +48,9 @@ class BaseAgent(AgentSource):
     @property
     def learning_rate(self):
         if isinstance(self.optimizer.learning_rate, tf.Variable):
-            return self.optimizer.learning_rate.numpy()
+            return self.optimizer.learning_rate
         elif isinstance(self.optimizer.learning_rate, tf.keras.optimizers.schedules.LearningRateSchedule):
-            return self.optimizer.learning_rate(self.optimizer.iterations).numpy()
+            return self.optimizer.learning_rate(self.optimizer.iterations)
         else:
             raise NotImplementedError("Unhandled type of learning rate in {self}")
 
@@ -139,11 +139,12 @@ class BaseAgent(AgentSource):
 
             if mask is not None:
                 mask = tf.cast(mask, tf.float32)
+                model_inputs['mask'] = mask
 
             model_outputs = self.train_model(model_inputs)
             add_to_outputs(model_outputs)
 
-            losses, addl_losses_output = compute_losses(reward, gamma, done, model_outputs)
+            losses, addl_losses_output = self.compute_losses(model_outputs, reward, gamma, done, mask)
             add_to_outputs({'losses': losses})
             add_to_outputs(addl_losses_output)
 
@@ -178,7 +179,7 @@ class BaseAgent(AgentSource):
 
         add_to_outputs({'gnorm': gnorm})
 
-        add_to_outputs({'learning_rate': learning_rate})
+        add_to_outputs({'learning_rate': self.learning_rate})
         self.optimizer.apply_gradients(zip(grads, self.trainable_weights))
 
         # ema update, zero debias not needed since we initialized identically

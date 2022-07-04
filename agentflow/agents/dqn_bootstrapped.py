@@ -176,7 +176,7 @@ class BootstrappedDQN(BaseAgent):
         loss = 0.5 * tf.square(td_error)
         return loss, (y, td_error)
 
-    def compute_losses(self, model_outputs, reward, gamma, done):
+    def compute_losses(self, model_outputs, reward, gamma, done, mask):
         # loss functions
         losses_Q_multihead, (y, td_error_multihead) = self._loss_fn(
             model_outputs['Q_action_train_multihead'],
@@ -205,3 +205,6 @@ class BootstrappedDQN(BaseAgent):
             return self.policy_logits_model(state)
         else:
             return self.policy_logits_masked_model([state, mask])
+
+    def __hash__(self):
+        return hash(1)
