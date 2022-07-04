@@ -316,7 +316,6 @@ def run(**cfg):
                         gamma=cfg['gamma'],
                         weight_decay=cfg['weight_decay'],
                         grad_clip_norm=cfg['grad_clip_norm'],
-                        outputs=['td_error', 'Q_policy_eval', 'loss'],
                         **sample)
                 update_counter += 1
 
