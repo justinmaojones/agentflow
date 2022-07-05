@@ -24,6 +24,7 @@ class BaseAgent(AgentSource):
     non_trainable_weights_target: List[tf.Variable]
 
     def __hash__(self):
+        """classes become unhashable with keras model attributes"""
         return hash(self.__class__.__name__)
 
     @tf.function

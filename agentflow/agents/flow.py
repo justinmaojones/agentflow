@@ -37,4 +37,7 @@ class AgentFlow(Flow):
 class DiscreteActionAgentFlow(AgentFlow):
 
     source: Union[DiscreteActionAgentSource, DiscreteActionAgentFlow]
-    num_actions: int
+
+    @property
+    def num_actions(self) -> int:
+        return self.source.num_actions

@@ -4,10 +4,11 @@ from tensorflow.python.framework.errors_impl import InvalidArgumentError
 from trfl import td_learning
 
 from .base_agent import BaseAgent
+from .source import DiscreteActionAgentSource
 from ..tensorflow.ops import l2_loss 
 from ..tensorflow.ops import value_at_argmax 
 
-class DQN(BaseAgent):
+class DQN(BaseAgent, DiscreteActionAgentSource):
 
     def __init__(self,
             state_shape,
