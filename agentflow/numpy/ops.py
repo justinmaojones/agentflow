@@ -39,7 +39,6 @@ def eps_greedy_noise(action, num_actions, eps=0.05):
         np.random.choice(num_actions, size=action.shape)
     )
 
-
 def eps_greedy_noise_from_logits(action_logits, eps=0.05):
     if action_logits.ndim == 1:
         random_action = np.random.choice(action_logits.shape[-1])

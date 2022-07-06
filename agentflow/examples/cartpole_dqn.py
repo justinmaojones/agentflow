@@ -7,14 +7,14 @@ import time
 import yaml 
 
 from agentflow.env import CartpoleGymEnv
+from agentflow.agents import CompletelyRandomDiscreteUntil 
 from agentflow.agents import DQN
-from agentflow.agents.utils import test_agent
+from agentflow.agents import EpsilonGreedy
+from agentflow.agents.utils import test_agent as test_agent_fn
 from agentflow.buffers import BufferMap
 from agentflow.buffers import PrioritizedBufferMap
 from agentflow.buffers import NStepReturnBuffer
 from agentflow.numpy.ops import onehot
-from agentflow.numpy.ops import eps_greedy_noise
-from agentflow.numpy.ops import gumbel_softmax_noise
 from agentflow.numpy.schedules import ExponentialDecaySchedule 
 from agentflow.numpy.schedules import LinearAnnealingSchedule
 from agentflow.state import NPrevFramesStateEnv
@@ -129,6 +129,13 @@ def run(**cfg):
         optimizer=optimizer,
         double_q=cfg['double_q'],
     )
+    test_agent = agent
+
+    agent = CompletelyRandomDiscreteUntil(agent, num_steps=cfg['begin_learning_at_step'])
+    if cfg['noise'] == 'eps_greedy':
+        agent = EpsilonGreedy(agent, epsilon=cfg['noise_eps'])
+    else:
+        raise NotImplementedError
 
     # Replay Buffer
     if cfg['buffer_type'] == 'prioritized':
@@ -179,24 +186,12 @@ def run(**cfg):
     pb = tf.keras.utils.Progbar(T, stateful_metrics=['test_ep_returns'])
     for t in range(T):
         tf.summary.experimental.set_step(t)
-
         start_step_time = time.time()
 
-        if len(replay_buffer) >= cfg['begin_learning_at_step']:
-            if cfg['noise'] == 'eps_greedy':
-                logits = agent.policy_logits(state).numpy()
-                action = eps_greedy_noise(logits, eps=cfg['noise_eps'])
-            elif cfg['noise'] == 'gumbel_softmax':
-                logits = agent.policy_logits(state).numpy()
-                action = gumbel_softmax_noise(logits, temperature=cfg['noise_temperature'])
-            else:
-                raise NotImplementedError("unknown noise type %s" % cfg['noise'])
-        else:
-            # completely random action choices
-            logits = agent.policy_logits(state).numpy()
-            action = eps_greedy_noise(logits, eps=1.0)
-
-        step_output = env.step(action.astype('int').ravel())
+        action = agent.act(state)
+        if isinstance(action, tf.Tensor):
+            action = action.numpy()
+        step_output = env.step(action)
 
         data = {
             'state':state,
@@ -235,7 +230,7 @@ def run(**cfg):
             log.append_dict(update_outputs)
 
         if t % cfg['n_steps_per_eval'] == 0 and t > 0:
-            log.append('test_ep_returns', test_agent(test_env, agent))
+            log.append('test_ep_returns', test_agent_fn(test_env, test_agent))
             log.append('test_ep_steps', t)
             avg_test_ep_returns = np.mean(log['test_ep_returns'][-1:])
             pb_input.append(('test_ep_returns', avg_test_ep_returns))

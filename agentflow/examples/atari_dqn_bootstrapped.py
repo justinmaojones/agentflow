@@ -8,6 +8,8 @@ import time
 import yaml 
 
 from agentflow.agents import BootstrappedDQN
+from agentflow.agents import CompletelyRandomDiscreteUntil 
+from agentflow.agents import EpsilonGreedy
 from agentflow.buffers import BootstrapMaskBuffer
 from agentflow.buffers import BufferMap
 from agentflow.buffers import CompressedImageBuffer 
@@ -169,6 +171,14 @@ def run(**cfg):
         random_prior=cfg['bootstrap_random_prior'],
         prior_scale=cfg['bootstrap_prior_scale'],
     )
+    test_agent = agent
+
+    agent = CompletelyRandomDiscreteUntil(agent, num_steps=cfg['begin_learning_at_step'])
+    if cfg['noise'] == 'eps_greedy':
+        agent = EpsilonGreedy(agent, epsilon=cfg['noise_eps'])
+    else:
+        raise NotImplementedError
+
 
     for v in agent.weights + agent.weights_target:
         print(v.name, v.shape)
@@ -252,20 +262,8 @@ def run(**cfg):
 
         noise_scale = noise_scale_schedule(t)
         log.append('noise_scale', noise_scale)
-        if frame_counter >= cfg['begin_learning_at_step'] or cfg['bootstrap_explore_before_learning']:
-            if cfg['noise_type'] == 'eps_greedy':
-                logits = agent.policy_logits(state, mask).numpy()
-                action = eps_greedy_noise(logits, eps=noise_scale)
-            elif cfg['noise_type'] == 'gumbel_softmax':
-                logits = agent.policy_logits(state, mask).numpy()
-                action = gumbel_softmax_noise(logits, temperature=cfg['noise_temperature'])
-            else:
-                raise NotImplementedError("unknown noise type %s" % cfg['noise_type'])
-        else:
-            # completely random action choices
-            action = np.random.choice(action_shape, size=cfg['n_envs'])
-
-        step_output = env.step(action.astype('int').ravel())
+        action = agent.act(state).numpy()
+        step_output = env.step(action)
 
         data = {
             'state':state,
