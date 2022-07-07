@@ -35,8 +35,8 @@ class BufferFlow(Flow):
     def get_sequence(self, time_idx: np.ndarray, seq_size: int, batch_idx: np.ndarray = None):
         return self.source.get_sequence(time_idx, seq_size, batch_idx)
 
-    def sample(self, n_samples: int):
-        return self.source.sample(n_samples)
+    def sample(self, n_samples: int, **kwargs):
+        return self.source.sample(n_samples, **kwargs)
 
     @property
     def shape(self):
