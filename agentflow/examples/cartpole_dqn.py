@@ -131,11 +131,11 @@ def run(**cfg):
     )
     test_agent = agent
 
-    agent = CompletelyRandomDiscreteUntil(agent, num_steps=cfg['begin_learning_at_step'])
     if cfg['noise'] == 'eps_greedy':
         agent = EpsilonGreedy(agent, epsilon=cfg['noise_eps'])
     else:
         raise NotImplementedError
+    agent = CompletelyRandomDiscreteUntil(agent, num_steps=cfg['begin_learning_at_step'])
 
     # Replay Buffer
     if cfg['buffer_type'] == 'prioritized':
