@@ -6,6 +6,7 @@ gym[accept-rom-license]
 h5py
 jupyter
 matplotlib
+numpy
 pandas
 pyyaml
 opencv-python
