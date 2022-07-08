@@ -5,10 +5,10 @@ from agentflow.buffers.flow import BufferFlow
 from agentflow.buffers.buffer_map import BufferMap
 from agentflow.buffers.prioritized_buffer_map import PrioritizedBufferMap 
 
-class DelayedBufferMapPublisher(BufferMap):
+class _DelayedBufferMapPublisher(BufferMap):
 
     def __init__(self, max_length=2**20, publish_indicator_key="done", add_return_loss=False):
-        super(DelayedBufferMapPublisher, self).__init__(max_length)
+        super(_DelayedBufferMapPublisher, self).__init__(max_length)
         self._publish_indicator_key = publish_indicator_key
         self._count_since_last_publish = None 
         self._published = []
@@ -49,7 +49,7 @@ class DelayedBufferMapPublisher(BufferMap):
         return output
 
     def append(self, data):
-        super(DelayedBufferMapPublisher, self).append(data)
+        super(_DelayedBufferMapPublisher, self).append(data)
         return self.publish(data)
 
 class DelayedBufferMap(BufferFlow):
@@ -63,7 +63,7 @@ class DelayedBufferMap(BufferFlow):
         self.source = source
         self._publish_indicator_key = publish_indicator_key
         self._delayed_buffer_max_length = delayed_buffer_max_length
-        self._delayed_buffer_map = DelayedBufferMapPublisher(
+        self._delayed_buffer_map = _DelayedBufferMapPublisher(
                 self._delayed_buffer_max_length, publish_indicator_key, add_return_loss)
 
     def append(self, data):
@@ -73,64 +73,4 @@ class DelayedBufferMap(BufferFlow):
 
     def append_sequence(self, data):
         raise NotImplementedError("DelayedBufferMap.append_sequence is not currently supported")
-
-
-if __name__ == '__main__':
-    import unittest
-
-    class Test(unittest.TestCase):
-
-        def test_all(self):
-            n = 10
-            source = BufferMap(n)
-            buf = DelayedBufferMap(source)
-
-            # append data, but nothing ready to publish yet
-            x = {
-                'x': np.array([1, 2]),
-                'done': np.array([0, 0]),
-            }
-            buf.append(x)
-            self.assertEqual(len(buf.source), 0)
-            self.assertTrue(np.all(buf._delayed_buffer_map._count_since_last_publish==np.array([1, 1])))
-
-            # append data, element 1 ready to publish 
-            x = {
-                'x': np.array([3, 4]),
-                'done': np.array([1, 0]),
-            }
-            buf.append(x)
-            self.assertTrue(np.all(buf.source['x']._buffer[:2]==np.array([[1, 3]]).T))
-            self.assertTrue(np.all(buf.source['done']._buffer[:2]==np.array([[0, 1]]).T))
-            self.assertTrue(np.all(buf._delayed_buffer_map._count_since_last_publish==np.array([0, 2])))
-
-            # append data, both elements ready to publish 
-            x = {
-                'x': np.array([5, 6]),
-                'done': np.array([1, 1]),
-            }
-            buf.append(x)
-            self.assertTrue(np.all(buf.source['x']._buffer==np.array([[1, 3, 5, 2, 4, 6, 0, 0, 0, 0]]).T))
-            self.assertTrue(np.all(buf.source['done']._buffer==np.array([[0, 1, 1, 0, 0, 1, 0, 0, 0, 0]]).T))
-            self.assertTrue(np.all(buf._delayed_buffer_map._count_since_last_publish==np.array([0, 0])))
-
-            # append data, wrap around 
-            for i in range(0, 9):
-                buf.append({'x': np.array([i, i+1]), 'done': np.array([0, 0])})
-
-            self.assertTrue(np.all(buf.source['x']._buffer==np.array([[1, 3, 5, 2, 4, 6, 0, 0, 0, 0]]).T))
-            self.assertTrue(np.all(buf.source['done']._buffer==np.array([[0, 1, 1, 0, 0, 1, 0, 0, 0, 0]]).T))
-            self.assertTrue(np.all(buf._delayed_buffer_map._count_since_last_publish==np.array([9, 9])))
-
-            x = {
-                'x': np.array([9, 10]),
-                'done': np.array([1, 0]),
-            }
-            buf.append(x)
-            self.assertTrue(np.all(buf.source['x']._buffer==np.array([[4, 5, 6, 7, 8, 9, 0, 1, 2, 3]]).T))
-            self.assertTrue(np.all(buf._delayed_buffer_map._count_since_last_publish==np.array([0, 10])))
-
-
-
-    unittest.main()
 
