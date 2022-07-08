@@ -240,10 +240,13 @@ def load_multiple_experiments(resultsdir,allow_load_partial=False,load_empty=Fal
     logs = {}
     for sd in sorted(savedirs):
         if os.path.isdir(savedirs[sd]):
-            log, config = load_experiment_results(savedirs[sd],allow_load_partial,load_keys)
-            if len(log) > 0 or load_empty:
-                logs[sd] = log
-                configs[sd] = config
+            try:
+                log, config = load_experiment_results(savedirs[sd],allow_load_partial,load_keys)
+                if len(log) > 0 or load_empty:
+                    logs[sd] = log
+                    configs[sd] = config
+            except BlockingIOError:
+                print(f"could not load logs due to BlockingIOError for {savedirs[sd]}")
 
     return logs, configs
 

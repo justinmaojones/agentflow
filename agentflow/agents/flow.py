@@ -1,12 +1,16 @@
+from __future__ import annotations
+
 from dataclasses import dataclass
+from typing import Union
 
 from agentflow.agents.source import AgentSource
+from agentflow.agents.source import DiscreteActionAgentSource
 from agentflow.flow import Flow
 
 @dataclass
 class AgentFlow(Flow):
 
-    source: AgentSource
+    source: Union[AgentSource, AgentFlow]
 
     def act(self, state, mask=None, **kwargs):
         return self.source.act(state, mask, **kwargs)
@@ -28,3 +32,12 @@ class AgentFlow(Flow):
 
     def update(self, *args, **kwargs):
         return self.source.update(*args, **kwargs)
+
+@dataclass
+class DiscreteActionAgentFlow(AgentFlow):
+
+    source: Union[DiscreteActionAgentSource, DiscreteActionAgentFlow]
+
+    @property
+    def num_actions(self) -> int:
+        return self.source.num_actions

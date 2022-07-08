@@ -1,6 +1,5 @@
 import numpy as np
 from ..env.base_env import BaseEnv
-from ..numpy.ops import eps_greedy_noise
 from . import PrevEpisodeReturnsEnv
 from . import PrevEpisodeLengthsEnv
 
@@ -23,15 +22,11 @@ class TestAgentEnv(BaseEnv):
     def step(self, action):
         return self.env.step(action)
 
-    def test(self, agent, noise_scale=0.0):
+    def test(self, agent):
         state = self.reset()['state']
         all_done = None
         while all_done is None or np.mean(all_done) < 1:
-            if noise_scale > 0:
-                logits = agent.policy_logits(state).numpy()
-                action = eps_greedy_noise(logits, eps=noise_scale)
-            else:
-                action = agent.act(state).numpy()
+            action = agent.act(state)
             step_output = self.step(action)
             state = step_output['state']
             done = step_output['done']

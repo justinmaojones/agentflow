@@ -9,6 +9,8 @@ import time
 import yaml 
 
 from agentflow.agents import BootstrappedDQN
+from agentflow.agents import CompletelyRandomDiscreteUntil 
+from agentflow.agents import EpsilonGreedy
 from agentflow.agents.utils import test_agent
 from agentflow.buffers import BootstrapMaskBuffer 
 from agentflow.buffers import BufferMap
@@ -19,8 +21,6 @@ from agentflow.examples.env import dqn_atari_paper_env
 from agentflow.examples.nn import dqn_atari_paper_net
 from agentflow.examples.nn import dqn_atari_paper_net_dueling
 from agentflow.numpy.ops import onehot
-from agentflow.numpy.ops import eps_greedy_noise
-from agentflow.numpy.ops import gumbel_softmax_noise
 from agentflow.numpy.schedules import ExponentialDecaySchedule 
 from agentflow.numpy.schedules import LinearAnnealingSchedule
 from agentflow.state import NPrevFramesStateEnv
@@ -211,19 +211,23 @@ def run(**cfg):
             self.next = self.env.reset()
 
             # build agent
-            self.agent = build_agent()
+            agent = build_agent()
+            if cfg['noise_type'] == 'eps_greedy':
+                noise_scale_schedule = LinearAnnealingSchedule(
+                    initial_value = cfg['noise_scale_init'],
+                    final_value = cfg['noise_scale_final'],
+                    annealing_steps = cfg['noise_scale_anneal_steps'],
+                    begin_at_step = 0, 
+                )
+                agent = EpsilonGreedy(agent, epsilon=noise_scale_schedule)
+            else:
+                raise NotImplementedError
+            agent = CompletelyRandomDiscreteUntil(agent, num_steps=cfg['begin_learning_at_step'])
 
-            self.noise_scale_schedule = LinearAnnealingSchedule(
-                initial_value = cfg['noise_scale_init'],
-                final_value = cfg['noise_scale_final'],
-                annealing_steps = cfg['noise_scale_anneal_steps'],
-                begin_at_step = 0, 
-            )
+            self.agent = agent
 
             self._set_weights_counter = 0
             self._name = 'Runner'
-
-            self.noise_scale = None
 
         @timed
         def set_weights(self, weights):
@@ -231,23 +235,11 @@ def run(**cfg):
             self._set_weights_counter += 1
             self.log.append.remote('set_weights/' + self._name, self._set_weights_counter)
 
-
         @timed
         def step(self, t):
-            self.noise_scale = self.noise_scale_schedule(t)
-
-            # do-while to initially fill the buffer
-            if cfg['noise_type'] == 'eps_greedy':
-                logits = agent.policy_logits(state, mask).numpy()
-                action = eps_greedy_noise(logits, eps=self.noise_scale)
-            elif cfg['noise_type'] == 'gumbel_softmax':
-                logits = agent.policy_logits(state, mask).numpy()
-                action = gumbel_softmax_noise(logits, temperature=cfg['noise_temperature'])
-            else:
-                raise NotImplementedError("unknown noise type %s" % cfg['noise_type'])
-
+            action = agent.act(state).numpy()
             self.prev = self.next
-            self.next = env.step(action.astype('int').ravel())
+            self.next = env.step(action)
 
             data = {
                 'state':self.prev['state'],
@@ -255,7 +247,6 @@ def run(**cfg):
                 'reward':self.next['reward'],
                 'done':self.next['done'],
                 'state2':self.next['state'],
-                'mask':self.bootstrap_mask(),
             }
 
             if cfg['buffer_type'] == 'prioritized' and not cfg['prioritized_replay_simple']:
@@ -266,7 +257,6 @@ def run(**cfg):
                 )['abs_td_error']
 
             self.log.append_dict.remote({
-                'noise_scale': self.noise_scale,
                 'train_ep_return': self.next['prev_episode_return'],
                 'train_ep_length': self.next['prev_episode_length'],
                 'prev_episode_return': self.next['prev_episode_return'], # for backwards compatibility
@@ -283,13 +273,18 @@ def run(**cfg):
         def __init__(self, env, log):
             self.log = log
             self.env = env
-            self.agent = build_agent()
+
+            agent = build_agent()
+            if cfg['noise_scale_test'] > 0:
+                agent = EpsilonGreedy(agent, epsilon=cfg['noise_scale_test'])
+
+            self.agent = agent
 
             self._set_weights_counter = 0
             self._name = 'TestRunner'
 
         def test(self, t, frame_counter):
-            test_output = self.env.test(self.agent, noise_scale=cfg['noise_scale_test'])
+            test_output = self.env.test(self.agent)
             self.log.append_dict.remote({
                 'test_ep_returns': test_output['return'],
                 'test_ep_length': test_output['length'],
@@ -434,7 +429,6 @@ def run(**cfg):
             update_outputs['weight_decay'] = weight_decay
             update_outputs['gamma'] = gamma
             update_outputs['ema_decay'] = ema_decay
-            update_outputs['learning_rate'] = self.agent.learning_rate
             self.log.append_dict.remote(update_outputs)
 
             if cfg['log_pnorms']:

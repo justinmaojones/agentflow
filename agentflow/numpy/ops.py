@@ -31,7 +31,15 @@ def clip(x, clip_to_min=None, clip_to_max=None):
         x = np.minimum(x, clip_to_max)
     return x
 
-def eps_greedy_noise(action_logits, eps=0.05):
+def eps_greedy_noise(action, num_actions, eps=0.05):
+    assert eps >= 0 and eps <= 1, "eps must be between 0 and 1, {eps} is invalid"
+    return np.where(
+        np.random.rand(*action.shape) > eps,
+        action,
+        np.random.choice(num_actions, size=action.shape)
+    )
+
+def eps_greedy_noise_from_logits(action_logits, eps=0.05):
     if action_logits.ndim == 1:
         random_action = np.random.choice(action_logits.shape[-1])
         noise = np.random.randn()
