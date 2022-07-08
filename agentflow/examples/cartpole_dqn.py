@@ -29,7 +29,7 @@ from agentflow.utils import LogsTFSummary
 @click.option('--n_prev_frames', default=16)
 @click.option('--ema_decay', default=0.95, type=float)
 @click.option('--noise', default='eps_greedy', type=click.Choice(['eps_greedy', 'gumbel_softmax']))
-@click.option('--noise_eps', default=0.05, type=float)
+@click.option('--noise_eps', default=0.5, type=float)
 @click.option('--noise_temperature', default=1.0, type=float)
 @click.option('--double_q', default=True, type=bool)
 @click.option('--hidden_dims', default=64)
@@ -109,7 +109,10 @@ def run(**cfg):
             batchnorm = cfg['batchnorm'],
             name = name
         )
-        return tf.keras.layers.Dense(num_actions, name=f"{name}/dense/output")(h)
+        return tf.keras.layers.Dense(
+            num_actions, 
+            name=f"{name}/dense/output" if name is not None else "dense/output",
+        )(h)
 
     learning_rate_schedule = tf.keras.optimizers.schedules.ExponentialDecay(
         initial_learning_rate = cfg['learning_rate'],
@@ -169,14 +172,6 @@ def run(**cfg):
             gamma=cfg['gamma'],
         )
 
-    # Annealed parameters
-    learning_rate_schedule = ExponentialDecaySchedule(
-        initial_value = cfg['learning_rate'],
-        final_value = 0.0,
-        decay_rate = cfg['learning_rate_decay'],
-        begin_at_step = cfg['begin_learning_at_step']
-    )
-
     state = env.reset()['state']
 
     start_time = time.time()
@@ -204,9 +199,12 @@ def run(**cfg):
         log.append('train/ep_return',step_output['prev_episode_return'])
         log.append('train/ep_length',step_output['prev_episode_length'])
         replay_buffer.append(data)
-        state = data['state2']
+        state = step_output['state']
 
-        pb_input = []
+        pb_input = [
+            ('train_ep_return', step_output['prev_episode_return'].mean()),
+            ('train_ep_length', step_output['prev_episode_length'].mean()),
+        ]
         if t >= cfg['begin_learning_at_step'] and t % cfg['update_freq'] == 0:
 
             for i in range(cfg['n_update_steps']):

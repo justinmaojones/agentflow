@@ -16,8 +16,6 @@ from agentflow.buffers import BufferMap
 from agentflow.buffers import PrioritizedBufferMap
 from agentflow.buffers import NStepReturnBuffer
 from agentflow.numpy.ops import onehot
-from agentflow.numpy.ops import eps_greedy_noise
-from agentflow.numpy.ops import gumbel_softmax_noise
 from agentflow.numpy.schedules import ExponentialDecaySchedule 
 from agentflow.numpy.schedules import LinearAnnealingSchedule
 from agentflow.state import NPrevFramesStateEnv
@@ -58,6 +56,7 @@ from agentflow.utils import LogsTFSummary
 @click.option('--begin_learning_at_step', default=200)
 @click.option('--learning_rate', default=1e-4)
 @click.option('--learning_rate_decay', default=0.99995)
+@click.option('--adam_eps', default=1e-7)
 @click.option('--gamma', default=0.99)
 @click.option('--weight_decay', default=1e-4)
 @click.option('--entropy_loss_weight', default=1e-5, type=float)
@@ -117,7 +116,10 @@ def run(**cfg):
             batchnorm = cfg['batchnorm'],
             name = name
         )
-        output = tf.keras.layers.Dense(action_shape*cfg['bootstrap_num_heads'])(h)
+        output = tf.keras.layers.Dense(
+            action_shape*cfg['bootstrap_num_heads'],
+            name=f"{name}/dense/output" if name is not None else "dense/output",
+        )(h)
         return tf.reshape(output, [-1, action_shape, cfg['bootstrap_num_heads']])
 
     learning_rate_schedule = tf.keras.optimizers.schedules.ExponentialDecay(
@@ -142,11 +144,11 @@ def run(**cfg):
     )
     test_agent = agent
 
-    agent = CompletelyRandomDiscreteUntil(agent, num_steps=cfg['begin_learning_at_step'])
     if cfg['noise'] == 'eps_greedy':
         agent = EpsilonGreedy(agent, epsilon=cfg['noise_eps'])
     else:
         raise NotImplementedError
+    agent = CompletelyRandomDiscreteUntil(agent, num_steps=cfg['begin_learning_at_step'])
 
     # Replay Buffer
     if cfg['buffer_type'] == 'prioritized':
