@@ -19,8 +19,6 @@ from agentflow.examples.env import dqn_atari_paper_env
 from agentflow.examples.nn import dqn_atari_paper_net
 from agentflow.examples.nn import dqn_atari_paper_net_dueling
 from agentflow.numpy.ops import onehot
-from agentflow.numpy.ops import eps_greedy_noise
-from agentflow.numpy.ops import gumbel_softmax_noise
 from agentflow.numpy.schedules import ExponentialDecaySchedule 
 from agentflow.numpy.schedules import LinearAnnealingSchedule
 from agentflow.state import NPrevFramesStateEnv
@@ -173,15 +171,18 @@ def run(**cfg):
     )
     test_agent = agent
 
-    agent = CompletelyRandomDiscreteUntil(agent, num_steps=cfg['begin_learning_at_step'])
-    if cfg['noise'] == 'eps_greedy':
-        agent = EpsilonGreedy(agent, epsilon=cfg['noise_eps'])
+    if cfg['noise_type'] == 'eps_greedy':
+        noise_scale_schedule = LinearAnnealingSchedule(
+            initial_value = cfg['noise_scale_init'],
+            final_value = cfg['noise_scale_final'],
+            annealing_steps = cfg['noise_scale_anneal_steps'],
+            begin_at_step = 0, 
+        )
+        agent = EpsilonGreedy(agent, epsilon=noise_scale_schedule)
     else:
         raise NotImplementedError
+    agent = CompletelyRandomDiscreteUntil(agent, num_steps=cfg['begin_learning_at_step'])
 
-
-    for v in agent.weights + agent.weights_target:
-        print(v.name, v.shape)
 
     # Replay Buffer
     if cfg['buffer_type'] == 'prioritized':
@@ -229,14 +230,6 @@ def run(**cfg):
         sample_prob = cfg['bootstrap_mask_prob']
     )
 
-    # Annealed parameters
-    noise_scale_schedule = LinearAnnealingSchedule(
-        initial_value = cfg['noise_scale_init'],
-        final_value = cfg['noise_scale_final'],
-        annealing_steps = cfg['noise_scale_anneal_steps'],
-        begin_at_step = 0, 
-    )
-
     log = LogsTFSummary(savedir)
 
     state_and_mask = env.reset()
@@ -260,9 +253,7 @@ def run(**cfg):
 
         start_step_time = time.time()
 
-        noise_scale = noise_scale_schedule(t)
-        log.append('noise_scale', noise_scale)
-        action = agent.act(state).numpy()
+        action = agent.act(state)
         step_output = env.step(action)
 
         data = {
@@ -320,7 +311,6 @@ def run(**cfg):
                 if cfg['buffer_type'] == 'prioritized' and not cfg['prioritized_replay_simple']:
                     replay_buffer.update_priorities(update_outputs['abs_td_error'])
 
-            log.append('learning_rate', agent.learning_rate)
             log.append_dict(update_outputs)
 
             if cfg['log_pnorms']:

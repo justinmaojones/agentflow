@@ -31,7 +31,7 @@ class TestAgentEnv(BaseEnv):
                 logits = agent.policy_logits(state).numpy()
                 action = eps_greedy_noise(logits, eps=noise_scale)
             else:
-                action = agent.act(state).numpy()
+                action = agent.act(state)
             step_output = self.step(action)
             state = step_output['state']
             done = step_output['done']
