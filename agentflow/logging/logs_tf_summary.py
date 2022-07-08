@@ -9,11 +9,6 @@ class LogsTFSummary(object):
         self.logs = {}
         self.savedir = savedir
         self.summary_writer = tf.summary.create_file_writer(savedir,**kwargs)
-        self._other_array_metrics = {
-            'min': np.min,
-            'max': np.max,
-            'std': np.std,
-        }
         self._log_filepath = os.path.join(self.savedir,'log.h5')
 
     def __getitem__(self, key):
@@ -36,12 +31,6 @@ class LogsTFSummary(object):
             self._append(key, np.mean(val))
         else:
             self._append(key, val)
-
-        if np.size(val) > 1:
-            for m in self._other_array_metrics:
-                k2 = key + '/' + m
-                v2 = self._other_array_metrics[m](val)
-                self._append(k2,v2)
 
     def append_seq(self, key, vals):
         for i in range(len(vals)):
@@ -69,6 +58,9 @@ class LogsTFSummary(object):
         self.write(self._log_filepath, verbose)
         self.logs = {}
 
+    def with_prefix(self, prefix):
+        return LogsTFSummaryFlow(self, prefix) 
+
     def write(self, filepath, verbose=True):
         if verbose:
             print('WRITING H5 FILE TO: {filepath}'.format(**locals()))
@@ -95,3 +87,34 @@ class LogsTFSummary(object):
                     f[key].resize(n + m,axis=0)
                     f[key][n:] = data
 
+class LogsTFSummaryFlow(LogsTFSummary):
+
+    def __init__(self, log: LogsTFSummary, prefix: str):
+        self.log = log
+        self.prefix = prefix
+
+    def _prefixed_key(self, key):
+        return f"{self.prefix}/{key}"
+
+    def __getitem__(self, key):
+        return self.log[self._prefixed_key(key)]
+
+    def _append(self, key, val):
+        self.log._append(self._prefixed_key(key), val)
+
+    def append(self, key, val, summary_only=True):
+        self.log.append(self._prefixed_key(key), val, summary_only)
+
+    def set_step(self, t):
+        self.log.set_step(t)
+
+    def stack(self, key=None):
+        if key is not None:
+            key = self._prefixed_key(key)
+        return self.log.stack(key)
+
+    def flush(self, verbose=False):
+        self.log.flush(verbose)
+
+    def write(self, filepath, verbose=True):
+        self.log.write(filepath, verbose)
