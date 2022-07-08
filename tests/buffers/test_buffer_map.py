@@ -3,7 +3,7 @@ import unittest
 
 from agentflow.buffers import BufferMap
 
-class Test(unittest.TestCase):
+class TestBufferMap(unittest.TestCase):
 
     def test_creation(self):
         n = 10
