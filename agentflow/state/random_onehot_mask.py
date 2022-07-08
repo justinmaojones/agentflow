@@ -60,25 +60,3 @@ class RandomOneHotMaskEnv(BaseEnv):
         output = self.env.step(action)
         output['mask'] = self.state.update(output['state'], output['done'])
         return output
-
-if __name__ == '__main__':
-    import unittest
-
-    class Test(unittest.TestCase):
-
-        def test_reset(self):
-            state = RandomOneHotMask(3)
-            state.reset(np.random.randn(5,6))
-            np.testing.assert_array_equal(state.state().sum(axis=1), np.ones(5))
-
-        def test_update_reset(self):
-            state = RandomOneHotMask(3)
-            state.reset(np.random.randn(5,6))
-            np.testing.assert_array_equal(state.state().sum(axis=1), np.ones(5))
-            state.update(np.random.randn(5,6))
-            np.testing.assert_array_equal(state.state().sum(axis=1), np.ones(5))
-            state.update(np.random.randn(5,6), np.array([0,1,1,0,1]))
-            np.testing.assert_array_equal(state.state().sum(axis=1), np.ones(5))
-
-    unittest.main()
-
