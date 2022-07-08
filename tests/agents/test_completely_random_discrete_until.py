@@ -4,7 +4,6 @@ import unittest
 from unittest.mock import patch
 from unittest.mock import MagicMock
 
-from agentflow.agents.source import AgentSource
 from agentflow.agents import CompletelyRandomDiscreteUntil
 
 class TestCompletelyRandomDiscreteUntil(unittest.TestCase):
