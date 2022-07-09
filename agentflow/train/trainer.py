@@ -99,8 +99,7 @@ class Trainer:
     def eval_step(self):
         return test_agent_fn(self.test_env, self.test_agent)
 
-    def train_step(self):
-
+    def run_step(self):
         if self._state is None:
             self._state = self.env.reset()['state']
 
@@ -122,20 +121,24 @@ class Trainer:
         # update state
         self._state = step_output['state']
 
-        if self.t >= self.begin_learning_at_step:
-            if self.t % self.update_freq == 0:
-                for i in range(self.n_update_steps):
-                    sample = self.replay_buffer.sample(self.batchsize)
-                    update_outputs = self.agent.update(**sample)
-                    self._update_counter += 1
-
-                self.log.append_dict(update_outputs)
-
-
         # num frames = num steps x num envs
         self._frame_counter += len(self._state)
-        self.set_step(self.t+1)
-
-        self.log.append('train/updates', self._update_counter)
         self.log.append('train/frames', self._frame_counter)
+
+    def update_step(self):
+        for i in range(self.n_update_steps):
+            sample = self.replay_buffer.sample(self.batchsize)
+            update_outputs = self.agent.update(**sample)
+            self._update_counter += 1
+
+        self.log.append_dict(update_outputs)
+        self.log.append('train/updates', self._update_counter)
+
+    def train_step(self):
+        self.run_step()
+        if self.t >= self.begin_learning_at_step:
+            if self.t % self.update_freq == 0:
+                self.update_step()
+
+        self.set_step(self.t+1)
         self.log.append('train/steps', self.t)
