@@ -12,6 +12,7 @@ class ActionToOneHotBuffer(BufferFlow):
 
     def append(self, data: Dict[str, np.ndarray]):
         assert 'action' in data, "missing required key 'action' in data"
+        data = {k: v for k,v in data.items()}
         data['action'] = onehot(data['action'], self.num_actions)
         self.source.append(data)
 

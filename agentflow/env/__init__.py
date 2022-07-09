@@ -1,3 +1,4 @@
+from .base_env import BaseEnv
 from .binary_pendulum import VecBinaryPendulumEnv
 from .chain import ChainEnv
 from .gym import AtariGymEnv 
