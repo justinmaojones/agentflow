@@ -40,7 +40,6 @@ class Trainer:
         self.log = log
 
         self.start_step = start_step
-        self.t = start_step
         self.begin_learning_at_step = begin_learning_at_step
         self.n_steps_per_eval = n_steps_per_eval
         self.update_freq = update_freq
@@ -48,6 +47,12 @@ class Trainer:
 
         self._state = None
 
+        self.set_step(t)
+
+    def set_step(self, t):
+        self.t = t
+        if self.log is not None:
+            self.log.set_step(t)
 
     def learn(self, num_steps: int, progress_bar_metrics=['test/ep_returns']):
         T = num_steps
@@ -78,7 +83,6 @@ class Trainer:
         return test_agent_fn(self.test_env, self.test_agent)
 
     def train_step(self):
-        tf.summary.experimental.set_step(self.t)
 
         if self._state is None:
             self._state = self.env.reset()['state']
@@ -108,4 +112,4 @@ class Trainer:
 
                 self.log.append_dict(update_outputs)
 
-        self.t += 1
+        self.set_step(self.t+1)
