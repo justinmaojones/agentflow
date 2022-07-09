@@ -22,12 +22,15 @@ class Trainer:
             test_env: Union[BaseEnv, StateEnv] = None,
             test_agent: Union[AgentFlow, AgentSource] = None,
             log: LogsTFSummary = None,
+            log_flush_freq: int = 1,
+            start_step: int = 0,
             begin_learning_at_step: int = 0,
-            n_steps_per_eval: int = 100,
             update_freq: int = 1,
             n_update_steps: int = 1,
-            start_step: int = 0,
+            n_steps_per_eval: int = 100,
+            max_frames: int = None,
         ):
+
         self.env = env
         self.agent = agent
         self.replay_buffer = replay_buffer
@@ -38,16 +41,21 @@ class Trainer:
         self.test_agent = test_agent if test_agent is not None else agent
 
         self.log = log
+        self.log_flush_freq = log_flush_freq
 
         self.start_step = start_step
         self.begin_learning_at_step = begin_learning_at_step
         self.n_steps_per_eval = n_steps_per_eval
         self.update_freq = update_freq
         self.n_update_steps = n_update_steps
+        self.max_frames = max_frames
 
         self._state = None
 
         self.set_step(start_step)
+
+        self._frame_counter = 0
+        self._update_counter = 0
 
     def set_step(self, t):
         self.t = t
@@ -59,6 +67,13 @@ class Trainer:
         pb = tf.keras.utils.Progbar(T, stateful_metrics=progress_bar_metrics)
         start_time = time.time()
         for t in range(T):
+
+            if self.max_frames is not None:
+                if self._frame_counter >= self.max_frames:
+                    print(f"Stopping program because frame_counter={self._frame_counter} "
+                          f"has exceeded num_frames_max={self.max_frames}")
+                    break
+
             start_step_time = time.time()
             pb_input = []
 
@@ -74,10 +89,12 @@ class Trainer:
             end_time = time.time()
             self.log.append('train/step_duration_sec', end_time-start_step_time)
             self.log.append('train/duration_cumulative', end_time-start_time)
-            self.log.append('train/steps_per_sec', (end_time-start_time) / (t+1.))
+            self.log.append('train/steps_per_sec', (t+1.) / (end_time-start_time))
 
             pb.add(1, pb_input)
-            self.log.flush()
+
+            if self.log is not None and t % self.log_flush_freq == 0 and t > 0:
+                self.log.flush()
 
     def eval_step(self):
         return test_agent_fn(self.test_env, self.test_agent)
@@ -102,6 +119,7 @@ class Trainer:
         }
         self.replay_buffer.append(data)
 
+        # update state
         self._state = step_output['state']
 
         if self.t >= self.begin_learning_at_step:
@@ -109,7 +127,15 @@ class Trainer:
                 for i in range(self.n_update_steps):
                     sample = self.replay_buffer.sample(self.batchsize)
                     update_outputs = self.agent.update(**sample)
+                    self._update_counter += 1
 
                 self.log.append_dict(update_outputs)
 
+
+        # num frames = num steps x num envs
+        self._frame_counter += len(self._state)
         self.set_step(self.t+1)
+
+        self.log.append('train/updates', self._update_counter)
+        self.log.append('train/frames', self._frame_counter)
+        self.log.append('train/steps', self.t)

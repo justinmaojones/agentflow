@@ -63,7 +63,7 @@ class LogsTFSummary(object):
 
     def write(self, filepath, verbose=True):
         if verbose:
-            print('WRITING H5 FILE TO: {filepath}'.format(**locals()))
+            print(f"Writing h5 file to: {filepath}")
         with h5py.File(filepath, 'a') as f:
             for key in sorted(self.logs):
                 data = np.array(self.logs[key])
