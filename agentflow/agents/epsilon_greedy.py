@@ -1,24 +1,30 @@
 from dataclasses import dataclass
 import tensorflow as tf
 
-from agentflow.numpy.ops import eps_greedy_noise
 from agentflow.agents.flow import DiscreteActionAgentFlow
+from agentflow.logging import LogsTFSummary
+from agentflow.numpy.ops import eps_greedy_noise
 
 @dataclass
 class EpsilonGreedy(DiscreteActionAgentFlow):
 
     epsilon: float 
+    log: LogsTFSummary = None
 
     def __post_init__(self):
         self._t = 0
 
     def _get_eps(self):
         if isinstance(self.epsilon, float):
-            return self.epsilon
+            eps = self.epsilon
         else:
             eps = self.epsilon(self._t)
             self._t += 1
-            return eps
+    
+        if self.log is not None:
+            self.log.append(f"agent/{self.__class__.__name__}/epsilon", eps)
+
+        return eps
 
     def act(self, state, mask=None, **kwargs):
         greedy_action = self.source.act(state, mask, **kwargs)

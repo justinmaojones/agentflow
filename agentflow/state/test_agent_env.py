@@ -3,12 +3,15 @@ from ..env.base_env import BaseEnv
 from . import PrevEpisodeReturnsEnv
 from . import PrevEpisodeLengthsEnv
 
+from agentflow.logging import LogsTFSummary
+
 class TestAgentEnv(BaseEnv):
 
-    def __init__(self, env):
-        env = PrevEpisodeReturnsEnv(env)
-        env = PrevEpisodeLengthsEnv(env)
+    def __init__(self, env: BaseEnv, log: LogsTFSummary = None):
+        env = PrevEpisodeReturnsEnv(env, log)
+        env = PrevEpisodeLengthsEnv(env, log)
         self.env = env
+        self.log = log
 
     def n_actions(self):
         return self.env.n_actions()

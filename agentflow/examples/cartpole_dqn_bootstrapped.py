@@ -10,12 +10,12 @@ from agentflow.env import CartpoleGymEnv
 from agentflow.agents import BootstrappedDQN
 from agentflow.agents import CompletelyRandomDiscreteUntil 
 from agentflow.agents import EpsilonGreedy
-from agentflow.agents.utils import test_agent as test_agent_fn
+from agentflow.buffers import ActionToOneHotBuffer
 from agentflow.buffers import BootstrapMaskBuffer 
 from agentflow.buffers import BufferMap
 from agentflow.buffers import PrioritizedBufferMap
 from agentflow.buffers import NStepReturnBuffer
-from agentflow.numpy.ops import onehot
+from agentflow.logging import LogsTFSummary
 from agentflow.numpy.schedules import ExponentialDecaySchedule 
 from agentflow.numpy.schedules import LinearAnnealingSchedule
 from agentflow.state import NPrevFramesStateEnv
@@ -24,7 +24,7 @@ from agentflow.state import PrevEpisodeLengthsEnv
 from agentflow.state import RandomOneHotMaskEnv 
 from agentflow.tensorflow.nn import dense_net
 from agentflow.tensorflow.nn import normalize_ema
-from agentflow.utils import LogsTFSummary
+from agentflow.train import Trainer
 
 @click.option('--num_steps', default=30000, type=int)
 @click.option('--n_envs', default=1)
@@ -86,12 +86,17 @@ def run(**cfg):
     with open(os.path.join(savedir, 'config.yaml'), 'w') as f:
         yaml.dump(cfg, f)
 
+    log = LogsTFSummary(savedir)
+
+    log_train = log.with_prefix("train")
+    log_test = log.with_prefix("test")
+
     # environment
     env = CartpoleGymEnv(n_envs=cfg['n_envs'])
     env = NPrevFramesStateEnv(env, n_prev_frames=cfg['n_prev_frames'], flatten=True)
     env = RandomOneHotMaskEnv(env, dim=cfg['bootstrap_num_heads'])
-    env = PrevEpisodeReturnsEnv(env)
-    env = PrevEpisodeLengthsEnv(env)
+    env = PrevEpisodeReturnsEnv(env, log_train) 
+    env = PrevEpisodeLengthsEnv(env, log_train)
     test_env = CartpoleGymEnv(n_envs=1)
     test_env = NPrevFramesStateEnv(test_env, n_prev_frames=cfg['n_prev_frames'], flatten=True)
 
@@ -100,10 +105,9 @@ def run(**cfg):
     state_shape = state.shape
     print('STATE SHAPE: ', state_shape)
 
-    action_shape = 2
-    print('ACTION SHAPE: ', action_shape)
+    num_actions = 2
+    print('ACTION SHAPE: ', num_actions)
 
-    log = LogsTFSummary(savedir)
 
     # build agent
     def q_fn(state, name=None, **kwargs):
@@ -117,24 +121,25 @@ def run(**cfg):
             name = name
         )
         output = tf.keras.layers.Dense(
-            action_shape*cfg['bootstrap_num_heads'],
+            num_actions*cfg['bootstrap_num_heads'],
             name=f"{name}/dense/output" if name is not None else "dense/output",
         )(h)
-        return tf.reshape(output, [-1, action_shape, cfg['bootstrap_num_heads']])
+        return tf.reshape(output, [-1, num_actions, cfg['bootstrap_num_heads']])
 
     learning_rate_schedule = tf.keras.optimizers.schedules.ExponentialDecay(
         initial_learning_rate = cfg['learning_rate'],
         decay_rate = cfg['learning_rate_decay'],
-        decay_steps = cfg['n_update_steps']
+        decay_steps = cfg['n_update_steps'] / cfg['update_freq']
     )
 
     optimizer = tf.keras.optimizers.Adam(
         learning_rate=learning_rate_schedule,
+        epsilon=cfg['adam_eps'],
     )
 
     agent = BootstrappedDQN(
         state_shape=state_shape[1:],
-        num_actions=action_shape,
+        num_actions=num_actions,
         q_fn=q_fn,
         optimizer=optimizer,
         double_q=cfg['double_q'],
@@ -188,75 +193,22 @@ def run(**cfg):
         sample_prob = cfg['bootstrap_mask_prob']
     )
 
-    state_and_mask = env.reset()
-    state = state_and_mask['state']
-    mask = state_and_mask['mask']
+    replay_buffer = ActionToOneHotBuffer(replay_buffer, num_actions)
 
-    start_time = time.time()
-
-    T = cfg['num_steps']
-
-    pb = tf.keras.utils.Progbar(T, stateful_metrics=['test_ep_returns'])
-    for t in range(T):
-        tf.summary.experimental.set_step(t)
-        start_step_time = time.time()
-
-        action = agent.act(state)
-        if isinstance(action, tf.Tensor):
-            action = action.numpy()
-        step_output = env.step(action)
-
-        data = {
-            'state':state,
-            'action':onehot(action),
-            'reward':step_output['reward'],
-            'done':step_output['done'],
-            'state2':step_output['state'],
-        }
-        log.append_dict(data)
-        log.append('train/ep_return',step_output['prev_episode_return'])
-        log.append('train/ep_length',step_output['prev_episode_length'])
-        replay_buffer.append(data)
-        state = step_output['state']
-        mask = step_output['mask']
-
-        pb_input = [
-            ('train_ep_return', step_output['prev_episode_return'].mean()),
-            ('train_ep_length', step_output['prev_episode_length'].mean()),
-        ]
-        if t >= cfg['begin_learning_at_step'] and t % cfg['update_freq'] == 0:
-
-            for i in range(cfg['n_update_steps']):
-                if cfg['buffer_type'] == 'prioritized':
-                    beta = beta_schedule(t)
-                    sample = replay_buffer.sample(cfg['batchsize'], beta=beta)
-                    log.append('beta', beta)
-                    log.append('max_importance_weight', sample['importance_weight'].max())
-                else:
-                    sample = replay_buffer.sample(cfg['batchsize'])
-
-                update_outputs = agent.update(
-                        ema_decay=cfg['ema_decay'],
-                        gamma=cfg['gamma'],
-                        weight_decay=cfg['weight_decay'],
-                        **sample)
-
-                if cfg['buffer_type'] == 'prioritized' and not cfg['prioritized_replay_simple']:
-                    replay_buffer.update_priorities(update_outputs['td_error'])
-
-            log.append_dict(update_outputs)
-
-        if t % cfg['n_steps_per_eval'] == 0 and t > 0:
-            log.append('test_ep_returns', test_agent_fn(test_env, test_agent))
-            log.append('test_ep_steps', t)
-            avg_test_ep_returns = np.mean(log['test_ep_returns'][-1:])
-            pb_input.append(('test_ep_returns', avg_test_ep_returns))
-        end_time = time.time()
-        log.append('step_duration_sec', end_time-start_step_time)
-        log.append('duration_cumulative', end_time-start_time)
-
-        pb.add(1, pb_input)
-        log.flush()
+    trainer = Trainer(
+        env=env, 
+        agent=agent, 
+        replay_buffer=replay_buffer, 
+        batchsize=cfg['batchsize'],
+        test_env=test_env, 
+        test_agent=test_agent, 
+        log=log,
+        begin_learning_at_step=cfg['begin_learning_at_step'],
+        n_steps_per_eval=cfg['n_steps_per_eval'],
+        update_freq=cfg['update_freq'],
+        n_update_steps=cfg['n_update_steps'],
+    )
+    trainer.learn(cfg['num_steps'])
 
     log.write(os.path.join(savedir, 'log.h5'))
 

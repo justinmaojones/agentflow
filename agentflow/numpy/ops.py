@@ -6,7 +6,7 @@ def sigmoid(x):
 def softmax(x, axis=-1):
     return np.exp(x)/np.exp(x).sum(axis=axis, keepdims=True)
 
-def onehot(x, depth=2):
+def onehot(x, depth):
     shape = list(x.shape)+[depth]
     y = np.zeros(shape)
     y[np.arange(len(x)), x] = 1.

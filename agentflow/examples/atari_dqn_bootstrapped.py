@@ -10,6 +10,7 @@ import yaml
 from agentflow.agents import BootstrappedDQN
 from agentflow.agents import CompletelyRandomDiscreteUntil 
 from agentflow.agents import EpsilonGreedy
+from agentflow.buffers import ActionToOneHotBuffer
 from agentflow.buffers import BootstrapMaskBuffer
 from agentflow.buffers import BufferMap
 from agentflow.buffers import CompressedImageBuffer 
@@ -18,6 +19,7 @@ from agentflow.buffers import NStepReturnBuffer
 from agentflow.examples.env import dqn_atari_paper_env
 from agentflow.examples.nn import dqn_atari_paper_net
 from agentflow.examples.nn import dqn_atari_paper_net_dueling
+from agentflow.logging import LogsTFSummary
 from agentflow.numpy.ops import onehot
 from agentflow.numpy.schedules import ExponentialDecaySchedule 
 from agentflow.numpy.schedules import LinearAnnealingSchedule
@@ -25,10 +27,9 @@ from agentflow.state import NPrevFramesStateEnv
 from agentflow.state import PrevEpisodeReturnsEnv 
 from agentflow.state import PrevEpisodeLengthsEnv 
 from agentflow.state import RandomOneHotMaskEnv 
-from agentflow.state import TestAgentEnv 
 from agentflow.tensorflow.nn import dense_net
 from agentflow.tensorflow.nn import normalize_ema
-from agentflow.utils import LogsTFSummary
+from agentflow.train import Trainer
 
 
 @click.option('--env_id', default='PongNoFrameskip-v4', type=str)
@@ -55,7 +56,6 @@ from agentflow.utils import LogsTFSummary
 @click.option('--batchnorm', default=False, type=bool)
 @click.option('--buffer_type', default='normal', type=click.Choice(['normal', 'prioritized', 'delayed', 'delayed_prioritized']))
 @click.option('--buffer_size', default=30000, type=int)
-@click.option('--encode_obs', default=True, type=bool)
 @click.option('--n_step_return', default=8, type=int)
 @click.option('--prioritized_replay_alpha', default=0.6, type=float)
 @click.option('--prioritized_replay_beta0', default=0.4, type=float)
@@ -68,6 +68,7 @@ from agentflow.utils import LogsTFSummary
 @click.option('--learning_rate', default=1e-4)
 @click.option('--learning_rate_final', default=0.0, type=float)
 @click.option('--learning_rate_decay', default=0.99995)
+@click.option('--adam_eps', default=1e-7)
 @click.option('--td_loss', default='square', type=click.Choice(['square', 'huber']))
 @click.option('--grad_clip_norm', default=None, type=float)
 @click.option('--normalize_inputs', default=True, type=bool)
@@ -100,6 +101,11 @@ def run(**cfg):
     with open(os.path.join(savedir, 'config.yaml'), 'w') as f:
         yaml.dump(cfg, f)
 
+    log = LogsTFSummary(savedir)
+
+    log_train = log.with_prefix("train")
+    log_test = log.with_prefix("test")
+
     # environment
     env = dqn_atari_paper_env(
         cfg['env_id'], 
@@ -116,16 +122,15 @@ def run(**cfg):
         n_prev_frames=cfg['n_prev_frames'], 
         frames_per_action=cfg['frames_per_action']
     )
-    test_env = TestAgentEnv(test_env)
 
     # state and action shapes
     state = env.reset()['state']
     state_shape = state.shape
-    action_shape = env.n_actions()
     print('STATE SHAPE: ', state_shape)
-    print('ACTION SHAPE: ', action_shape)
 
-    log = LogsTFSummary(savedir)
+    num_actions = env.n_actions()
+    print('ACTION SHAPE: ', num_actions)
+
 
     # build agent
     def q_fn(state, name=None, **kwargs):
@@ -135,7 +140,7 @@ def run(**cfg):
         if cfg['dueling']:
             return dqn_atari_paper_net_dueling(
                 state,
-                n_actions=action_shape,
+                n_actions=num_actions,
                 n_heads=cfg['bootstrap_num_heads'],
                 scale=cfg['network_scale'],
                 name=name
@@ -143,7 +148,7 @@ def run(**cfg):
         else:
             return dqn_atari_paper_net(
                 state,
-                n_actions=action_shape,
+                n_actions=num_actions,
                 n_heads=cfg['bootstrap_num_heads'],
                 scale=cfg['network_scale'],
                 name=name
@@ -152,16 +157,17 @@ def run(**cfg):
     learning_rate_schedule = tf.keras.optimizers.schedules.ExponentialDecay(
         initial_learning_rate = cfg['learning_rate'],
         decay_rate = cfg['learning_rate_decay'],
-        decay_steps = cfg['n_update_steps']
+        decay_steps = cfg['n_update_steps'] / cfg['update_freq']
     )
 
     optimizer = tf.keras.optimizers.Adam(
         learning_rate=learning_rate_schedule,
+        epsilon=cfg['adam_eps'],
     )
 
     agent = BootstrappedDQN(
         state_shape=state_shape[1:],
-        num_actions=action_shape,
+        num_actions=num_actions,
         q_fn=q_fn,
         optimizer=optimizer,
         double_q=cfg['double_q'],
@@ -208,12 +214,11 @@ def run(**cfg):
         # Normal Buffer
         replay_buffer = BufferMap(cfg['buffer_size'] // cfg['n_envs'])
 
-    if cfg['encode_obs']:
-        replay_buffer = CompressedImageBuffer(
-            replay_buffer, 
-            max_encoding_size=10000,
-            keys_to_encode = ['state', 'state2']
-        )
+    replay_buffer = CompressedImageBuffer(
+        replay_buffer, 
+        max_encoding_size=10000,
+        keys_to_encode = ['state', 'state2']
+    )
 
     # Delays publishing of records to the underlying replay buffer for n steps
     # then publishes the discounted n-step return
@@ -230,120 +235,22 @@ def run(**cfg):
         sample_prob = cfg['bootstrap_mask_prob']
     )
 
-    log = LogsTFSummary(savedir)
+    replay_buffer = ActionToOneHotBuffer(replay_buffer, num_actions)
 
-    state_and_mask = env.reset()
-    state = state_and_mask['state']
-    mask = state_and_mask['mask']
-
-    start_time = time.time()
-
-    T = cfg['num_steps']
-
-    pb = tf.keras.utils.Progbar(T, stateful_metrics=[
-        'test_ep_length',
-        'test_ep_returns',
-        'train_ep_length',
-        'train_ep_return',
-    ])
-    frame_counter = 0
-    update_counter = 0
-    for t in range(T):
-        tf.summary.experimental.set_step(t)
-
-        start_step_time = time.time()
-
-        action = agent.act(state)
-        step_output = env.step(action)
-
-        data = {
-            'state':state,
-            'action':onehot(action, depth=action_shape),
-            'reward':step_output['reward'],
-            'done':step_output['done'],
-            'state2':step_output['state'],
-        }
-        if cfg['buffer_type'] == 'prioritized' and not cfg['prioritized_replay_simple']:
-            raise NotImplementedError("infer not implemented")
-            data['priority'] = agent.infer(
-                outputs=['abs_td_error'], 
-                gamma=cfg['gamma'],
-                **data
-            )['abs_td_error']
-
-        log.append('train/ep_return', step_output['prev_episode_return'])
-        log.append('train/ep_length', step_output['prev_episode_length'])
-        replay_buffer.append(data)
-        state = step_output['state']
-        mask = step_output['mask']
-
-        pb_input = [
-            ('train_ep_return', step_output['prev_episode_return'].mean()),
-            ('train_ep_length', step_output['prev_episode_length'].mean()),
-        ]
-        if frame_counter >= cfg['begin_learning_at_step'] \
-                and t % cfg['update_freq'] == 0 \
-                and len(replay_buffer) > 0:
-
-            for i in range(cfg['n_update_steps']):
-                if cfg['buffer_type'] == 'prioritized':
-                    beta = beta_schedule(t)
-                    sample = replay_buffer.sample(cfg['batchsize'], beta=beta)
-                    log.append('beta', beta)
-                    log.append('max_importance_weight', sample['importance_weight'].max())
-                else:
-                    sample = replay_buffer.sample(cfg['batchsize'])
-
-                ema_decay = cfg['ema_decay']
-                if cfg['target_network_copy_freq'] is not None:
-                    if t % cfg['target_network_copy_freq'] == 0 and i == 0:
-                        ema_decay = 0.0
-                log.append('ema_decay', ema_decay)
-
-                update_outputs = agent.update(
-                        ema_decay=ema_decay,
-                        gamma=cfg['gamma'],
-                        weight_decay=cfg['weight_decay'],
-                        grad_clip_norm=cfg['grad_clip_norm'],
-                        **sample)
-                update_counter += 1
-
-                if cfg['buffer_type'] == 'prioritized' and not cfg['prioritized_replay_simple']:
-                    replay_buffer.update_priorities(update_outputs['abs_td_error'])
-
-            log.append_dict(update_outputs)
-
-            if cfg['log_pnorms']:
-                log.append_dict(agent.pnorms())
-
-        if t % cfg['n_steps_per_eval'] == 0 and t >= cfg['begin_learning_at_step']:
-            test_output = test_env.test(agent)
-            log.append('test_ep_returns', test_output['return'])
-            log.append('test_ep_length', test_output['length'])
-            log.append('test_ep_t', t)
-            log.append('test_ep_steps', frame_counter)
-            avg_test_ep_length = np.mean(log['test_ep_length'][-1:])
-            avg_test_ep_returns = np.mean(log['test_ep_returns'][-1:])
-            pb_input.append(('test_ep_length', avg_test_ep_length))
-            pb_input.append(('test_ep_returns', avg_test_ep_returns))
-
-        end_time = time.time()
-        frame_counter += cfg['n_envs']
-        log.append('step', t+1)
-        log.append('frame', frame_counter)
-        log.append('update', update_counter)
-        log.append('step_duration_sec', end_time-start_step_time)
-        log.append('duration_cumulative', end_time-start_time)
-
-        pb.add(1, pb_input)
-
-        if t % cfg['log_flush_freq'] == 0 and t > 0:
-            log.flush()
-            gc.collect()
-
-        if cfg['num_frames_max'] is not None and frame_counter >= cfg['num_frames_max']:
-            print("Stopping program because frame_counter=%0.0f has exceeded num_frames_max=%0.0f" % (frame_counter, cfg['num_frames_max']))
-            break
+    trainer = Trainer(
+        env=env, 
+        agent=agent, 
+        replay_buffer=replay_buffer, 
+        batchsize=cfg['batchsize'],
+        test_env=test_env, 
+        test_agent=test_agent, 
+        log=log,
+        begin_learning_at_step=cfg['begin_learning_at_step'],
+        n_steps_per_eval=cfg['n_steps_per_eval'],
+        update_freq=cfg['update_freq'],
+        n_update_steps=cfg['n_update_steps'],
+    )
+    trainer.learn(cfg['num_steps'])
 
     log.write(os.path.join(savedir, 'log.h5'))
 
