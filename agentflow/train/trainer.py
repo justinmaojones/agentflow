@@ -47,7 +47,7 @@ class Trainer:
 
         self._state = None
 
-        self.set_step(t)
+        self.set_step(start_step)
 
     def set_step(self, t):
         self.t = t
