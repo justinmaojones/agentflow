@@ -20,7 +20,7 @@ class RandomOneHotMask(BaseState):
 
     def reset(self, frame):
         shape = (len(frame), self.dim)
-        self._state = np.zeros(shape, dtype=np.bool)
+        self._state = np.zeros(shape, dtype=bool)
         self._update_mask(np.arange(len(self._state)))
 
     def update(self, frame, reset_mask=None):
