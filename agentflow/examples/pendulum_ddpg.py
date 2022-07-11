@@ -21,7 +21,7 @@ from agentflow.state import PrevEpisodeLengthsEnv
 from agentflow.state import TanhActionEnv 
 from agentflow.tensorflow.nn import dense_net
 from agentflow.tensorflow.nn import normalize_ema
-from agentflow.utils import LogsTFSummary
+from agentflow.utils import scoped_log_tf_summary
 
 
 @click.option('--num_steps', default=20000, type=int)
@@ -99,7 +99,7 @@ def run(**cfg):
     action_shape = 1
     print('ACTION SHAPE: ', action_shape)
 
-    log = LogsTFSummary(savedir)
+    log = scoped_log_tf_summary(savedir)
 
     # build agent
     def policy_fn(state, name=None):
