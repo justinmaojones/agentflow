@@ -4,7 +4,7 @@ import tensorflow as tf
 from typing import Dict, List
 
 from agentflow.agents.source import AgentSource
-from ..tensorflow.ops import l2_loss 
+from agentflow.tensorflow.ops import l2_loss 
 
 
 @dataclass

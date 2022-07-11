@@ -3,12 +3,14 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Union
 
+from agentflow.logging import LogsTFSummary
+from agentflow.logging import WithLogging
 from agentflow.agents.source import AgentSource
 from agentflow.agents.source import DiscreteActionAgentSource
 from agentflow.flow import Flow
 
 @dataclass
-class AgentFlow(Flow):
+class AgentFlow(Flow, WithLogging):
 
     source: Union[AgentSource, AgentFlow]
 
@@ -26,6 +28,10 @@ class AgentFlow(Flow):
 
     def save_weights(self, filepath):
         return self.source.save_weights(filepath)
+
+    def set_log(self, log: LogsTFSummary):
+        super().set_log(log)
+        self.source.set_log(log)
 
     def set_weights(self, weights):
         return self.source.set_weights(weights)

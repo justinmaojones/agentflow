@@ -10,9 +10,10 @@ from agentflow.buffers import BufferFlow
 from agentflow.buffers import BufferSource
 from agentflow.env import BaseEnv
 from agentflow.logging import LogsTFSummary
+from agentflow.logging import WithLogging
 from agentflow.state import StateEnv
 
-class Trainer:
+class Trainer(WithLogging):
 
     def __init__(self, 
             env: Union[BaseEnv, StateEnv], 
@@ -42,6 +43,11 @@ class Trainer:
 
         self.log = log
         self.log_flush_freq = log_flush_freq
+
+        if log:
+            self.env.set_log(log.with_prefix("env"))
+            self.agent.set_log(log.with_prefix("agent"))
+            self.replay_buffer.set_log(log.with_prefix("replay_buffer"))
 
         self.start_step = start_step
         self.begin_learning_at_step = begin_learning_at_step
@@ -90,6 +96,8 @@ class Trainer:
             self.log.append('train/step_duration_sec', end_time-start_step_time)
             self.log.append('train/duration_cumulative', end_time-start_time)
             self.log.append('train/steps_per_sec', (t+1.) / (end_time-start_time))
+            self.log.append('train/examples_per_sec', 
+                    (self._update_counter * self.batchsize) / (end_time-start_time))
 
             pb.add(1, pb_input)
 

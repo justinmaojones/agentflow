@@ -1,12 +1,11 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from agentflow.logging.logs_tf_summary import LogsTFSummary
-from agentflow.source import Source
 
 @dataclass
-class WithLoggingSource(Source):
+class WithLogging:
 
-    log: LogsTFSummary = None
+    log: LogsTFSummary = field(default=None, init=False)
 
     def set_log(self, log: LogsTFSummary):
         assert self.log is None, "cannot set log after it has already been set"

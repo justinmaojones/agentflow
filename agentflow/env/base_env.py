@@ -1,5 +1,6 @@
+from agentflow.logging import WithLogging
 
-class BaseEnv(object):
+class BaseEnv(WithLogging):
 
     def reset(self):
         raise NotImplementedError

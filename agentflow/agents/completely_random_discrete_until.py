@@ -13,7 +13,6 @@ class CompletelyRandomDiscreteUntil(DiscreteActionAgentFlow):
     """
 
     num_steps: int 
-    log: LogsTFSummary = None
 
     def __post_init__(self):
         self._t = 0

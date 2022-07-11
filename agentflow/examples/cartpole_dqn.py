@@ -82,14 +82,11 @@ def run(**cfg):
 
     log = LogsTFSummary(savedir)
 
-    log_train = log.with_prefix("train")
-    log_test = log.with_prefix("test")
-
     # environment
     env = CartpoleGymEnv(n_envs=cfg['n_envs'])
     env = NPrevFramesStateEnv(env, n_prev_frames=cfg['n_prev_frames'], flatten=True)
-    env = PrevEpisodeReturnsEnv(env, log_train) 
-    env = PrevEpisodeLengthsEnv(env, log_train)
+    env = PrevEpisodeReturnsEnv(env) 
+    env = PrevEpisodeLengthsEnv(env)
     test_env = CartpoleGymEnv(n_envs=1)
     test_env = NPrevFramesStateEnv(test_env, n_prev_frames=cfg['n_prev_frames'], flatten=True)
 

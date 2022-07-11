@@ -1,16 +1,21 @@
 from agentflow.env.base_env import BaseEnv
+from agentflow.logging import WithLogging
+from agentflow.logging import LogsTFSummary
 
-class StateEnv(BaseEnv):
+class StateEnv(BaseEnv, WithLogging):
 
     def __init__(self, env, state):
         self.env = env
         self.state = state
 
-    def n_actions(self):
-        return self.env.n_actions()
-
     def action_shape(self):
         return self.env.action_shape()
+
+    def get_state(self):
+        return self.state.state()
+
+    def n_actions(self):
+        return self.env.n_actions()
 
     def reset(self):
         prior_output = self.env.reset()
@@ -19,6 +24,10 @@ class StateEnv(BaseEnv):
         output['state'] = self.state.update(prior_output['state'])
         return output
 
+    def set_log(self, log: LogsTFSummary):
+        super().set_log(log)
+        self.env.set_log(log)
+
     def step(self,*args,**kwargs):
         prior_step_output = self.env.step(*args,**kwargs)
         # copy non-state data from previous step output
@@ -26,7 +35,3 @@ class StateEnv(BaseEnv):
         # update state
         output['state'] = self.state.update(prior_step_output['state'], prior_step_output['done'])
         return output
-
-    def get_state(self):
-        return self.state.state()
-
