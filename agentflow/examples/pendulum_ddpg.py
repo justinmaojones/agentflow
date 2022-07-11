@@ -12,6 +12,7 @@ from agentflow.agents.utils import test_agent
 from agentflow.buffers import BufferMap
 from agentflow.buffers import PrioritizedBufferMap
 from agentflow.buffers import NStepReturnBuffer
+from agentflow.logging import scoped_log_tf_summary
 from agentflow.numpy.ops import onehot
 from agentflow.numpy.schedules import ExponentialDecaySchedule 
 from agentflow.numpy.schedules import LinearAnnealingSchedule
@@ -21,7 +22,6 @@ from agentflow.state import PrevEpisodeLengthsEnv
 from agentflow.state import TanhActionEnv 
 from agentflow.tensorflow.nn import dense_net
 from agentflow.tensorflow.nn import normalize_ema
-from agentflow.utils import scoped_log_tf_summary
 
 
 @click.option('--num_steps', default=20000, type=int)
@@ -219,8 +219,8 @@ def run(**cfg):
             'state2':step_output['state'],
         }
         log.append_dict(data)
-        log.append('train/ep_return',step_output['prev_episode_return'])
-        log.append('train/ep_length',step_output['prev_episode_length'])
+        log.append('train/ep_return',step_output['episode_return'])
+        log.append('train/ep_length',step_output['episode_length'])
         replay_buffer.append(data)
         state = data['state2']
 
