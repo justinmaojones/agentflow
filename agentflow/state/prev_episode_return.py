@@ -30,6 +30,11 @@ class PrevEpisodeReturnsEnv(BaseEnv):
         self._prev_episode_returns = None
         return self.env.reset()
 
+    # TODO: added because env has not been migrated to source/flow
+    def set_log(self, log: LogsTFSummary):
+        super().set_log(log)
+        self.env.set_log(log)
+
     def step(self, action):
         output = self.env.step(action)
         if self._curr_episode_returns is None:
@@ -42,7 +47,7 @@ class PrevEpisodeReturnsEnv(BaseEnv):
         output['episode_return'] = self._prev_episode_returns
 
         if self.log is not None:
-            self.log.append(f"env/episode_return", self._prev_episode_returns)
+            self.log.append(f"episode_return", self._prev_episode_returns)
 
         return output
 
