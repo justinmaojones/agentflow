@@ -61,19 +61,28 @@ class LogsTFSummary:
         with h5py.File(self._log_filepath, 'a') as f:
             for key in sorted(self.logs):
                 data = np.array(self.logs[key])
-                if key not in f:
-                    dataset = f.create_dataset(
-                        key, 
-                        data.shape, 
-                        dtype=data.dtype,
-                        chunks=data.shape,
-                        maxshape=tuple([None]+list(data.shape[1:]))
-                    )
-                    dataset[:] = data
+                try:
+                    if key not in f:
+                        dataset = f.create_dataset(
+                            key, 
+                            data.shape, 
+                            dtype=data.dtype,
+                            chunks=data.shape,
+                            maxshape=tuple([None]+list(data.shape[1:]))
+                        )
+                        dataset[:] = data
 
-                else:
-                    dataset = f[key]
-                    n = len(f[key])
-                    m = len(data)
-                    f[key].resize(n + m, axis=0)
-                    f[key][n:] = data
+                    else:
+                        dataset = f[key]
+                        n = len(f[key])
+                        m = len(data)
+                        f[key].resize(n + m, axis=0)
+                        f[key][n:] = data
+                except TypeError:
+                    for k in self.logs:
+                        if k in key:
+                            raise TypeError(
+                                    f"cannot have parent='{k}' and child='{key}' log paths in same dataset")
+                        if key in k:
+                            raise TypeError(
+                                    f"cannot have parent='{key}' and child='{k}' log paths in same dataset")
