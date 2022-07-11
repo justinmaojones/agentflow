@@ -262,7 +262,7 @@ def run(**cfg):
         pb.add(1, pb_input)
         log.flush()
 
-    log.write(os.path.join(savedir,'log.h5'))
+    log.flush()
 
 if __name__=='__main__':
     click.command()(run)()

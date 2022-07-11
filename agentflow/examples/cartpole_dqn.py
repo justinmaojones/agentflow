@@ -191,7 +191,7 @@ def run(**cfg):
     )
     trainer.learn(cfg['num_steps'])
 
-    log.write(os.path.join(savedir, 'log.h5'))
+    log.flush()
 
 if __name__=='__main__':
     click.command()(run)()
