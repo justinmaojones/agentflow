@@ -237,7 +237,7 @@ def run(**cfg):
 
         @timed
         def step(self, t):
-            action = agent.act(state).numpy()
+            action = self.agent.act(state)
             self.prev = self.next
             self.next = env.step(action)
 
@@ -257,10 +257,10 @@ def run(**cfg):
                 )['abs_td_error']
 
             self.log.append_dict.remote({
-                'train_ep_return': self.next['prev_episode_return'],
-                'train_ep_length': self.next['prev_episode_length'],
-                'prev_episode_return': self.next['prev_episode_return'], # for backwards compatibility
-                'prev_episode_length': self.next['prev_episode_length'], # for backwards compatibility
+                'train_ep_return': self.next['episode_return'],
+                'train_ep_length': self.next['episode_length'],
+                'prev_episode_return': self.next['episode_return'], # for backwards compatibility
+                'prev_episode_length': self.next['episode_length'], # for backwards compatibility
             })
 
             return data
@@ -362,6 +362,7 @@ def run(**cfg):
 
         @timed
         def sample(self):
+            assert len(self.replay_buffer) > 0, "replay_buffer has no data"
             if cfg['buffer_type'] == 'prioritized':
                 beta = self.beta_schedule(self.t)
                 sample = self.replay_buffer.sample(cfg['batchsize'],beta=beta,with_indices=True)
