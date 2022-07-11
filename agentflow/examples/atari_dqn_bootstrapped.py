@@ -103,9 +103,6 @@ def run(**cfg):
 
     log = scoped_log_tf_summary(savedir)
 
-    log_train = log.with_prefix("train")
-    log_test = log.with_prefix("test")
-
     # environment
     env = dqn_atari_paper_env(
         cfg['env_id'], 
