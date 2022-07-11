@@ -47,7 +47,7 @@ class PrevEpisodeReturnsEnv(BaseEnv):
         output['episode_return'] = self._prev_episode_returns
 
         if self.log is not None:
-            self.log.append(f"episode_return", self._prev_episode_returns)
+            self.log.append(f"{self.__class__.__name__}/episode_return", self._prev_episode_returns)
 
         return output
 

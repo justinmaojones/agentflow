@@ -21,7 +21,7 @@ class EpsilonGreedy(DiscreteActionAgentFlow):
             self._t += 1
     
         if self.log is not None:
-            self.log.append(f"agent/{self.__class__.__name__}/epsilon", eps)
+            self.log.append(f"{self.__class__.__name__}/epsilon", eps)
 
         return eps
 

@@ -47,7 +47,7 @@ class PrevEpisodeLengthsEnv(BaseEnv):
         output['episode_length'] = self._prev_episode_lengths
 
         if self.log is not None:
-            self.log.append(f"episode_length", self._prev_episode_lengths)
+            self.log.append(f"{self.__class__.__name__}/episode_length", self._prev_episode_lengths)
 
         return output
 
