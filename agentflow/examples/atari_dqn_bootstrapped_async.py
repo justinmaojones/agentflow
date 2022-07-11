@@ -20,6 +20,7 @@ from agentflow.buffers import NStepReturnBuffer
 from agentflow.examples.env import dqn_atari_paper_env
 from agentflow.examples.nn import dqn_atari_paper_net
 from agentflow.examples.nn import dqn_atari_paper_net_dueling
+from agentflow.logging import LogsTFSummary
 from agentflow.numpy.ops import onehot
 from agentflow.numpy.schedules import ExponentialDecaySchedule 
 from agentflow.numpy.schedules import LinearAnnealingSchedule
@@ -32,7 +33,6 @@ from agentflow.tensorflow.nn import dense_net
 from agentflow.tensorflow.nn import normalize_ema
 from agentflow.utils import IdleTimer 
 from agentflow.utils import ScopedIdleTimer
-from agentflow.utils import LogsTFSummary
 
 def timed(func):
     def wrapper(self, *args, **kwargs):
