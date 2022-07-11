@@ -9,7 +9,7 @@ from agentflow.agents.utils import test_agent as test_agent_fn
 from agentflow.buffers import BufferFlow
 from agentflow.buffers import BufferSource
 from agentflow.env import BaseEnv
-from agentflow.logging import LogsTFSummary
+from agentflow.logging import ScopedLogsTFSummary
 from agentflow.logging import WithLogging
 from agentflow.state import StateEnv
 
@@ -20,9 +20,9 @@ class Trainer(WithLogging):
             agent: Union[AgentFlow, AgentSource],
             replay_buffer: Union[BufferFlow, BufferSource],
             batchsize: int,
-            test_env: Union[BaseEnv, StateEnv] = None,
+            test_env: Union[BaseEnv, StateEnv],
             test_agent: Union[AgentFlow, AgentSource] = None,
-            log: LogsTFSummary = None,
+            log: ScopedLogsTFSummary = None,
             log_flush_freq: int = 1,
             start_step: int = 0,
             begin_learning_at_step: int = 0,
@@ -38,16 +38,17 @@ class Trainer(WithLogging):
 
         self.batchsize = batchsize
 
-        self.test_env = test_env if test_env is not None else env
+        self.test_env = test_env
         self.test_agent = test_agent if test_agent is not None else agent
 
         self.log = log
         self.log_flush_freq = log_flush_freq
 
         if log:
-            self.env.set_log(log.with_prefix("env"))
-            self.agent.set_log(log.with_prefix("agent"))
-            self.replay_buffer.set_log(log.with_prefix("replay_buffer"))
+            self.env.set_log(log.scope("train_env"))
+            self.agent.set_log(log.scope("train_agent"))
+            self.replay_buffer.set_log(log.scope("replay_buffer"))
+            self.test_env.set_log(log.scope("test_env"))
 
         self.start_step = start_step
         self.begin_learning_at_step = begin_learning_at_step
@@ -68,9 +69,9 @@ class Trainer(WithLogging):
         if self.log is not None:
             self.log.set_step(t)
 
-    def learn(self, num_steps: int, progress_bar_metrics=['test/ep_returns']):
+    def learn(self, num_steps: int):
         T = num_steps
-        pb = tf.keras.utils.Progbar(T, stateful_metrics=progress_bar_metrics)
+        pb = tf.keras.utils.Progbar(T, stateful_metrics=['test_env/ep_returns'])
         start_time = time.time()
         for t in range(T):
 
@@ -88,9 +89,9 @@ class Trainer(WithLogging):
                 test_ep_returns = self.eval_step()
 
                 avg_test_ep_returns = np.mean(test_ep_returns)
-                pb_input.append(('test/ep_returns', avg_test_ep_returns))
-                self.log.append('test/ep_returns', avg_test_ep_returns) 
-                self.log.append('test/ep_steps', self.t)
+                pb_input.append(('test_env/ep_returns', avg_test_ep_returns))
+                self.log.append('test_env/ep_returns', avg_test_ep_returns) 
+                self.log.append('test_env/ep_steps', self.t)
 
             end_time = time.time()
             self.log.append('train/step_duration_sec', end_time-start_step_time)

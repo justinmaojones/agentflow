@@ -95,6 +95,19 @@ class ScopedIdleTimer(IdleTimer):
         output[self._get_scoped_key('idle')] = float(self.idle_duration) / self.duration
         return output
 
+def flatten_logs(self, logs: dict):
+    output = {}
+    def _flatten(x, prefix):
+        if isinstance(x, dict):
+            for k in x:
+                prefix.append(k)
+                _flatten(x[k], prefix)
+                prefix.pop(k)
+        else:
+            output['/'.join(prefix)] = x
+    return output
+    
+
 def load_hdf5(filepath, load_keys=None):
     assert load_keys is None or isinstance(load_keys, list), "load_keys must be None or a list"
     def load_data(f, keys=None):
@@ -135,6 +148,8 @@ def load_experiment_results(savedir, allow_load_partial=False, load_keys=None):
     else:
         logs = {}
         print('could not load logs for %s'%savedir)
+
+    logs = flatten_logs(logs)
 
     return logs, config
 

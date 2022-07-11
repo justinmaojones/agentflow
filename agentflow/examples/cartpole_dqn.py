@@ -14,7 +14,7 @@ from agentflow.buffers import ActionToOneHotBuffer
 from agentflow.buffers import BufferMap
 from agentflow.buffers import PrioritizedBufferMap
 from agentflow.buffers import NStepReturnBuffer
-from agentflow.logging import LogsTFSummary
+from agentflow.logging import scoped_log_tf_summary 
 from agentflow.numpy.schedules import ExponentialDecaySchedule 
 from agentflow.numpy.schedules import LinearAnnealingSchedule
 from agentflow.state import NPrevFramesStateEnv
@@ -80,7 +80,7 @@ def run(**cfg):
     with open(os.path.join(savedir, 'config.yaml'), 'w') as f:
         yaml.dump(cfg, f)
 
-    log = LogsTFSummary(savedir)
+    log = scoped_log_tf_summary(savedir)
 
     # environment
     env = CartpoleGymEnv(n_envs=cfg['n_envs'])
