@@ -95,32 +95,38 @@ class ScopedIdleTimer(IdleTimer):
         output[self._get_scoped_key('idle')] = float(self.idle_duration) / self.duration
         return output
 
-def flatten_logs(self, logs: dict):
+def flatten_logs(logs: dict):
     output = {}
     def _flatten(x, prefix):
         if isinstance(x, dict):
             for k in x:
                 prefix.append(k)
                 _flatten(x[k], prefix)
-                prefix.pop(k)
+                prefix.pop()
         else:
             output['/'.join(prefix)] = x
+    _flatten(logs, [])
     return output
     
 
 def load_hdf5(filepath, load_keys=None):
     assert load_keys is None or isinstance(load_keys, list), "load_keys must be None or a list"
-    def load_data(f, keys=None):
-        output = {}
-        for k in f:
-            if keys is None or k in keys:
-                if isinstance(f[k],h5py.Group):
-                    output[k] = load_data(f[k])
+
+    if load_keys:
+        with h5py.File(filepath,'r') as f:
+            return {k: np.array(f[k]) for k in load_keys}
+
+    else:
+        def _load_data(f):
+            output = {}
+            for k in f:
+                if isinstance(f[k], h5py.Group):
+                    output[k] = _load_data(f[k])
                 else:
                     output[k] = np.array(f[k])
-        return output
-    with h5py.File(filepath,'r') as f:
-        return load_data(f, load_keys)
+            return output
+        with h5py.File(filepath,'r') as f:
+            return _load_data(f)
 
 def load_yaml(filepath):
     with open(filepath,'r') as f:
