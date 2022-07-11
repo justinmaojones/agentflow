@@ -627,7 +627,7 @@ def run(**cfg):
         })
 
     print("WRITING RESULTS TO: %s" % os.path.join(savedir,'log.h5'))
-    log.flush()
+    log.flush.remote()
     print("FINISHED")
 
 if __name__=='__main__':
