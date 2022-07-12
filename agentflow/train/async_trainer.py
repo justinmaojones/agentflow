@@ -22,7 +22,7 @@ class Runner:
 
     import tensorflow as tf
 
-    def __init__(self, :
+    def __init__(self,
             env: Union[BaseEnv, StateEnv], 
             agent: Union[AgentFlow, AgentSource],
             replay_buffer: Union[BufferFlow, BufferSource],
@@ -30,7 +30,8 @@ class Runner:
         ):
 
         self.env = env
-        self.agent = agent.build()
+        self.agent = agent
+        agent.build_model()
         self.replay_buffer = replay_buffer
         self.log = log
 
@@ -103,14 +104,15 @@ class TestRunner:
 
     import tensorflow as tf
 
-    def __init__(self, :
+    def __init__(self,
             env: Union[BaseEnv, StateEnv], 
             agent: Union[AgentFlow, AgentSource],
             log: RemoteScopedLogsTFSummary = None,
         ):
 
         self.env = env
-        self.agent = agent.build()
+        self.agent = agent
+        agent.build_model()
         self.log = log
 
         #self.scoped_timer = ScopedIdleTimer("ScopedIdleTimer/TestRunner", start_on_create=False)
@@ -144,12 +146,13 @@ class ParameterServer:
     def __init__(self, 
             agent: Union[AgentFlow, AgentSource],
             runners: List[Runner],
+            log: RemoteScopedLogsTFSummary,
             batchsize: int,
             batchsize_runner: int = None,
-            log: RemoteScopedLogsTFSummary
         ):
 
-        self.agent = agent.build()
+        self.agent = agent
+        agent.build_model()
         self.runners = runners
         self.batchsize = batchsize
         self.log = log
@@ -157,7 +160,7 @@ class ParameterServer:
         if batchsize_runner is None:
             self.batchsize_runner = self.batchsize
         else:
-            assert self.batchsize % self.batchsize_runner == 0, \
+            assert batchsize % batchsize_runner == 0, \
                     f"batchsize={batchsize} must be multiple of batchsize_runner={batchsize_runner}"
             self.batchsize_runner = batchsize_runner
 
@@ -250,7 +253,7 @@ class WeightUpdater:
         self.log = log
         self._refresh_counter = 0
 
-    def update(self)
+    def update(self):
         # get weights
         weights = self.parameter_server.get_weights.remote()
 
@@ -272,7 +275,7 @@ class AsyncTrainer:
             agent: Union[AgentFlow, AgentSource],
             replay_buffer: Union[BufferFlow, BufferSource],
             begin_learning_at_frame: int,
-            n_updates_per_model_refresh: int
+            n_updates_per_model_refresh: int,
             batchsize: int,
             batchsize_runner: int = None,
             test_env: Union[BaseEnv, StateEnv] = None,
@@ -288,8 +291,6 @@ class AsyncTrainer:
             max_frames: int = 0
         ):
 
-        ray.init()
-
         self.env = env
         self.agent = agent
         self.replay_buffer = replay_buffer
@@ -298,9 +299,11 @@ class AsyncTrainer:
 
         self.runner_count = runner_count
         self.runner_cpu = runner_cpu
+        self.runner_threads = runner_threads
 
         self.parameter_server_cpu = parameter_server_cpu
         self.parameter_server_gpu = parameter_server_gpu
+        self.parameter_server_threads = parameter_server_threads
 
         self.batchsize = batchsize
         if batchsize_runner is None:
@@ -321,11 +324,15 @@ class AsyncTrainer:
         self.runners = None
         self.test_runner = None
         self.parameter_server = None
+        self.weight_updater = None
 
         self.build_runners()
         self.build_test_runner()
         self.build_parameter_server()
         self.build_weight_updater()
+
+        # wait 10 seconds for actors to startup
+        time.sleep(10)
 
         # blocking call to initialize everything
         ray.get(self.weight_updater.update.remote())
@@ -358,7 +365,7 @@ class AsyncTrainer:
             self.runners.append(runner)
 
     def build_test_runner(self):
-        assert self.test_runners is None, "test_runner already built"
+        assert self.test_runner is None, "test_runner already built"
 
         RemoteTestRunner = ray.remote(
             num_cpus=1
@@ -398,6 +405,7 @@ class AsyncTrainer:
         assert self.runners is not None, "need to build runners first"
         assert self.test_runner is not None, "need to build test runner first"
         assert self.parameter_server is not None, "need to build runners first"
+        assert self.weight_updater is None, "weight updater already built"
 
         RemoteWeightUpdater = ray.remote(
             num_cpus=1
