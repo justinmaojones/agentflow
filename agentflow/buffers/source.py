@@ -4,11 +4,12 @@ import numpy as np
 from typing import Dict, List
 
 from agentflow.buffers.nd_array_buffer import NDArrayBuffer
+from agentflow.logging import WithLogging
 from agentflow.source import Source
 
 
 @dataclass
-class BufferSource(Source):
+class BufferSource(Source, WithLogging):
 
     _buffers: Dict[str, NDArrayBuffer]
 

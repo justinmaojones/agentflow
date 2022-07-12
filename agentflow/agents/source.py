@@ -2,10 +2,11 @@ from abc import abstractmethod
 from dataclasses import dataclass
 import tensorflow as tf
 
+from agentflow.logging import WithLogging
 from agentflow.source import Source
 
 
-class AgentSource(Source):
+class AgentSource(Source, WithLogging):
 
     @tf.function
     @abstractmethod

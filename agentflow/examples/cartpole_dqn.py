@@ -14,7 +14,7 @@ from agentflow.buffers import ActionToOneHotBuffer
 from agentflow.buffers import BufferMap
 from agentflow.buffers import PrioritizedBufferMap
 from agentflow.buffers import NStepReturnBuffer
-from agentflow.logging import LogsTFSummary
+from agentflow.logging import scoped_log_tf_summary 
 from agentflow.numpy.schedules import ExponentialDecaySchedule 
 from agentflow.numpy.schedules import LinearAnnealingSchedule
 from agentflow.state import NPrevFramesStateEnv
@@ -80,16 +80,13 @@ def run(**cfg):
     with open(os.path.join(savedir, 'config.yaml'), 'w') as f:
         yaml.dump(cfg, f)
 
-    log = LogsTFSummary(savedir)
-
-    log_train = log.with_prefix("train")
-    log_test = log.with_prefix("test")
+    log = scoped_log_tf_summary(savedir)
 
     # environment
     env = CartpoleGymEnv(n_envs=cfg['n_envs'])
     env = NPrevFramesStateEnv(env, n_prev_frames=cfg['n_prev_frames'], flatten=True)
-    env = PrevEpisodeReturnsEnv(env, log_train) 
-    env = PrevEpisodeLengthsEnv(env, log_train)
+    env = PrevEpisodeReturnsEnv(env) 
+    env = PrevEpisodeLengthsEnv(env)
     test_env = CartpoleGymEnv(n_envs=1)
     test_env = NPrevFramesStateEnv(test_env, n_prev_frames=cfg['n_prev_frames'], flatten=True)
 
@@ -194,7 +191,7 @@ def run(**cfg):
     )
     trainer.learn(cfg['num_steps'])
 
-    log.write(os.path.join(savedir, 'log.h5'))
+    log.flush()
 
 if __name__=='__main__':
     click.command()(run)()

@@ -22,6 +22,11 @@ class TestAgentEnv(BaseEnv):
     def reset(self):
         return self.env.reset()
 
+    # TODO: added because env has not been migrated to source/flow
+    def set_log(self, log: LogsTFSummary):
+        super().set_log(log)
+        self.env.set_log(log)
+
     def step(self, action):
         return self.env.step(action)
 
@@ -38,8 +43,8 @@ class TestAgentEnv(BaseEnv):
             else:
                 all_done = np.maximum(done,all_done)
         output = {
-            'return': step_output['prev_episode_return'],
-            'length': step_output['prev_episode_length'],
+            'return': step_output['episode_return'],
+            'length': step_output['episode_length'],
         }
         return output
 

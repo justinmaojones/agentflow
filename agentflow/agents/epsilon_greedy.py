@@ -9,7 +9,6 @@ from agentflow.numpy.ops import eps_greedy_noise
 class EpsilonGreedy(DiscreteActionAgentFlow):
 
     epsilon: float 
-    log: LogsTFSummary = None
 
     def __post_init__(self):
         self._t = 0
@@ -22,7 +21,7 @@ class EpsilonGreedy(DiscreteActionAgentFlow):
             self._t += 1
     
         if self.log is not None:
-            self.log.append(f"agent/{self.__class__.__name__}/epsilon", eps)
+            self.log.append(f"{self.__class__.__name__}/epsilon", eps)
 
         return eps
 

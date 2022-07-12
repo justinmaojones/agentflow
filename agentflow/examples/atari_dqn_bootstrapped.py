@@ -19,7 +19,7 @@ from agentflow.buffers import NStepReturnBuffer
 from agentflow.examples.env import dqn_atari_paper_env
 from agentflow.examples.nn import dqn_atari_paper_net
 from agentflow.examples.nn import dqn_atari_paper_net_dueling
-from agentflow.logging import LogsTFSummary
+from agentflow.logging import scoped_log_tf_summary
 from agentflow.numpy.ops import onehot
 from agentflow.numpy.schedules import ExponentialDecaySchedule 
 from agentflow.numpy.schedules import LinearAnnealingSchedule
@@ -101,10 +101,7 @@ def run(**cfg):
     with open(os.path.join(savedir, 'config.yaml'), 'w') as f:
         yaml.dump(cfg, f)
 
-    log = LogsTFSummary(savedir)
-
-    log_train = log.with_prefix("train")
-    log_test = log.with_prefix("test")
+    log = scoped_log_tf_summary(savedir)
 
     # environment
     env = dqn_atari_paper_env(
@@ -252,7 +249,7 @@ def run(**cfg):
     )
     trainer.learn(cfg['num_steps'])
 
-    log.write(os.path.join(savedir, 'log.h5'))
+    log.flush()
 
 if __name__=='__main__':
     click.command()(run)()

@@ -30,6 +30,11 @@ class PrevEpisodeLengthsEnv(BaseEnv):
         self._prev_episode_lengths = None
         return self.env.reset()
 
+    # TODO: added because env has not been migrated to source/flow
+    def set_log(self, log: LogsTFSummary):
+        super().set_log(log)
+        self.env.set_log(log)
+
     def step(self, action):
         output = self.env.step(action)
         if self._curr_episode_lengths is None:
@@ -42,7 +47,7 @@ class PrevEpisodeLengthsEnv(BaseEnv):
         output['episode_length'] = self._prev_episode_lengths
 
         if self.log is not None:
-            self.log.append(f"env/episode_length", self._prev_episode_lengths)
+            self.log.append(f"{self.__class__.__name__}/episode_length", self._prev_episode_lengths)
 
         return output
 

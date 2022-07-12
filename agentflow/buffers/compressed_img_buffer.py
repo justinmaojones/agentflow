@@ -65,8 +65,8 @@ class CompressedImageBuffer(BufferFlow):
     def get_sequence(self, time_idx: np.ndarray, seq_size: int, batch_idx: np.ndarray = None):
         raise NotImplementedError
 
-    def sample(self, n_samples: int):
-        return self.decode(self.source.sample(n_samples))
+    def sample(self, n_samples: int, **kwargs):
+        return self.decode(self.source.sample(n_samples, **kwargs))
 
     def tail(self, seq_size: int, batch_idx: np.ndarray = None):
         return self._flattened_decode(self.source.tail(seq_size, batch_idx))

@@ -5,13 +5,15 @@ from dataclasses import dataclass
 import numpy as np
 from typing import Dict, Union
 
-from agentflow.flow import Flow
 from agentflow.buffers.buffer_map import BufferMap
 from agentflow.buffers.source import BufferSource
+from agentflow.flow import Flow
+from agentflow.logging import LogsTFSummary
+from agentflow.logging import WithLogging
 
 
 @dataclass
-class BufferFlow(Flow):
+class BufferFlow(Flow, WithLogging):
 
     source: Union[BufferFlow, BufferSource]
 
@@ -44,4 +46,8 @@ class BufferFlow(Flow):
 
     def tail(self, seq_size: int, batch_idx: np.ndarray = None):
         return self.source.tail(seq_size, batch_idx)
+
+    def set_log(self, log: LogsTFSummary):
+        super().set_log(log)
+        self.source.set_log(log)
 

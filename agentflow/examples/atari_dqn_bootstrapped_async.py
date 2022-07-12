@@ -20,6 +20,7 @@ from agentflow.buffers import NStepReturnBuffer
 from agentflow.examples.env import dqn_atari_paper_env
 from agentflow.examples.nn import dqn_atari_paper_net
 from agentflow.examples.nn import dqn_atari_paper_net_dueling
+from agentflow.logging import LogsTFSummary
 from agentflow.numpy.ops import onehot
 from agentflow.numpy.schedules import ExponentialDecaySchedule 
 from agentflow.numpy.schedules import LinearAnnealingSchedule
@@ -32,7 +33,6 @@ from agentflow.tensorflow.nn import dense_net
 from agentflow.tensorflow.nn import normalize_ema
 from agentflow.utils import IdleTimer 
 from agentflow.utils import ScopedIdleTimer
-from agentflow.utils import LogsTFSummary
 
 def timed(func):
     def wrapper(self, *args, **kwargs):
@@ -237,7 +237,7 @@ def run(**cfg):
 
         @timed
         def step(self, t):
-            action = agent.act(state).numpy()
+            action = self.agent.act(state)
             self.prev = self.next
             self.next = env.step(action)
 
@@ -257,10 +257,10 @@ def run(**cfg):
                 )['abs_td_error']
 
             self.log.append_dict.remote({
-                'train_ep_return': self.next['prev_episode_return'],
-                'train_ep_length': self.next['prev_episode_length'],
-                'prev_episode_return': self.next['prev_episode_return'], # for backwards compatibility
-                'prev_episode_length': self.next['prev_episode_length'], # for backwards compatibility
+                'train_ep_return': self.next['episode_return'],
+                'train_ep_length': self.next['episode_length'],
+                'prev_episode_return': self.next['episode_return'], # for backwards compatibility
+                'prev_episode_length': self.next['episode_length'], # for backwards compatibility
             })
 
             return data
@@ -362,6 +362,7 @@ def run(**cfg):
 
         @timed
         def sample(self):
+            assert len(self.replay_buffer) > 0, "replay_buffer has no data"
             if cfg['buffer_type'] == 'prioritized':
                 beta = self.beta_schedule(self.t)
                 sample = self.replay_buffer.sample(cfg['batchsize'],beta=beta,with_indices=True)
@@ -627,7 +628,7 @@ def run(**cfg):
         })
 
     print("WRITING RESULTS TO: %s" % os.path.join(savedir,'log.h5'))
-    log.write.remote(os.path.join(savedir,'log.h5'))
+    log.flush.remote()
     print("FINISHED")
 
 if __name__=='__main__':

@@ -4,7 +4,7 @@ import tensorflow as tf
 from typing import Dict, List
 
 from agentflow.agents.source import AgentSource
-from ..tensorflow.ops import l2_loss 
+from agentflow.tensorflow.ops import l2_loss 
 
 
 @dataclass
@@ -195,9 +195,9 @@ class BaseAgent(AgentSource):
             vt.assign(v)
 
         if debug:
-            return {f"update/{k}": outputs[k] for k in outputs}
+            return {f"{self.__class__.__name__}/{k}": outputs[k] for k in outputs}
         else:
             keys = ['loss', 'learning_rate']
-            return {f"update/{k}": outputs[k] for k in keys}
+            return {f"{self.__class__.__name__}/{k}": outputs[k] for k in keys}
 
 
