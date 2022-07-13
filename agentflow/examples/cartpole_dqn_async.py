@@ -149,6 +149,7 @@ def run(**cfg):
     replay_buffer = ActionToOneHotBuffer(replay_buffer, num_actions)
 
 
+    print("Build AsyncTrainer")
     trainer = AsyncTrainer(
         env=env, 
         agent=agent, 
@@ -166,6 +167,8 @@ def run(**cfg):
         parameter_server_threads=cfg['parameter_server_threads'],
         log=log,
     )
+
+    print("Start learning")
     trainer.learn(cfg['num_steps'])
 
     log.flush()
