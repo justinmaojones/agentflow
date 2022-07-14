@@ -18,16 +18,13 @@ class RemoteLogsTFSummary(LogsTFSummary):
         self.log.append.remote(key, val)
 
     def set_step(self, t):
-        self.log.set_step.remote(t)
+        return self.log.set_step.remote(t)
 
     def stack(self, key=None):
         return self.log.stack.remote(key)
 
-    def flush(self, verbose=False):
-        self.log.flush.remote(verbose)
-
-    def write(self, filepath, verbose=True):
-        self.log.write.remote(filepath, verbose)
+    def flush(self):
+        self.log.flush.remote()
 
 class RemoteScopedLogsTFSummary(ScopedLogsTFSummary):
 
@@ -37,6 +34,9 @@ class RemoteScopedLogsTFSummary(ScopedLogsTFSummary):
 
     def scope(self, scope: str):
         return RemoteScopedLogsTFSummary(self, scope)
+
+    def set_step(self, t):
+        return self.log.set_step(t)
 
 def remote_scoped_log_tf_summary(savedir: str, **kwargs):
     return RemoteScopedLogsTFSummary(

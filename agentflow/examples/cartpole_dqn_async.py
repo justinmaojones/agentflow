@@ -13,7 +13,7 @@ from agentflow.agents import EpsilonGreedy
 from agentflow.buffers import ActionToOneHotBuffer
 from agentflow.buffers import PrioritizedBufferMap
 from agentflow.buffers import NStepReturnBuffer
-from agentflow.logging import remote_scoped_log_tf_summary 
+from agentflow.logging import scoped_log_tf_summary 
 from agentflow.numpy.schedules import ExponentialDecaySchedule 
 from agentflow.numpy.schedules import LinearAnnealingSchedule
 from agentflow.state import NPrevFramesStateEnv
@@ -51,6 +51,7 @@ from agentflow.train import AsyncTrainer
 @click.option('--gamma', default=0.99)
 @click.option('--weight_decay', default=1e-4)
 @click.option('--batchsize', default=64)
+@click.option('--dataset_prefetch', default=1)
 @click.option('--savedir', default='results/cartpole_dqn_async')
 @click.option('--seed', default=None, type=int)
 def run(**cfg):
@@ -72,7 +73,7 @@ def run(**cfg):
     with open(os.path.join(savedir, 'config.yaml'), 'w') as f:
         yaml.dump(cfg, f)
 
-    log = remote_scoped_log_tf_summary(savedir)
+    log = scoped_log_tf_summary(savedir)
 
     # environment
     env = CartpoleGymEnv(n_envs=cfg['n_envs'])
