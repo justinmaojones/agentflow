@@ -8,7 +8,7 @@ python agentflow/examples/pendulum_ddpg.py \
     --ema_decay=0.99 \
     --batchnorm=True \
     --noise_eps=0.5 \
-    --num_steps=3000 \
+    --num_steps=30000 \
     --n_prev_frames=16 \
     --begin_learning_at_step=1000 \
     --n_update_steps=4 \
