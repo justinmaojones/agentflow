@@ -1,6 +1,7 @@
 #!/bin/sh
 
 export SAVEDIR=results/cartpole_dqn_bootstrapped/run
+
 python agentflow/examples/cartpole_dqn_bootstrapped.py
     --bootstrap_num_heads=64 \
     --bootstrap_mask_prob=0.75 \
@@ -25,5 +26,5 @@ python agentflow/examples/cartpole_dqn_bootstrapped.py
     --normalize_inputs=True \
     --num_steps=10000 \
     --prioritized_replay_simple=True \
-    --savedir=SAVEDIR \
+    --savedir=$SAVEDIR \
     --weight_decay=1e-4

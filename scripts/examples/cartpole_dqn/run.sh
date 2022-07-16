@@ -1,4 +1,7 @@
+#!/bin/sh
+
 export SAVEDIR=results/cartpole_dqn/run
+
 python agentflow/examples/cartpole_dqn.py \
     --batchnorm=False \
     --batchsize=64 \

@@ -1,3 +1,5 @@
+#!/bin/sh
+
 export SAVEDIR=results/cartpole_dqn_async/run
 
 python agentflow/examples/cartpole_dqn_async.py \
