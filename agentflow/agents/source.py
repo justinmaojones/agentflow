@@ -12,6 +12,10 @@ class AgentSource(Source, WithLogging):
     @abstractmethod
     def act(self, state, mask=None, **kwargs):
         ...
+
+    @abstractmethod
+    def build_model(self):
+        ...
         
     @abstractmethod
     def get_weights(self):

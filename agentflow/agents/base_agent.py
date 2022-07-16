@@ -10,18 +10,20 @@ from agentflow.tensorflow.ops import l2_loss
 @dataclass
 class BaseAgent(AgentSource):
 
-    policy_model: tf.keras.Model
-    train_model: tf.keras.Model
+    policy_model: tf.keras.Model = None
+    train_model: tf.keras.Model = None
 
-    optimizer: tf.keras.optimizers.Optimizer
+    optimizer: tf.keras.optimizers.Optimizer = None
 
-    weights: List[tf.Variable]
-    trainable_weights: List[tf.Variable]
-    non_trainable_weights: List[tf.Variable]
+    weights: List[tf.Variable] = None
+    trainable_weights: List[tf.Variable] = None
+    non_trainable_weights: List[tf.Variable] = None
 
-    weights_target: List[tf.Variable]
-    trainable_weights_target: List[tf.Variable]
-    non_trainable_weights_target: List[tf.Variable]
+    weights_target: List[tf.Variable] = None
+    trainable_weights_target: List[tf.Variable] = None
+    non_trainable_weights_target: List[tf.Variable] = None
+
+    auto_build: bool = True
 
     def __hash__(self):
         """classes become unhashable with keras model attributes"""

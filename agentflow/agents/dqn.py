@@ -15,7 +15,8 @@ class DQN(BaseAgent, DiscreteActionAgentSource):
             num_actions,
             q_fn,
             optimizer,
-            double_q=False
+            double_q: bool = False,
+            auto_build: bool = True
         ):
         """Implements Deep Q Networks [1] with Tensorflow 
 
@@ -32,6 +33,7 @@ class DQN(BaseAgent, DiscreteActionAgentSource):
           optimizer: tf.keras.optimizers.Optimizer.
           double_q: boolean, when true uses "double q-learning" from [2]. Otherwise uses
             standard q-learning.
+          auto_build: boolean, automatically build model on class instantiation
             
         References:
         [1] Mnih, Volodymyr, et al. "Playing atari with deep reinforcement learning." 
@@ -44,8 +46,10 @@ class DQN(BaseAgent, DiscreteActionAgentSource):
         self.q_fn = q_fn
         self.optimizer = optimizer
         self.double_q = double_q
+        self.auto_build = auto_build
 
-        self.build_model()
+        if auto_build:
+            self.build_model()
 
     def build_net(self, name):
         state_input = tf.keras.Input(shape=tuple(self.state_shape))

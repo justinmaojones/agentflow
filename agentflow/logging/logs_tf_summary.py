@@ -6,16 +6,25 @@ from typing import Dict, List, Union
 
 class LogsTFSummary:
 
-    def __init__(self, savedir: str, **kwargs):
+    def __init__(self, savedir: str, filename: str = 'log.h5', **kwargs):
         self.logs = {}
         self.savedir = savedir
-        self.summary_writer = tf.summary.create_file_writer(savedir, **kwargs)
-        self._log_filepath = os.path.join(self.savedir, 'log.h5')
+        self.kwargs = kwargs
+        self._summary_writer = None
+        self._log_filepath = os.path.join(self.savedir, filename)
+        self._step = None
 
     def __getitem__(self, key: str):
         if key not in self.logs:
             self.logs[key] = []
         return self.logs[key]
+
+    @property
+    def summary_writer(self):
+        # lazy build of summary writer
+        if self._summary_writer is None:
+            self._summary_writer = tf.summary.create_file_writer(self.savedir, **self.kwargs)
+        return self._summary_writer
 
     def append(self, key: str, val: Union[float, int, np.ndarray]):
         val = np.mean(val)
@@ -28,7 +37,7 @@ class LogsTFSummary:
         # WARNING: tf.summary overwrites previously written values 
         # for the same step
         with self.summary_writer.as_default():
-            tf.summary.scalar(key, val)
+            tf.summary.scalar(key, val, step=self.step)
 
     def extend(self, key: str, vals: List[Union[float, int, np.ndarray]]):
         # dont just list.extend, since we want to capture tf.summary
@@ -45,6 +54,11 @@ class LogsTFSummary:
 
     def set_step(self, t: int):
         tf.summary.experimental.set_step(t)
+        self._step = t
+
+    @property
+    def step(self):
+        return self._step
 
     def stack(self, key: str = None):
         if key is None:
@@ -56,6 +70,13 @@ class LogsTFSummary:
         self.summary_writer.flush()
         self._write_h5()
         self.logs = {}
+
+    def with_filename(self, filename: str):
+        return LogsTFSummary(
+            savedir=self.savedir, 
+            filename=filename, 
+            **self.kwargs
+        )
 
     def _write_h5(self):
         with h5py.File(self._log_filepath, 'a') as f:
