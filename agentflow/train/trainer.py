@@ -85,20 +85,21 @@ class Trainer(WithLogging):
             pb_input = []
 
             self.train_step()
+
+            end_time = time.time()
+            self.log.append('trainer/updates_per_sec', self._update_counter / (end_time-start_time))
+            self.log.append('trainer/training_examples_per_sec', 
+                    (self._update_counter * self.batchsize) / (end_time-start_time))
+            self.log.append('trainer/update_counter', self._update_counter)
+
             if self.t % self.n_steps_per_eval == 0 and self.t > 0:
                 test_ep_returns = self.eval_step()
 
                 avg_test_ep_returns = np.mean(test_ep_returns)
                 pb_input.append(('test_env/ep_returns', avg_test_ep_returns))
                 self.log.append('test_env/ep_returns', avg_test_ep_returns) 
-                self.log.append('test_env/ep_steps', self.t)
+                self.log.append('test_env/test_counter', self.t)
 
-            end_time = time.time()
-            self.log.append('trainer/step_duration_sec', end_time-start_step_time)
-            self.log.append('trainer/duration_cumulative', end_time-start_time)
-            self.log.append('trainer/steps_per_sec', (t+1.) / (end_time-start_time))
-            self.log.append('trainer/examples_per_sec', 
-                    (self._update_counter * self.batchsize) / (end_time-start_time))
 
             pb.add(1, pb_input)
 
@@ -141,7 +142,6 @@ class Trainer(WithLogging):
             self._update_counter += 1
 
         self.log.append_dict(update_outputs)
-        self.log.append('trainer/updates', self._update_counter)
 
     def train_step(self):
         self.run_step()

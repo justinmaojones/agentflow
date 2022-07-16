@@ -62,7 +62,7 @@ class Runner:
     def set_weights(self, weights):
         self.agent.set_weights(weights)
         self._set_weights_counter += 1
-        self.log.append('set_weights', self._set_weights_counter)
+        self.log.append('runner/set_weights', self._set_weights_counter)
 
     #@timed
     def step(self):
@@ -139,13 +139,13 @@ class TestRunner:
     def set_weights(self, weights):
         self.agent.set_weights(weights)
         self._set_weights_counter += 1
-        self.log.append('set_weights', self._set_weights_counter)
+        self.log.append('test_runner/set_weights', self._set_weights_counter)
 
     def test(self):
         test_output = test_agent_fn(self.env, self.agent)
         self._test_counter += 1
-        self.log.append("test_counter", self._test_counter)
-        self.log.append("ep_returns", test_output)
+        self.log.append("test_env/test_counter", self._test_counter)
+        self.log.append("test_env/ep_returns", test_output)
         return test_output
 
 
@@ -260,7 +260,8 @@ class ParameterServer:
                 break
         end_time = time.time()
 
-        self.log.append('trainer/steps_per_sec', (t+1.) / (end_time-start_time))
+        self.log.append('trainer/updates_per_sec', n_steps / (end_time-start_time))
+        self.log.append('trainer/training_examples_per_sec', (n_steps * self.batchsize) / (end_time-start_time))
         self.log.append('trainer/update_counter', self._update_counter)
 
         return self._update_counter
