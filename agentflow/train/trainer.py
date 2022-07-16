@@ -94,10 +94,10 @@ class Trainer(WithLogging):
                 self.log.append('test_env/ep_steps', self.t)
 
             end_time = time.time()
-            self.log.append('train/step_duration_sec', end_time-start_step_time)
-            self.log.append('train/duration_cumulative', end_time-start_time)
-            self.log.append('train/steps_per_sec', (t+1.) / (end_time-start_time))
-            self.log.append('train/examples_per_sec', 
+            self.log.append('trainer/step_duration_sec', end_time-start_step_time)
+            self.log.append('trainer/duration_cumulative', end_time-start_time)
+            self.log.append('trainer/steps_per_sec', (t+1.) / (end_time-start_time))
+            self.log.append('trainer/examples_per_sec', 
                     (self._update_counter * self.batchsize) / (end_time-start_time))
 
             pb.add(1, pb_input)
@@ -132,7 +132,7 @@ class Trainer(WithLogging):
 
         # num frames = num steps x num envs
         self._frame_counter += len(self._state)
-        self.log.append('train/frames', self._frame_counter)
+        self.log.append('trainer/frames', self._frame_counter)
 
     def update_step(self):
         for i in range(self.n_update_steps):
@@ -141,7 +141,7 @@ class Trainer(WithLogging):
             self._update_counter += 1
 
         self.log.append_dict(update_outputs)
-        self.log.append('train/updates', self._update_counter)
+        self.log.append('trainer/updates', self._update_counter)
 
     def train_step(self):
         self.run_step()
@@ -150,4 +150,4 @@ class Trainer(WithLogging):
                 self.update_step()
 
         self.set_step(self.t+1)
-        self.log.append('train/steps', self.t)
+        self.log.append('trainer/steps', self.t)
