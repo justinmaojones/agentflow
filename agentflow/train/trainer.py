@@ -42,11 +42,12 @@ class Trainer(WithLogging):
         self.test_agent = test_agent if test_agent is not None else agent
 
         self.log = log
+        self.log_train_agent = self.log.scope("train_agent")
         self.log_flush_freq = log_flush_freq
 
         if log:
             self.env.set_log(log.scope("train_env"))
-            self.agent.set_log(log.scope("train_agent"))
+            self.agent.set_log(self.log_train_agent)
             self.replay_buffer.set_log(log.scope("replay_buffer"))
             self.test_env.set_log(log.scope("test_env"))
 
@@ -81,12 +82,12 @@ class Trainer(WithLogging):
                           f"has exceeded num_frames_max={self.max_frames}")
                     break
 
-            start_step_time = time.time()
             pb_input = []
 
             self.train_step()
 
             end_time = time.time()
+            self.log.append('trainer/batchsize', self.batchsize)
             self.log.append('trainer/updates_per_sec', self._update_counter / (end_time-start_time))
             self.log.append('trainer/training_examples_per_sec', 
                     (self._update_counter * self.batchsize) / (end_time-start_time))
@@ -141,7 +142,7 @@ class Trainer(WithLogging):
             update_outputs = self.agent.update(**sample)
             self._update_counter += 1
 
-        self.log.append_dict(update_outputs)
+        self.log_train_agent.append_dict(update_outputs)
 
     def train_step(self):
         self.run_step()
