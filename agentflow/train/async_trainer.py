@@ -581,7 +581,8 @@ class AsyncTrainer:
 
                 elif op_type == Op.UPDATE_AGENT:
                     update_counter = ray.get(op)
-                    self.set_step(update_counter, flush=True)
+                    # ensure all workers have up-to-date update counter
+                    ray.get(self.set_step(update_counter, flush=True))
                     pb.update(update_counter, [('updates', update_counter)])
 
 
