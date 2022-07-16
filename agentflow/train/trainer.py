@@ -42,11 +42,12 @@ class Trainer(WithLogging):
         self.test_agent = test_agent if test_agent is not None else agent
 
         self.log = log
+        self.log_train_agent = self.log.scope("train_agent")
         self.log_flush_freq = log_flush_freq
 
         if log:
             self.env.set_log(log.scope("train_env"))
-            self.agent.set_log(log.scope("train_agent"))
+            self.agent.set_log(self.log_train_agent)
             self.replay_buffer.set_log(log.scope("replay_buffer"))
             self.test_env.set_log(log.scope("test_env"))
 
@@ -81,24 +82,25 @@ class Trainer(WithLogging):
                           f"has exceeded num_frames_max={self.max_frames}")
                     break
 
-            start_step_time = time.time()
             pb_input = []
 
             self.train_step()
+
+            end_time = time.time()
+            self.log.append('trainer/batchsize', self.batchsize)
+            self.log.append('trainer/updates_per_sec', self._update_counter / (end_time-start_time))
+            self.log.append('trainer/training_examples_per_sec', 
+                    (self._update_counter * self.batchsize) / (end_time-start_time))
+            self.log.append('trainer/update_counter', self._update_counter)
+
             if self.t % self.n_steps_per_eval == 0 and self.t > 0:
                 test_ep_returns = self.eval_step()
 
                 avg_test_ep_returns = np.mean(test_ep_returns)
                 pb_input.append(('test_env/ep_returns', avg_test_ep_returns))
                 self.log.append('test_env/ep_returns', avg_test_ep_returns) 
-                self.log.append('test_env/ep_steps', self.t)
+                self.log.append('test_env/test_counter', self.t)
 
-            end_time = time.time()
-            self.log.append('train/step_duration_sec', end_time-start_step_time)
-            self.log.append('train/duration_cumulative', end_time-start_time)
-            self.log.append('train/steps_per_sec', (t+1.) / (end_time-start_time))
-            self.log.append('train/examples_per_sec', 
-                    (self._update_counter * self.batchsize) / (end_time-start_time))
 
             pb.add(1, pb_input)
 
@@ -132,7 +134,7 @@ class Trainer(WithLogging):
 
         # num frames = num steps x num envs
         self._frame_counter += len(self._state)
-        self.log.append('train/frames', self._frame_counter)
+        self.log.append('trainer/frames', self._frame_counter)
 
     def update_step(self):
         for i in range(self.n_update_steps):
@@ -140,8 +142,7 @@ class Trainer(WithLogging):
             update_outputs = self.agent.update(**sample)
             self._update_counter += 1
 
-        self.log.append_dict(update_outputs)
-        self.log.append('train/updates', self._update_counter)
+        self.log_train_agent.append_dict(update_outputs)
 
     def train_step(self):
         self.run_step()
@@ -150,4 +151,4 @@ class Trainer(WithLogging):
                 self.update_step()
 
         self.set_step(self.t+1)
-        self.log.append('train/steps', self.t)
+        self.log.append('trainer/steps', self.t)

@@ -36,9 +36,9 @@ class Runner:
         self.log = log
         self.set_step(0)
 
-        self.env.set_log(log)
-        self.agent.set_log(log)
-        self.replay_buffer.set_log(log)
+        self.env.set_log(log.scope("train_env"))
+        self.agent.set_log(log.scope("train_agent"))
+        self.replay_buffer.set_log(log.scope("replay_buffer"))
 
         #self.scoped_timer = ScopedIdleTimer("ScopedIdleTimer/Runner", start_on_create=False)
 
@@ -62,7 +62,7 @@ class Runner:
     def set_weights(self, weights):
         self.agent.set_weights(weights)
         self._set_weights_counter += 1
-        self.log.append('set_weights', self._set_weights_counter)
+        self.log.append('async/runner/set_weights', self._set_weights_counter)
 
     #@timed
     def step(self):
@@ -121,8 +121,8 @@ class TestRunner:
         self.log = log
         self.set_step(0)
 
-        self.env.set_log(log)
-        self.agent.set_log(log)
+        self.env.set_log(log.scope("test_env"))
+        self.agent.set_log(log.scope("test_agent"))
 
         #self.scoped_timer = ScopedIdleTimer("ScopedIdleTimer/TestRunner", start_on_create=False)
         self.next = self.env.reset()
@@ -139,13 +139,13 @@ class TestRunner:
     def set_weights(self, weights):
         self.agent.set_weights(weights)
         self._set_weights_counter += 1
-        self.log.append('set_weights', self._set_weights_counter)
+        self.log.append('async/test_runner/set_weights', self._set_weights_counter)
 
     def test(self):
         test_output = test_agent_fn(self.env, self.agent)
         self._test_counter += 1
-        self.log.append("test_counter", self._test_counter)
-        self.log.append("ep_returns", test_output)
+        self.log.append("test_env/test_counter", self._test_counter)
+        self.log.append("test_env/ep_returns", test_output)
         return test_output
 
 
@@ -168,7 +168,7 @@ class ParameterServer:
         self.runners = runners
         self.batchsize = batchsize
         self.dataset_prefetch = dataset_prefetch
-        self.log = log
+        self.log = log.scope("train_agent")
         self.set_step(0)
 
         self.agent.set_log(log)
@@ -250,7 +250,6 @@ class ParameterServer:
         if self._dataset is None:
             self._build_dataset_pipeline()
 
-        start_time = time.time()
         t = 0 
         for sample in self._dataset:
             update_outputs = self.agent.update(**sample)
@@ -258,10 +257,8 @@ class ParameterServer:
             t += 1
             if t >= n_steps:
                 break
-        end_time = time.time()
 
-        self.log.append('train/steps_per_sec', (t+1.) / (end_time-start_time))
-        self.log.append('update_counter', self._update_counter)
+        self.log.append_dict(update_outputs)
 
         return self._update_counter
 
@@ -278,7 +275,7 @@ class WeightUpdater:
         ):
         self.parameter_server = parameter_server
         self.runners = runners
-        self.log = log
+        self.log = log.scope("async/weight_updater")
         self.set_step(0)
 
         self._refresh_counter = 0
@@ -418,7 +415,7 @@ class AsyncTrainer:
                 env=self.env, 
                 agent=self.agent, 
                 replay_buffer=self.replay_buffer, 
-                log=self.log.scope(f"runner/{i}").with_filename(f"runner_{i}_log.h5"), 
+                log=self.log.with_filename(f"runner_{i}_log.h5"), 
             )
             self.runners.append(runner)
 
@@ -436,7 +433,7 @@ class AsyncTrainer:
         self.test_runner = RemoteTestRunner.remote(
             env=self.test_env,
             agent=self.test_agent,
-            log=self.log.scope("test_runner").with_filename("test_runner_log.h5"),
+            log=self.log.with_filename("test_runner_log.h5"),
         )
 
     def build_parameter_server(self):
@@ -460,7 +457,7 @@ class AsyncTrainer:
             runners=self.runners,
             batchsize=self.batchsize,
             batchsize_runner=self.batchsize_runner,
-            log=self.log.scope("parameter_server").with_filename("parameter_server_log.h5")
+            log=self.log.with_filename("parameter_server_log.h5")
         )
 
     def build_weight_updater(self):
@@ -476,7 +473,7 @@ class AsyncTrainer:
         self.weight_updater = RemoteWeightUpdater.remote(
             parameter_server=self.parameter_server,
             runners=self.runners + [self.test_runner],
-            log=self.log.scope("weight_updater").with_filename("weight_updater_log.h5")
+            log=self.log.with_filename("weight_updater_log.h5")
         )
 
     def build_frame_counter_server(self):
@@ -570,13 +567,13 @@ class AsyncTrainer:
             for op in ready_op_list:
                 op_type = ops.pop(op)
                 op_counter[op_type] += 1
-                self.log.append(f"op_counter/{op_type}", op_counter[op_type])
+                self.log.append(f"async/op_counter/{op_type}", op_counter[op_type])
 
                 assert op_type not in ops.values(), f"{op_type} op still in ops"
 
                 if op_type == Op.FRAME_COUNTER:
                     frame_counter = ray.get(op)
-                    self.log.append("frames", frame_counter)
+                    self.log.append("trainer/frames", frame_counter)
                     pb.update(update_counter, [('frames', frame_counter)])
 
                 elif op_type == Op.UPDATE_AGENT:
@@ -584,6 +581,12 @@ class AsyncTrainer:
                     # ensure all workers have up-to-date update counter
                     ray.get(self.set_step(update_counter, flush=True))
                     pb.update(update_counter, [('updates', update_counter)])
+
+                    curr_time = time.time()
+                    self.log.append('trainer/batchsize', self.batchsize)
+                    self.log.append('trainer/updates_per_sec', update_counter / (curr_time-start_time))
+                    self.log.append('trainer/training_examples_per_sec', (update_counter * self.batchsize) / (curr_time-start_time))
+                    self.log.append('trainer/update_counter', update_counter)
 
 
                 elif op_type == Op.REFRESH_WEIGHTS:
