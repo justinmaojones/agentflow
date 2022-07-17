@@ -15,7 +15,6 @@ from agentflow.buffers import BufferFlow
 from agentflow.buffers import BufferSource
 from agentflow.env import BaseEnv
 from agentflow.logging import ScopedLogsTFSummary
-from agentflow.logging import remote_scoped_log_tf_summary
 from agentflow.state import StateEnv
 from agentflow.tensorflow.profiler import TFProfilerIterator
 
