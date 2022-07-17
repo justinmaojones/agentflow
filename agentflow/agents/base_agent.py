@@ -26,17 +26,31 @@ class BaseAgent(AgentSource):
     auto_build: bool = True
 
     _update_fn = None
+    _act_fn = None
+    _pnorms_fn = None
 
     def __hash__(self):
         """classes become unhashable with keras model attributes"""
         return hash(self.__class__.__name__)
 
-    @tf.function
+    @property
+    def act_fn(self):
+
+        if self._act_fn is not None:
+            return self._act_fn
+
+        @tf.function
+        def _act(state, mask=None):
+            if mask is None:
+                return self.policy_model(state)
+            else:
+                return self.policy_model([state, mask])
+
+        self._act_fn = _act
+        return self._act_fn
+
     def act(self, state, mask=None):
-        if mask is None:
-            return self.policy_model(state)
-        else:
-            return self.policy_model([state, mask])
+        return self.act_fn(state, mask)
         
     @abstractmethod
     def build_model(self):
@@ -65,33 +79,46 @@ class BaseAgent(AgentSource):
     def load_weights(self, filepath):
         self.train_model.load_weights(filepath)
 
+    @property
+    def pnorms_fn(self):
+
+        if self._pnorms_fn is not None:
+            return self._pnorms_fn
+
+        @tf.function
+        def _pnorms(per_layer=False):
+            """
+            Returns the 2-norm of every trainable and non trainable weight
+            in main and target graphs. Typically useful for debugging.
+            """
+
+            weight_classes = {
+                'trainable_weights/main': self.trainable_weights,
+                'trainable_weights/target': self.trainable_weights_target,
+                'non_trainable_weights/main': self.non_trainable_weights,
+                'non_trainable_weights/target': self.non_trainable_weights_target,
+            }
+
+            pnorms = {}
+            if per_layer:
+                for c in weight_classes:
+                    weights = weight_classes[c]
+                    for k in weights:
+                        w = self.trainable_weights[k]
+                        pnorms[f"pnorms/{c}/{w.name}"] = tf.norm(w)
+
+            # overall parameter norms
+            for c in weight_classes:
+                pnorms[f"pnorm/overall/{c}"] = tf.linalg.global_norm(weight_classes[c])
+
+            return pnorms
+
+        self._pnorms_fn = _pnorms
+        return self._pnorms_fn
+
     @tf.function
     def pnorms(self, per_layer=False):
-        """
-        Returns the 2-norm of every trainable and non trainable weight
-        in main and target graphs. Typically useful for debugging.
-        """
-
-        weight_classes = {
-            'trainable_weights/main': self.trainable_weights,
-            'trainable_weights/target': self.trainable_weights_target,
-            'non_trainable_weights/main': self.non_trainable_weights,
-            'non_trainable_weights/target': self.non_trainable_weights_target,
-        }
-
-        pnorms = {}
-        if per_layer:
-            for c in weight_classes:
-                weights = weight_classes[c]
-                for k in weights:
-                    w = self.trainable_weights[k]
-                    pnorms[f"pnorms/{c}/{w.name}"] = tf.norm(w)
-
-        # overall parameter norms
-        for c in weight_classes:
-            pnorms[f"pnorm/overall/{c}"] = tf.linalg.global_norm(weight_classes[c])
-
-        return pnorms
+        return self.pnorms_fn(per_layer)
 
     def save_weights(self, filepath):
         self.train_model.save_weights(filepath)
