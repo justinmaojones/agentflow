@@ -42,7 +42,8 @@ class PrioritizedBufferMap(BufferMap):
         super(PrioritizedBufferMap, self).__init__(max_length)
 
         assert alpha > 0, f"alpha={alpha} is invalid, alpha must be positive"
-        assert beta > 0, f"beta={beta} is invalid, beta must be positive"
+        if isinstance(beta, float):
+            assert beta > 0, f"beta={beta} is invalid, beta must be positive"
         assert eps > 0, f"eps={eps} is invalid, eps must be positive"
         assert wclip > 0, f"wclip={wclip} is invalid, wclip must be positive"
         assert default_priority > 0, f"default_priority={default_priority} is invalid, default_priority must be positive"
