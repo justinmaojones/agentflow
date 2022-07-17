@@ -8,26 +8,25 @@ class ExponentialDecaySchedule(Schedule):
     """
     Applies an exponentially decayed annealing strategy. For example:
     ```python
-    >>> schedule = ExponentialDecaySchedule(initial_value = 0.0, final_value = 1.0, annealing_steps = 100)
+    >>> schedule = ExponentialDecaySchedule(initial_value = 1.0, final_value = 0.0, decay_rate = 0.99)
     >>> print(schedule(step=1))
-    0.01
+    0.99
     ```
 
     Parameters
     ----------
-    initial_value : int, float
-    Initial schedule value
-    final_value : int, float
-    Final schedule value
-    annealing_steps : int, float
-    Number of steps to anneal over
+    initial_value : float
+        Initial schedule value
+    final_value : float
+        Final schedule value
+    decay_rate: float
+        Decay rate per step
     begin_at_step : int, float
-    Schedule returns initial value until step `begin_at_step`
+        Schedule returns initial value until step `begin_at_step`
     """
     initial_value: float
     final_value: float
-    defay_rate: float
-    annealing_steps: int
+    decay_rate: float
     begin_at_step: int = 0
 
 
