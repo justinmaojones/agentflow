@@ -88,6 +88,10 @@ class Runner:
         self._frame_counter += len(self.next['state'])
 
     def sample(self, n_samples, **kwargs):
+        """
+        Returns a sample from the buffer.  Sample is converted to tf.Tensor
+        in order to avoid expensive memory copy ops on parameter servers.
+        """
         with self._lock_buffer:
             x = self.replay_buffer.sample(n_samples, **kwargs)
         return {k: tf.convert_to_tensor(v) for k, v in x.items()}
