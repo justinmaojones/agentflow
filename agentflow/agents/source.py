@@ -8,7 +8,6 @@ from agentflow.source import Source
 
 class AgentSource(Source, WithLogging):
 
-    @tf.function
     @abstractmethod
     def act(self, state, mask=None, **kwargs):
         ...
@@ -25,7 +24,6 @@ class AgentSource(Source, WithLogging):
     def load_weights(self, filepath):
         ...
 
-    @tf.function
     @abstractmethod
     def pnorms(self):
         ...
@@ -38,7 +36,6 @@ class AgentSource(Source, WithLogging):
     def set_weights(self, weights):
         ...
 
-    @tf.function
     @abstractmethod
     def update(self, *args, **kwargs):
         ...

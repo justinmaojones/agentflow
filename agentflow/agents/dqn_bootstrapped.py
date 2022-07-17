@@ -198,10 +198,3 @@ class BootstrappedDQN(BaseAgent):
             'y': y
         }
         return losses, addl_output
-
-    @tf.function
-    def policy_logits(self, state, mask=None):
-        if mask is None:
-            return self.policy_logits_model(state)
-        else:
-            return self.policy_logits_masked_model([state, mask])

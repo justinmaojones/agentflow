@@ -143,7 +143,3 @@ class DQN(BaseAgent, DiscreteActionAgentSource):
             'y': y
         }
         return losses, addl_output
-
-    @tf.function
-    def policy_logits(self, state):
-        return self.policy_logits_model(state)
