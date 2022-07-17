@@ -12,7 +12,7 @@ class TestNStepReturnBuffer(unittest.TestCase):
         T = 500
         NSTEPS = 10
         gamma = 0.99
-        buf = PrioritizedBufferMap(1000,eps=0.0,alpha=1.0)
+        buf = PrioritizedBufferMap(1000,eps=1e-12,alpha=1.0)
         pub = NStepReturnBuffer(buf,n_steps=NSTEPS,gamma=gamma)
 
         data = {

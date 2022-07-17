@@ -1,13 +1,10 @@
+from dataclasses import dataclass
 import numpy as np
 
-class LinearAnnealingSchedule(object):
+from agentflow.numpy.schedules.schedule import Schedule
 
-  def __init__(
-      self,
-      initial_value,
-      final_value,
-      annealing_steps,
-      begin_at_step=0):
+@dataclass
+class LinearAnnealingSchedule(Schedule):
     """
     Applies a linear annealing strategy. For example:
     ```python
@@ -19,19 +16,20 @@ class LinearAnnealingSchedule(object):
     Parameters
     ----------
     initial_value : int, float
-        Initial schedule value
+    Initial schedule value
     final_value : int, float
-        Final schedule value
+    Final schedule value
     annealing_steps : int, float
-        Number of steps to anneal over
+    Number of steps to anneal over
     begin_at_step : int, float
-        Schedule returns initial value until step `begin_at_step`
+    Schedule returns initial value until step `begin_at_step`
     """
-    self.initial_value = initial_value
-    self.final_value = final_value
-    self.annealing_steps = annealing_steps
-    self.begin_at_step = begin_at_step
+    initial_value: float
+    final_value: float
+    annealing_steps: int
+    begin_at_step: int = 0
 
-  def __call__(self, step):
-      step = 1.0 * np.minimum(np.maximum(0, step - self.begin_at_step), self.annealing_steps)
-      return self.initial_value + (self.final_value - self.initial_value) * (step / self.annealing_steps)
+
+    def __call__(self, step: int) -> float:
+        step = 1.0 * np.minimum(np.maximum(0, step - self.begin_at_step), self.annealing_steps)
+        return self.initial_value + (self.final_value - self.initial_value) * (step / self.annealing_steps)
