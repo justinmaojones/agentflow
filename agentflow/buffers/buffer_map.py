@@ -8,9 +8,10 @@ from agentflow.buffers.source import BufferSource
 @dataclass
 class BufferMap(BufferSource):
     
-    def __init__(self, max_length: int = 1e6):
+    def __init__(self, max_length: int = 1e6, **kwargs):
+        super().__init__(_buffers={}, **kwargs)
+
         self.max_length = max_length
-        self._buffers = {}
         self._n = 0
         self._index = 0
 
