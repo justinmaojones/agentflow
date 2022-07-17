@@ -24,10 +24,10 @@ class ExponentialDecaySchedule(Schedule):
     begin_at_step : int, float
     Schedule returns initial value until step `begin_at_step`
     """
-    initial_value: float,
-    final_value: float,
+    initial_value: float
+    final_value: float
     defay_rate: float
-    annealing_steps: int,
+    annealing_steps: int
     begin_at_step: int = 0
 
 
