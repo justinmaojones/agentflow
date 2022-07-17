@@ -1,8 +1,10 @@
 import numpy as np
 from starr import SumTreeArray
+from typing import Union
 
 from agentflow.buffers.nd_array_buffer import NDArrayBuffer
 from agentflow.buffers.buffer_map import BufferMap
+from agentflow.numpy.schedules.schedule import Schedule
 
 class PrioritizedSamplingBuffer(NDArrayBuffer):
 
@@ -24,28 +26,43 @@ class PrioritizedSamplingBuffer(NDArrayBuffer):
 class PrioritizedBufferMap(BufferMap):
 
     def __init__(self,
-            max_length = 2**20,
-            alpha = 0.6,
-            eps = 1e-4,
-            wclip = 32.,
-            default_priority = 1.0,
-            default_non_zero_reward_priority = None,
-            default_done_priority = None,
-            priority_key = None
-            ):
+            max_length: int = int(2**20),
+            alpha: float = 0.6,
+            beta: Union[float, Schedule] = 1.,
+            eps: float = 1e-4,
+            wclip: float = 32.,
+            default_priority: float = 1.0,
+            default_non_zero_reward_priority: float = None,
+            default_done_priority: float = None,
+            priority_key: str = None,
+            normalized: bool = True,
+            with_indices: bool = False,
+        ):
 
         super(PrioritizedBufferMap, self).__init__(max_length)
 
         assert alpha > 0, f"alpha={alpha} is invalid, alpha must be positive"
+        assert beta > 0, f"beta={beta} is invalid, beta must be positive"
+        assert eps > 0, f"eps={eps} is invalid, eps must be positive"
+        assert wclip > 0, f"wclip={wclip} is invalid, wclip must be positive"
+        assert default_priority > 0, f"default_priority={default_priority} is invalid, default_priority must be positive"
+        if default_non_zero_reward_priority is not None:
+            assert default_non_zero_reward_priority > 0, f"default_non_zero_reward_priority={default_non_zero_reward_priority} is invalid, default_non_zero_reward_priority must be positive"
+        if default_done_priority is not None:
+            assert default_done_priority > 0, f"default_done_priority={default_done_priority} is invalid, default_done_priority must be positive"
 
         self._alpha = alpha
+        self._beta = beta
         self._eps = eps
         self._wclip = wclip
         self._default_priority = default_priority
         self._default_non_zero_reward_priority = default_non_zero_reward_priority
         self._default_done_priority = default_done_priority
-
         self._priority_key = priority_key
+        self._normalized = normalized
+        self._with_indices = with_indices
+
+        self._t = 0 # for scheduled annealing
 
         self._idx_sample = None 
         self._sumtree = None 
@@ -101,12 +118,26 @@ class PrioritizedBufferMap(BufferMap):
         for x, p in zip(X, priorities):
             self.append(x, p)
 
-    def sample(self, nsamples, beta=None, normalized=True, with_indices=False):
+    def _get_beta(self):
+        if isinstance(self._beta, float):
+            beta = self._beta
+        elif isinstance(self._beta, Schedule):
+            beta = self._beta(self._t)
+            self._t += 1
+        else:
+            raise NotImplementedError(
+                f"Unhandled type: {type(self._beta)}. beta must be a float or Schedule")
+    
+        if self.log is not None:
+            self.log.append(f"{self.__class__.__name__}/beta", beta)
+
+        return beta
+
+    def sample(self, nsamples: int):
 
         assert self._sumtree is not None, "cannot sample without first appending"
 
-        if beta is None:
-            beta = 1.
+        beta = self._get_beta()
 
         idx_sample = self._sumtree.sample(nsamples)
         output = {k:self._buffers[k].get(*idx_sample) for k in self._buffers}
@@ -130,13 +161,13 @@ class PrioritizedBufferMap(BufferMap):
         w = w ** beta
 
         assert 'importance_weight' not in output
-        if normalized:
+        if self._normalized:
             output['importance_weight'] = w / w.mean()
         else:
             output['importance_weight'] = w
 
         self._idx_sample = idx_sample
-        if with_indices:
+        if self._with_indices:
             assert 'indices' not in output, "output cannot already contain key 'indices'"
             output['indices'] = idx_sample
 
