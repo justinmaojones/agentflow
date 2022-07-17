@@ -36,7 +36,7 @@ from agentflow.train import Trainer
 @click.option('--hidden_layers', default=4)
 @click.option('--normalize_inputs', default=True, type=bool)
 @click.option('--batchnorm', default=False, type=bool)
-@click.option('--buffer_type', default='normal', type=click.Choice(['normal', 'prioritized', 'delayed', 'delayed_prioritized']))
+@click.option('--buffer_type', default='normal', type=click.Choice(['normal', 'prioritized']))
 @click.option('--buffer_size', default=30000, type=int)
 @click.option('--enable_n_step_return_publisher', default=True, type=bool)
 @click.option('--n_step_return', default=8, type=int)
@@ -144,20 +144,21 @@ def run(**cfg):
     # Replay Buffer
     if cfg['buffer_type'] == 'prioritized':
         # prioritized experience replay
-        replay_buffer = PrioritizedBufferMap(
-            max_length = cfg['buffer_size'],
-            alpha = cfg['prioritized_replay_alpha'],
-            eps = cfg['prioritized_replay_eps'],
-            default_priority = 1.0,
-            default_non_zero_reward_priority = cfg['prioritized_replay_default_reward_priority'],
-            default_done_priority = cfg['prioritized_replay_default_done_priority'],
-        )
-
         beta_schedule = LinearAnnealingSchedule(
             initial_value = cfg['prioritized_replay_beta0'],
             final_value = 1.0,
             annealing_steps = cfg['prioritized_replay_beta_iters'] or cfg['num_steps'],
             begin_at_step = cfg['begin_learning_at_step'],
+        )
+
+        replay_buffer = PrioritizedBufferMap(
+            max_length = cfg['buffer_size'],
+            alpha = cfg['prioritized_replay_alpha'],
+            beta = beta_schedule,
+            eps = cfg['prioritized_replay_eps'],
+            default_priority = 1.0,
+            default_non_zero_reward_priority = cfg['prioritized_replay_default_reward_priority'],
+            default_done_priority = cfg['prioritized_replay_default_done_priority'],
         )
 
     else:
