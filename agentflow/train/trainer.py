@@ -12,6 +12,7 @@ from agentflow.env import BaseEnv
 from agentflow.logging import ScopedLogsTFSummary
 from agentflow.logging import WithLogging
 from agentflow.state import StateEnv
+from agentflow.tensorflow.profiler import TFProfiler
 
 class Trainer(WithLogging):
 
@@ -23,13 +24,15 @@ class Trainer(WithLogging):
             test_env: Union[BaseEnv, StateEnv],
             test_agent: Union[AgentFlow, AgentSource] = None,
             log: ScopedLogsTFSummary = None,
-            log_flush_freq: int = 1,
+            log_flush_freq: int = 100,
             start_step: int = 0,
             begin_learning_at_step: int = 0,
             update_freq: int = 1,
             n_update_steps: int = 1,
             n_steps_per_eval: int = 100,
             max_frames: int = None,
+            profiler_start_step: int = 100,
+            profiler_stop_step: int = 200,
         ):
 
         self.env = env
@@ -64,6 +67,11 @@ class Trainer(WithLogging):
 
         self._frame_counter = 0
         self._update_counter = 0
+
+        # ensure that profiler captures learning
+        profiler_start_step = profiler_start_step + self.begin_learning_at_step
+        profiler_stop_step = profiler_stop_step + self.begin_learning_at_step
+        self._profiler = TFProfiler(profiler_start_step, profiler_stop_step, self.log.savedir)
 
     def set_step(self, t):
         self.t = t
@@ -145,10 +153,11 @@ class Trainer(WithLogging):
         self.log_train_agent.append_dict(update_outputs)
 
     def train_step(self):
-        self.run_step()
-        if self.t >= self.begin_learning_at_step:
-            if self.t % self.update_freq == 0:
-                self.update_step()
+        with self._profiler():
+            self.run_step()
+            if self.t >= self.begin_learning_at_step:
+                if self.t % self.update_freq == 0:
+                    self.update_step()
 
-        self.set_step(self.t+1)
-        self.log.append('trainer/steps', self.t)
+            self.set_step(self.t+1)
+            self.log.append('trainer/steps', self.t)
