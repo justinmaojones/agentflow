@@ -52,6 +52,7 @@ from agentflow.train import AsyncTrainer
 @click.option('--weight_decay', default=1e-4)
 @click.option('--batchsize', default=64)
 @click.option('--dataset_prefetch', default=1)
+@click.option('--min_parallel_sample_rpc', default=8)
 @click.option('--savedir', default='results/cartpole_dqn_async')
 @click.option('--seed', default=None, type=int)
 def run(**cfg):
@@ -158,6 +159,8 @@ def run(**cfg):
         begin_learning_at_frame=cfg['begin_learning_at_frame'],
         n_updates_per_model_refresh=cfg['n_updates_per_model_refresh'],
         batchsize=cfg['batchsize'],
+        dataset_prefetch=cfg['dataset_prefetch'],
+        min_parallel_sample_rpc=cfg['min_parallel_sample_rpc'],
         test_env=test_env, 
         test_agent=test_agent, 
         runner_count=cfg['runner_count'],

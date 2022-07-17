@@ -1,5 +1,6 @@
 from collections import Counter
 from enum import Enum, auto
+import math
 import numpy as np
 import ray
 import tensorflow as tf
@@ -16,7 +17,7 @@ from agentflow.env import BaseEnv
 from agentflow.logging import ScopedLogsTFSummary
 from agentflow.logging import remote_scoped_log_tf_summary
 from agentflow.state import StateEnv
-from agentflow.utils import ScopedIdleTimer
+from agentflow.tensorflow.profiler import TFProfilerIterator
 
 class Runner:
 
@@ -40,7 +41,6 @@ class Runner:
         self.agent.set_log(log.scope("train_agent"))
         self.replay_buffer.set_log(log.scope("replay_buffer"))
 
-        #self.scoped_timer = ScopedIdleTimer("ScopedIdleTimer/Runner", start_on_create=False)
 
         # initialize
         self.next = self.env.reset()
@@ -58,13 +58,11 @@ class Runner:
             self.log.flush()
         self.log.set_step(t)
 
-    #@timed
     def set_weights(self, weights):
         self.agent.set_weights(weights)
         self._set_weights_counter += 1
         self.log.append('async/runner/set_weights', self._set_weights_counter)
 
-    #@timed
     def step(self):
         if self.next is None:
             self.next = self.env.reset()
@@ -92,7 +90,8 @@ class Runner:
 
     def sample(self, n_samples, **kwargs):
         with self._lock_buffer:
-            return self.replay_buffer.sample(n_samples, **kwargs)
+            x = self.replay_buffer.sample(n_samples, **kwargs)
+        return {k: tf.convert_to_tensor(v) for k, v in x.items()}
 
     def run(self, n_steps=None):
         i = 0
@@ -124,7 +123,6 @@ class TestRunner:
         self.env.set_log(log.scope("test_env"))
         self.agent.set_log(log.scope("test_agent"))
 
-        #self.scoped_timer = ScopedIdleTimer("ScopedIdleTimer/TestRunner", start_on_create=False)
         self.next = self.env.reset()
 
         self._set_weights_counter = 0
@@ -135,7 +133,6 @@ class TestRunner:
             self.log.flush()
         self.log.set_step(t)
         
-    ##@timed
     def set_weights(self, weights):
         self.agent.set_weights(weights)
         self._set_weights_counter += 1
@@ -152,36 +149,39 @@ class TestRunner:
 
 class ParameterServer:
 
-    import tensorflow as tf
 
     def __init__(self, 
             agent: Union[AgentFlow, AgentSource],
             runners: List[Runner],
             log: ScopedLogsTFSummary,
             batchsize: int,
-            batchsize_runner: int = None,
             dataset_prefetch: int = 1,
+            min_parallel_sample_rpc: int = 8,
+            profiler_start_step: int = 100,
+            profiler_stop_step: int = 200,
+            inter_op_parallelism: int = 12,
+            intra_op_parallelism: int = 12
         ):
+
+        import tensorflow as tf
+        tf.config.threading.set_inter_op_parallelism_threads(inter_op_parallelism)
+        tf.config.threading.set_intra_op_parallelism_threads(intra_op_parallelism)
 
         self.agent = agent
         agent.build_model()
         self.runners = runners
         self.batchsize = batchsize
         self.dataset_prefetch = dataset_prefetch
+        self.min_parallel_sample_rpc = min_parallel_sample_rpc
         self.log = log.scope("train_agent")
         self.set_step(0)
 
         self.agent.set_log(log)
 
-        if batchsize_runner is None:
-            self.batchsize_runner = self.batchsize
-        else:
-            assert batchsize % batchsize_runner == 0, \
-                    f"batchsize={batchsize} must be multiple of batchsize_runner={batchsize_runner}"
-            self.batchsize_runner = batchsize_runner
-
         self._dataset = None
         self._update_counter = 0
+
+        self._profiler = TFProfilerIterator(profiler_start_step, profiler_stop_step, self.log.savedir)
 
 
     def _build_dataset_pipeline(self):
@@ -195,40 +195,35 @@ class ParameterServer:
 
         def sample_runner_generator(i):
             while True:
-                yield ray.get(self.runners[i].sample.remote(self.batchsize_runner))
+                yield ray.get(self.runners[i].sample.remote(self.batchsize))
 
-        dataset = tf.data.Dataset.range(len(self.runners))
+        # ensure there are enough parallel fetches to support prefetch
+        n_rpc = max(len(self.runners), self.dataset_prefetch, self.min_parallel_sample_rpc)
+        
+        # ensure n is multiple of len(self.runners)
+        n_rpc = int(math.ceil(n_rpc / len(self.runners)) * len(self.runners))
+
+        # rpc index
+        dataset = tf.data.Dataset.range(n_rpc)
+
+        # interleave results from different runners
         dataset = dataset.interleave(lambda i: 
             tf.data.Dataset.from_generator(
                 sample_runner_generator,
                 output_signature=output_signature,
-                args=(i,)
+                args=(i % len(self.runners),)
             ),
             num_parallel_calls=tf.data.AUTOTUNE,
             deterministic=False,
         )
 
-        # because we fetch smaller batches from individual runners
-        # we need to flatten the dataset before batching
-        dataset = dataset.flat_map(
-            lambda x: tf.data.Dataset.from_tensor_slices(x)
-        )
-
-        # when batchsize >> batchsize_runner, we ensure that we get
-        # samples from multiple runners in each batch
-        dataset = dataset.batch(
-            self.batchsize,
-            num_parallel_calls=tf.data.AUTOTUNE,
-            deterministic=False,
-        )
-
         if self.dataset_prefetch > 0:
-            # so that we aren't waiting on sample calls
+            # so that we aren't waiting on RPC 
             dataset = dataset.prefetch(self.dataset_prefetch)
+
         self._dataset = dataset
 
 
-    #@timed
     def get_weights(self):
         return self.agent.get_weights()
 
@@ -237,21 +232,19 @@ class ParameterServer:
             self.log.flush()
         self.log.set_step(t)
 
-    #@timed
     def save(self):
         self.agent.save_weights(self.checkpoint_prefix)
 
     def restore(self, checkpoint_prefix):
         self.agent.load_weights(self.checkpoint_prefix)
 
-    #@timed
     def update(self, n_steps: int = 1):
 
         if self._dataset is None:
             self._build_dataset_pipeline()
 
         t = 0 
-        for sample in self._dataset:
+        for sample in self._profiler(self._dataset):
             update_outputs = self.agent.update(**sample)
             self._update_counter += 1
             t += 1
@@ -319,8 +312,8 @@ class AsyncTrainer:
             begin_learning_at_frame: int,
             n_updates_per_model_refresh: int,
             batchsize: int,
-            batchsize_runner: int = None,
             dataset_prefetch: int = 1,
+            min_parallel_sample_rpc: int = 8,
             test_env: Union[BaseEnv, StateEnv] = None,
             test_agent: Union[AgentFlow, AgentSource] = None,
             runner_count: int = 1,
@@ -330,7 +323,9 @@ class AsyncTrainer:
             parameter_server_gpu: int = 0,
             parameter_server_threads: int = 2,
             start_step: int = 0,
-            max_frames: int = None
+            max_frames: int = None,
+            profiler_start_step: int = 100,
+            profiler_stop_step: int = 200,
         ):
 
         self.env = env
@@ -348,8 +343,8 @@ class AsyncTrainer:
         self.parameter_server_threads = parameter_server_threads
 
         self.batchsize = batchsize
-        if batchsize_runner is None:
-            self.batchsize_runner = batchsize // runner_count
+        self.dataset_prefetch = dataset_prefetch
+        self.min_parallel_sample_rpc = min_parallel_sample_rpc
 
         self.log = log
 
@@ -357,6 +352,9 @@ class AsyncTrainer:
         self.begin_learning_at_frame = begin_learning_at_frame
         self.n_updates_per_model_refresh = n_updates_per_model_refresh
         self.max_frames = max_frames
+
+        self.profiler_start_step = profiler_start_step
+        self.profiler_stop_step = profiler_stop_step
 
         self._frame_counter = 0
         self._update_counter = 0
@@ -456,7 +454,8 @@ class AsyncTrainer:
             agent=self.agent,
             runners=self.runners,
             batchsize=self.batchsize,
-            batchsize_runner=self.batchsize_runner,
+            dataset_prefetch=self.dataset_prefetch,
+            min_parallel_sample_rpc=self.min_parallel_sample_rpc,
             log=self.log.with_filename("parameter_server_log.h5")
         )
 
