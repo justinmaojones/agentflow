@@ -14,6 +14,7 @@ ray[default]
 scikit-learn
 seaborn
 starr
+tensorboard_plugin_profile
 tensorflow
 tensorflow-probability
 trfl
