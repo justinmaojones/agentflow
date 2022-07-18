@@ -1,23 +1,44 @@
 import numpy as np
 import cv2
+from typing import Tuple
 
 class ImgEncoder:
 
-    def __init__(self, key_to_encode, buffer_size):
+    def __init__(self, key_to_encode: str, buffer_size: int, reshape: Tuple[int] = None):
+        """
+        Compresses elements within a dictionary at key=`key_to_encode` into PNG format.
+        Assumes that the first dimension is a batch dimension.  When called, returns
+        a dictionary with element at key=`key_to_encode` replaced by a numpy array
+        with size `buffer_size`, excluding batch dim.
 
-        # trivial assertion
+        key_to_encode: str
+            Element of dictionary to compress
+        buffer_size: int
+            Buffer size for encodings
+        rehsape: tuple[int]
+            When not None, reshapes data at `key_to_encode`, excluding batch dim.
+            Useful when data does not conform to standard image shapes.
+        """
+
         assert isinstance(buffer_size, int) and buffer_size > 0, \
                 "buffer_size must be a positive integer"
+        if reshape is not None:
+            assert isinstance(reshape, tuple), "reshape must be a tuple of ints"
+            for x in reshape:
+                assert isinstance(x, int), "reshape must be a tuple of ints"
 
         self._encoding_length_bytes = 4
 
         self.buffer_size = buffer_size
         self.key_to_encode = key_to_encode
+        self.reshape = reshape
 
     def transform(self, data):
         # assume first dim is batch
         assert self.key_to_encode in data
         x = data[self.key_to_encode]
+        if self.reshape:
+            x = x.reshape(-1, *self.reshape)
         assert x.dtype == np.uint8, "data type must be uint8"
         assert x.ndim in (3, 4), "data must be 2d, or 3d, excluding batch dimension"
         n = len(x)
@@ -52,8 +73,26 @@ class ImgEncoder:
 
 class ImgDecoder:
 
-    def __init__(self, key_to_decode):
+    def __init__(self, key_to_decode, reshape=None):
+        """
+        Decompresses elements within a dictionary at key=`key_to_encode` from PNG format.
+        Assumes that the first dimension is a batch dimension.  When called, returns
+        a dictionary with element at key=`key_to_encode` replaced by a decoded numpy array.
+
+        key_to_encode: str
+            Element of dictionary to compress
+        rehsape: tuple[int]
+            When not None, reshapes data at `key_to_encode`, excluding batch dim.
+            Useful when data does not conform to standard image shapes.
+        """
+
+        if reshape is not None:
+            assert isinstance(reshape, tuple), "reshape must be a tuple of ints"
+            for x in reshape:
+                assert isinstance(x, int), "reshape must be a tuple of ints"
+
         self.key_to_decode = key_to_decode
+        self.reshape = reshape
 
     def transform(self, data):
         x_encoded = data[self.key_to_decode]
@@ -66,6 +105,8 @@ class ImgDecoder:
             decodings.append(cv2.imdecode(x_encoded[i], cv2.IMREAD_UNCHANGED))
         decoded_array = np.stack(decodings)
         output = {k: decoded_array if k==self.key_to_decode else data[k] for k in data}
+        if self.reshape:
+            output[self.key_to_decode] = output[self.key_to_decode].reshape(-1, *self.reshape)
         return output
 
     def __call__(self, data):
