@@ -213,7 +213,7 @@ def run(**cfg):
 
     replay_buffer = CompressedImageBuffer(
         replay_buffer, 
-        max_encoding_size=10000,
+        encoding_buffer_size=10000,
         keys_to_encode = ['state', 'state2']
     )
 

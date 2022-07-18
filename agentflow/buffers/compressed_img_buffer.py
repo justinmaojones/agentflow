@@ -13,15 +13,15 @@ class CompressedImageBuffer(BufferFlow):
 
     def __init__(self,
             source: Union[BufferFlow, BufferSource],
-            max_encoding_size: int = 2000,
+            encoding_buffer_size: int = 20000,
             keys_to_encode: list[str] = ['state', 'state2'],
         ):
         
         self.source = source
-        self._max_encoding_size = max_encoding_size
+        self._encoding_buffer_size = encoding_buffer_size
         self._keys_to_encode = keys_to_encode
 
-        self._encoders = [ImgEncoder(k, max_encoding_size) for k in keys_to_encode]
+        self._encoders = [ImgEncoder(k, encoding_buffer_size) for k in keys_to_encode]
         self._decoders = [ImgDecoder(k) for k in keys_to_encode]
 
     def encode(self, data: Dict[str, np.ndarray]):
