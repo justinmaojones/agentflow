@@ -88,6 +88,47 @@ class TestCompressedImageBuffer(unittest.TestCase):
         np.testing.assert_array_equal(x_tail['state2'][0], x1['state2'])
         np.testing.assert_array_equal(x_tail['state2'][1], x2['state2'])
 
+    def test_reshaped(self):
+
+        shapes = [
+            (3, 4, 5),
+            (3, 4, 5, 1),
+            (3, 4, 5, 2),
+            (3, 4, 5, 3),
+            (3, 4, 5, 4),
+            (3, 4, 5, 16),
+            (3, 4, 5, 6, 7),
+            (3, 4, 5, 6, 7, 8),
+        ]
+
+        x = {}
+        for shape in shapes:
+            x[str(shape)] = np.arange(int(np.prod(shape))).reshape(shape).astype('uint8')
+
+        buffer = BufferMap(10)
+        buffer = CompressedImageBuffer(buffer, keys_to_encode = list(x.keys()))
+
+
+        # append twice
+        buffer.append(x)
+        buffer.append(x)
+
+        # don't specify batch_idx, so output shape should be [1, 3, *img_shape]
+        x_get = buffer.get(np.array([0]))
+        for k in x:
+            np.testing.assert_array_equal(x_get[k][0], x[k])
+
+        # do specify batch dime, so output shape should be [1, *img_shape]
+        x_get_with_batch = buffer.get(np.array([0]), np.array([0]))
+        for k in x:
+            np.testing.assert_array_equal(x_get_with_batch[k], x[k][0][None])
+
+        # check sampling and shapes are consistent
+        x_sample = buffer.sample(1)
+        for k in x:
+            np.testing.assert_array_equal(x_sample[k].shape, x[k][:1].shape)
+
+
 if __name__ == '__main__':
     unittest.main()
 
