@@ -21,10 +21,40 @@ class CompressedImageBuffer(BufferFlow):
         self._encoding_buffer_size = encoding_buffer_size
         self._keys_to_encode = keys_to_encode
 
-        self._encoders = [ImgEncoder(k, encoding_buffer_size) for k in keys_to_encode]
-        self._decoders = [ImgDecoder(k) for k in keys_to_encode]
+        self._encoders = None
+        self._decoders = None
+
+    def _build_encoders_decoders(self, data: Dict[str, np.ndarray]):
+        assert self._encoders is None and self._decoders is None
+        _encoders = []
+        _decoders = []
+        for k in self._keys_to_encode:
+            d = data[k]
+            if d.ndim==4 and d.shape[3]==1:
+                # correct for cv2 squeezing of last dim
+                encoder = ImgEncoder(k, self._encoding_buffer_size)
+                decoder = ImgDecoder(k, reshape=d.shape[1:])
+            elif d.ndim > 4 or (d.ndim==4 and (d.shape[3] not in [1, 3])):
+                reshape = (d.shape[1], int(np.prod(d.shape[2:])))
+                encoder = ImgEncoder(k, self._encoding_buffer_size, reshape=reshape)
+                decoder = ImgDecoder(k, reshape=d.shape[1:])
+            else:
+                encoder = ImgEncoder(k, self._encoding_buffer_size)
+                decoder = ImgDecoder(k)
+
+            _encoders.append(encoder)
+            _decoders.append(decoder)
+
+        self._encoders = _encoders
+        self._decoders = _decoders
+
+    def _maybe_build_encoders_decoders(self, data: Dict[str, np.ndarray]):
+        if self._encoders is None:
+            assert self._decoders is None
+            self._build_encoders_decoders(data)
 
     def encode(self, data: Dict[str, np.ndarray]):
+        self._maybe_build_encoders_decoders(data)
         for encoder in self._encoders:
             data = encoder(data)
         return data
