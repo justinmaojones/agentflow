@@ -53,13 +53,11 @@ from agentflow.train import Trainer
 @click.option('--adam_eps', default=1e-7)
 @click.option('--gamma', default=0.99)
 @click.option('--weight_decay', default=1e-4)
-@click.option('--entropy_loss_weight', default=1e-5, type=float)
-@click.option('--entropy_loss_weight_decay', default=0.99995)
 @click.option('--n_update_steps', default=4, type=int)
 @click.option('--update_freq', default=1, type=int)
 @click.option('--n_steps_per_eval', default=100, type=int)
 @click.option('--batchsize', default=64)
-@click.option('--savedir', default='results')
+@click.option('--savedir', default='results/cartpole_dqn')
 @click.option('--seed', default=None, type=int)
 def run(**cfg):
 
