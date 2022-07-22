@@ -18,7 +18,7 @@ class AgentFlow(Flow, WithLogging):
         return self.source.act(state, mask, **kwargs)
 
     def build_model(self):
-        return self.source.build_model()
+        self.source.build_model()
         
     def get_weights(self):
         return self.source.get_weights()

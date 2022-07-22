@@ -3,7 +3,6 @@ import tensorflow as tf
 from typing import Union
 
 from agentflow.agents.flow import DiscreteActionAgentFlow
-from agentflow.logging import LogsTFSummary
 from agentflow.numpy.ops import eps_greedy_noise
 from agentflow.numpy.schedules.schedule import Schedule
 

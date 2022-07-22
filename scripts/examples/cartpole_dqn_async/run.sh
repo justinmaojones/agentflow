@@ -13,7 +13,7 @@ python agentflow/examples/cartpole_dqn_async.py \
     --ema_decay=0.99 \
     --num_steps=20000 \
     --noise_eps=0.5 \
-    --begin_learning_at_frame=200 \
+    --begin_learning_at_step=200 \
     --n_updates_per_model_refresh=32 \
     --n_step_return=8 \
     --buffer_size=30000 \

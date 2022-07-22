@@ -43,7 +43,7 @@ from agentflow.train import AsyncTrainer
 @click.option('--prioritized_replay_eps', default=1e-6, type=float)
 @click.option('--prioritized_replay_default_reward_priority', default=5, type=float)
 @click.option('--prioritized_replay_default_done_priority', default=5, type=float)
-@click.option('--begin_learning_at_frame', default=200)
+@click.option('--begin_learning_at_step', default=200)
 @click.option('--n_updates_per_model_refresh', default=32)
 @click.option('--learning_rate', default=1e-4)
 @click.option('--learning_rate_decay', default=0.9999)
@@ -128,7 +128,7 @@ def run(**cfg):
     test_agent = agent
 
     agent = EpsilonGreedy(agent, epsilon=cfg['noise_eps'])
-    agent = CompletelyRandomDiscreteUntil(agent, num_steps=cfg['begin_learning_at_frame'])
+    agent = CompletelyRandomDiscreteUntil(agent, num_steps=cfg['begin_learning_at_step'])
 
     # prioritized experience replay
     replay_buffer = PrioritizedBufferMap(
@@ -156,7 +156,7 @@ def run(**cfg):
         env=env, 
         agent=agent, 
         replay_buffer=replay_buffer, 
-        begin_learning_at_frame=cfg['begin_learning_at_frame'],
+        begin_learning_at_step=cfg['begin_learning_at_step'],
         n_updates_per_model_refresh=cfg['n_updates_per_model_refresh'],
         batchsize=cfg['batchsize'],
         dataset_prefetch=cfg['dataset_prefetch'],

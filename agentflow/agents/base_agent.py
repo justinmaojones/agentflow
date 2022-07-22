@@ -29,6 +29,8 @@ class BaseAgent(AgentSource):
     _act_fn = None
     _pnorms_fn = None
 
+    _t = 0
+
     def __hash__(self):
         """classes become unhashable with keras model attributes"""
         return hash(self.__class__.__name__)
@@ -255,6 +257,15 @@ class BaseAgent(AgentSource):
             importance_weight=None,
             debug=False
         ):
+
+        if self._t % 1000 == 0:
+            ema_decay = 0
+        else:
+            ema_decay = 1
+
+        grad_clip_norm = 10.
+
+        self._t += 1
 
         return self.update_fn(
             state,
