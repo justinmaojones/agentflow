@@ -16,6 +16,8 @@ class DDPG(BaseAgent):
             dqda_clipping=None,
             clip_norm=False,
             policy_loss_weight=1.,
+            auto_build: bool = True,
+            **kwargs
         ):
         """Implements Deep Deterministic Policy Gradient with Tensorflow
 
@@ -42,6 +44,7 @@ class DDPG(BaseAgent):
         [1] Barth-Maron, Gabriel, et al. "Distributed distributional deterministic 
             policy gradients." arXiv preprint arXiv:1804.08617 (2018).
         """
+        super().__init__(**kwargs)
         self.state_shape = list(state_shape)
         self.action_shape = list(action_shape)
         self.policy_fn = policy_fn
@@ -50,7 +53,9 @@ class DDPG(BaseAgent):
         self.dqda_clipping = dqda_clipping
         self.clip_norm = clip_norm
         self.policy_loss_weight = policy_loss_weight
-        self.build_model()
+
+        if auto_build:
+            self.build_model()
 
     def build_net(self, name):
         state_input = tf.keras.Input(shape=tuple(self.state_shape))

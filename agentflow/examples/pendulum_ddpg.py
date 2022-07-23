@@ -146,7 +146,11 @@ def run(**cfg):
         optimizer=optimizer,
         dqda_clipping=cfg['dqda_clipping'],
         clip_norm=cfg['clip_norm'],
-        policy_loss_weight=cfg['policy_loss_weight']
+        policy_loss_weight=cfg['policy_loss_weight'],
+        gamma=cfg['gamma'],
+        ema_decay=cfg['ema_decay'],
+        weight_decay=cfg['weight_decay'],
+        grad_clip_norm=cfg['grad_clip_norm']
     )
 
     # Replay Buffer
@@ -236,12 +240,7 @@ def run(**cfg):
                 else:
                     sample = replay_buffer.sample(cfg['batchsize'])
 
-                update_outputs = agent.update(
-                        ema_decay=cfg['ema_decay'],
-                        gamma=cfg['gamma'],
-                        weight_decay=cfg['weight_decay'],
-                        grad_clip_norm=cfg['grad_clip_norm'],
-                        **sample)
+                update_outputs = agent.update(**sample)
 
                 if cfg['buffer_type'] == 'prioritized' and not cfg['prioritized_replay_simple']:
                     replay_buffer.update_priorities(update_outputs['td_error'])
