@@ -10,7 +10,7 @@ python agentflow/examples/cartpole_dqn_async.py \
     --batchsize=2048 \
     --dataset_prefetch=8 \
     --min_parallel_sample_rpc=8 \
-    --ema_decay=0.99 \
+    --ema_decay=0.999 \
     --num_steps=20000 \
     --noise_eps=0.5 \
     --begin_learning_at_step=200 \

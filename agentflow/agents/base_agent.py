@@ -10,6 +10,12 @@ from agentflow.tensorflow.ops import l2_loss
 @dataclass
 class BaseAgent(AgentSource):
 
+    gamma: float = 0.99
+    ema_decay: float = None 
+    weight_decay: float = None
+    grad_clip_norm: float = None
+    target_update_freq: int = None
+
     policy_model: tf.keras.Model = None
     train_model: tf.keras.Model = None
 
@@ -250,22 +256,20 @@ class BaseAgent(AgentSource):
             done,
             state2,
             mask=None,
-            gamma=0.99,
-            ema_decay=0.999,
-            weight_decay=None,
-            grad_clip_norm=None,
             importance_weight=None,
             debug=False
         ):
 
-        if self._t % 1000 == 0:
-            ema_decay = 0
+        if self.target_update_freq is not None:
+            if self._t % 1000 == 0:
+                ema_decay = 0
+            else:
+                ema_decay = 1
+            self._t += 1
         else:
-            ema_decay = 1
+            ema_decay = self.ema_decay
 
-        grad_clip_norm = 10.
-
-        self._t += 1
+        assert ema_decay is not None, "either ema_decay or target_update_freq must be provided"
 
         return self.update_fn(
             state,
@@ -274,10 +278,10 @@ class BaseAgent(AgentSource):
             done,
             state2,
             mask=mask,
-            gamma=gamma,
+            gamma=self.gamma,
             ema_decay=ema_decay,
-            weight_decay=weight_decay,
-            grad_clip_norm=grad_clip_norm,
+            weight_decay=self.weight_decay,
+            grad_clip_norm=self.grad_clip_norm,
             importance_weight=importance_weight,
             debug=debug
         )

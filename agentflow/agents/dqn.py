@@ -18,6 +18,7 @@ class DQN(BaseAgent, DiscreteActionAgentSource):
             double_q: bool = False,
             loss_type: str = 'huber',
             auto_build: bool = True,
+            **kwargs
         ):
         """Implements Deep Q Networks [1] with Tensorflow 
 
@@ -42,6 +43,7 @@ class DQN(BaseAgent, DiscreteActionAgentSource):
         [2] Van Hasselt, Hado, Arthur Guez, and David Silver. "Deep reinforcement learning 
             with double q-learning." arXiv preprint arXiv:1509.06461 (2015).
         """
+        super().__init__(**kwargs)
         self.state_shape = list(state_shape)
         self.num_actions = num_actions 
         self.q_fn = q_fn

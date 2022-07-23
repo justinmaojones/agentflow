@@ -12,7 +12,6 @@ python agentflow/examples/atari_dqn_async.py \
     --buffer_size=100000 \
     --dataset_prefetch=8 \
     --min_parallel_sample_rpc=8 \
-    --ema_decay=0.99 \
     --frames_per_action=4 \
     --learning_rate=1e-4 \
     --learning_rate_decay=0.999999999999 \
@@ -26,5 +25,4 @@ python agentflow/examples/atari_dqn_async.py \
     --noise_scale_anneal_steps=250000 \
     --num_steps=2000000 \
     --savedir=$SAVEDIR \
-    --seed=1 \
-    --weight_decay=0 \
+    --seed=1 

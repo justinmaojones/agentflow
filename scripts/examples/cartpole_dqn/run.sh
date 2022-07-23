@@ -8,7 +8,7 @@ python agentflow/examples/cartpole_dqn.py \
     --begin_learning_at_step=200 \
     --buffer_size=30000 \
     --buffer_type='prioritized' \
-    --ema_decay=0.99 \
+    --ema_decay=0.999 \
     --enable_n_step_return_publisher=True \
     --hidden_dims=64 \
     --hidden_layers=4 \

@@ -5,7 +5,6 @@ python agentflow/examples/atari_dqn.py \
     --batchsize=32 \
     --begin_learning_at_step=100000 \
     --buffer_size=100000 \
-    --ema_decay=0.99 \
     --frames_per_action=4 \
     --learning_rate=1e-4 \
     --learning_rate_decay=0.999999999999 \
@@ -20,5 +19,4 @@ python agentflow/examples/atari_dqn.py \
     --num_steps=2000000 \
     --savedir=$SAVEDIR \
     --seed=1 \
-    --update_freq=4 \
-    --weight_decay=0 \
+    --update_freq=4 
