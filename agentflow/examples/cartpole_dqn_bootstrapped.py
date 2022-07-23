@@ -10,7 +10,6 @@ from agentflow.env import CartpoleGymEnv
 from agentflow.agents import BootstrappedDQN
 from agentflow.agents import CompletelyRandomDiscreteUntil 
 from agentflow.agents import EpsilonGreedy
-from agentflow.buffers import ActionToOneHotBuffer
 from agentflow.buffers import BootstrapMaskBuffer 
 from agentflow.buffers import BufferMap
 from agentflow.buffers import PrioritizedBufferMap
@@ -192,8 +191,6 @@ def run(**cfg):
         depth = cfg['bootstrap_num_heads'],
         sample_prob = cfg['bootstrap_mask_prob']
     )
-
-    replay_buffer = ActionToOneHotBuffer(replay_buffer, num_actions)
 
     trainer = Trainer(
         env=env, 

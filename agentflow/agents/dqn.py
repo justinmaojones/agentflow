@@ -71,12 +71,14 @@ class DQN(BaseAgent, DiscreteActionAgentSource):
 
             inputs = {
                 'state': tf.keras.Input(shape=tuple(self.state_shape), dtype=tf.float32, name='state'), 
-                'action': tf.keras.Input(shape=(self.num_actions, ), dtype=tf.float32, name='action'), 
+                'action': tf.keras.Input(shape=(), dtype=tf.int32, name='action'), 
                 'reward': tf.keras.Input(shape=(), dtype=tf.float32, name='reward'), 
                 'done': tf.keras.Input(shape=(), dtype=tf.float32, name='done'), 
                 'state2': tf.keras.Input(shape=tuple(self.state_shape), dtype=tf.float32, name='state2'), 
             }
             self.inputs = inputs
+
+            action_onehot = tf.one_hot(inputs['action'], self.num_actions)
 
             # dont use tf.keras.models.clone_model, because it will not preserve
             # uniqueness of shared objects within model
@@ -94,21 +96,21 @@ class DQN(BaseAgent, DiscreteActionAgentSource):
 
             Q_train = Q_model(inputs['state'], training=True)
 
-            assert Q_train.shape.as_list() == inputs['action'].shape.as_list(), \
+            assert Q_train.shape.as_list() == action_onehot.shape.as_list(), \
                 "Q_train shape (%s) and action shape (%s) must match" % \
-                (str(Q_train.shape), str(inputs['action'].shape))
+                (str(Q_train.shape), str(action_onehot.shape))
 
-            Q_action_train = tf.reduce_sum(Q_train*inputs['action'], axis=-1)
+            Q_action_train = tf.reduce_sum(Q_train*action_onehot, axis=-1)
 
             Q_eval = Q_model(inputs['state'], training=False)
 
-            if not (Q_eval.shape.as_list() == inputs['action'].shape.as_list()):
+            if not (Q_eval.shape.as_list() == action_onehot.shape.as_list()):
                 raise InvalidArgumentError("Q_eval shape (%s) and action shape (%s) must match" % \
-                                             (str(Q_eval.shape), str(inputs['action'].shape)))
+                                             (str(Q_eval.shape), str(action_onehot.shape)))
 
-            #Q_action_eval = tf.reduce_sum(Q_train*inputs['action'], axis=-1, keepdims=True)
+            Q_action_eval = tf.reduce_sum(Q_train*action_onehot, axis=-1, keepdims=True)
             policy_eval = tf.argmax(Q_eval, axis=-1)
-            #Q_policy_eval = tf.reduce_max(Q_eval, axis=-1)
+            Q_policy_eval = tf.reduce_max(Q_eval, axis=-1)
 
             Q_state2_target = Q_model_target(inputs['state2'], training=False)
 
@@ -120,12 +122,11 @@ class DQN(BaseAgent, DiscreteActionAgentSource):
 
             # store attributes for later use
             self.train_outputs = {
-                    #'policy_eval': policy_eval,
-                    #'Q_action_eval': Q_action_eval,
+                'policy_eval': policy_eval,
+                'Q_action_eval': Q_action_eval,
                 'Q_action_train': Q_action_train,
-                #'Q_policy_eval': Q_policy_eval,
-                #'Q_state2_eval': Q_state2_eval,
-                #'Q_state2_target': Q_state2_target,
+                'Q_eval': Q_eval,
+                'Q_policy_eval': Q_policy_eval,
                 'Q_state2_target_action': Q_state2_target_action,
             }
 
