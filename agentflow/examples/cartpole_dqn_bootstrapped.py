@@ -29,7 +29,7 @@ from agentflow.train import Trainer
 @click.option('--num_steps', default=30000, type=int)
 @click.option('--n_envs', default=1)
 @click.option('--n_prev_frames', default=16)
-@click.option('--ema_decay', default=0.95, type=float)
+@click.option('--ema_decay', default=0.99, type=float)
 @click.option('--noise', default='eps_greedy', type=click.Choice(['eps_greedy', 'gumbel_softmax']))
 @click.option('--noise_eps', default=0.05, type=float)
 @click.option('--noise_temperature', default=1.0, type=float)
@@ -143,6 +143,9 @@ def run(**cfg):
         num_heads=cfg['bootstrap_num_heads'],
         random_prior=cfg['bootstrap_random_prior'],
         prior_scale=cfg['bootstrap_prior_scale'],
+        gamma=cfg['gamma'],
+        ema_decay=cfg['ema_decay'],
+        weight_decay=cfg['weight_decay'],
     )
     test_agent = agent
 

@@ -1,10 +1,11 @@
 import tensorflow as tf
 
 from .base_agent import BaseAgent
+from .source import DiscreteActionAgentSource
 from ..tensorflow.ops import weighted_avg 
 from ..tensorflow.ops import value_at_argmax 
 
-class BootstrappedDQN(BaseAgent):
+class BootstrappedDQN(BaseAgent, DiscreteActionAgentSource):
 
     def __init__(self,
             state_shape,
@@ -16,6 +17,8 @@ class BootstrappedDQN(BaseAgent):
             double_q=False,
             random_prior=False,
             prior_scale=1.0,
+            auto_build: bool = True,
+            **kwargs
         ):
         """Implements Boostrapped Deep Q Networks [1] with Tensorflow
 
@@ -47,6 +50,7 @@ class BootstrappedDQN(BaseAgent):
         [3] Osband, Ian, John Aslanides, and Albin Cassirer. "Randomized prior functions for 
             deep reinforcement learning." Advances in Neural Information Processing Systems. 2018.
         """
+        super().__init__(**kwargs)
         if q_prior_fn is not None:
             assert random_prior, "random_prior must be true if q_prior_fn is provided"
 
@@ -59,8 +63,10 @@ class BootstrappedDQN(BaseAgent):
         self.double_q = double_q
         self.random_prior = random_prior
         self.prior_scale = prior_scale
+        self.auto_build = auto_build
 
-        self.build_model()
+        if auto_build:
+            self.build_model()
 
     def _validate_q_fn(self, Q):
         if not (Q.shape.as_list() == [None, self.num_actions, self.num_heads]):

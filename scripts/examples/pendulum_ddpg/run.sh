@@ -5,7 +5,7 @@ export SAVEDIR=results/pendulum_ddpg/run
 python agentflow/examples/pendulum_ddpg.py \
     --n_envs=10 \
     --batchsize=100 \
-    --ema_decay=0.99 \
+    --ema_decay=0.999 \
     --batchnorm=True \
     --noise_eps=0.5 \
     --num_steps=30000 \

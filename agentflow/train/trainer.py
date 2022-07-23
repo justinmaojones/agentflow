@@ -81,7 +81,7 @@ class Trainer(WithLogging):
     def learn(self, num_steps: int):
         T = num_steps
         pb = tf.keras.utils.Progbar(T, stateful_metrics=['test_env/ep_returns'])
-        start_time = time.time()
+        self._start_update_time = None
         for t in range(T):
 
             if self.max_frames is not None:
@@ -93,13 +93,6 @@ class Trainer(WithLogging):
             pb_input = []
 
             self.train_step()
-
-            end_time = time.time()
-            self.log.append('trainer/batchsize', self.batchsize)
-            self.log.append('trainer/updates_per_sec', self._update_counter / (end_time-start_time))
-            self.log.append('trainer/training_examples_per_sec', 
-                    (self._update_counter * self.batchsize) / (end_time-start_time))
-            self.log.append('trainer/update_counter', self._update_counter)
 
             if self.t % self.n_steps_per_eval == 0 and self.t > 0:
                 test_ep_returns = self.eval_step()
@@ -145,12 +138,22 @@ class Trainer(WithLogging):
         self.log.append('trainer/frames', self._frame_counter)
 
     def update_step(self):
+        if self._start_update_time is None:
+            self._start_update_time = time.time()
+
         for i in range(self.n_update_steps):
             sample = self.replay_buffer.sample(self.batchsize)
             update_outputs = self.agent.update(**sample)
             self._update_counter += 1
 
+        end_time = time.time()
+
         self.log_train_agent.append_dict(update_outputs)
+        self.log.append('trainer/batchsize', self.batchsize)
+        self.log.append('trainer/updates_per_sec', self._update_counter / (end_time-self._start_update_time))
+        self.log.append('trainer/training_examples_per_sec', 
+                (self._update_counter * self.batchsize) / (end_time-self._start_update_time))
+        self.log.append('trainer/update_counter', self._update_counter)
 
     def train_step(self):
         with self._profiler():
@@ -161,3 +164,4 @@ class Trainer(WithLogging):
 
             self.set_step(self.t+1)
             self.log.append('trainer/steps', self.t)
+

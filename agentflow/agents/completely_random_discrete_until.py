@@ -3,7 +3,6 @@ import numpy as np
 import tensorflow as tf
 
 from agentflow.agents.flow import DiscreteActionAgentFlow
-from agentflow.logging import LogsTFSummary
 
 @dataclass
 class CompletelyRandomDiscreteUntil(DiscreteActionAgentFlow):

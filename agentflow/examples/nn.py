@@ -50,8 +50,9 @@ def dqn_atari_paper_net(x, n_actions, n_heads=1, scale=1, name=None, **kwargs):
     # shape = (batch, n_actions * n_heads)
     h = tf.keras.layers.Dense(n_actions*n_heads, name=_name("dense_out"))(h)
 
-    # shape = (batch, n_actions, n_heads)
-    h = tf.reshape(h, [-1, n_actions, n_heads])
+    if n_heads > 1:
+        # shape = (batch, n_actions, n_heads)
+        h = tf.reshape(h, [-1, n_actions, n_heads])
 
     return h
 

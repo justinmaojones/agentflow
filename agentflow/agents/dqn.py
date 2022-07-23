@@ -16,7 +16,9 @@ class DQN(BaseAgent, DiscreteActionAgentSource):
             q_fn,
             optimizer,
             double_q: bool = False,
-            auto_build: bool = True
+            loss_type: str = 'huber',
+            auto_build: bool = True,
+            **kwargs
         ):
         """Implements Deep Q Networks [1] with Tensorflow 
 
@@ -41,11 +43,13 @@ class DQN(BaseAgent, DiscreteActionAgentSource):
         [2] Van Hasselt, Hado, Arthur Guez, and David Silver. "Deep reinforcement learning 
             with double q-learning." arXiv preprint arXiv:1509.06461 (2015).
         """
+        super().__init__(**kwargs)
         self.state_shape = list(state_shape)
         self.num_actions = num_actions 
         self.q_fn = q_fn
         self.optimizer = optimizer
         self.double_q = double_q
+        self.loss_type = loss_type
         self.auto_build = auto_build
 
         if auto_build:
@@ -102,26 +106,26 @@ class DQN(BaseAgent, DiscreteActionAgentSource):
                 raise InvalidArgumentError("Q_eval shape (%s) and action shape (%s) must match" % \
                                              (str(Q_eval.shape), str(inputs['action'].shape)))
 
-            Q_action_eval = tf.reduce_sum(Q_train*inputs['action'], axis=-1, keepdims=True)
+            #Q_action_eval = tf.reduce_sum(Q_train*inputs['action'], axis=-1, keepdims=True)
             policy_eval = tf.argmax(Q_eval, axis=-1)
-            Q_policy_eval = tf.reduce_max(Q_eval, axis=-1)
-            Q_state2_eval = Q_model(inputs['state2'], training=False)
+            #Q_policy_eval = tf.reduce_max(Q_eval, axis=-1)
 
             Q_state2_target = Q_model_target(inputs['state2'], training=False)
 
             if self.double_q:
+                Q_state2_eval = Q_model(inputs['state2'], training=False)
                 Q_state2_target_action = value_at_argmax(Q_state2_eval, Q_state2_target, axis=-1)
             else:
                 Q_state2_target_action = tf.reduce_max(Q_state2_target, axis=-1)
 
             # store attributes for later use
             self.train_outputs = {
-                'policy_eval': policy_eval,
-                'Q_action_eval': Q_action_eval,
+                    #'policy_eval': policy_eval,
+                    #'Q_action_eval': Q_action_eval,
                 'Q_action_train': Q_action_train,
-                'Q_policy_eval': Q_policy_eval,
-                'Q_state2_eval': Q_state2_eval,
-                'Q_state2_target': Q_state2_target,
+                #'Q_policy_eval': Q_policy_eval,
+                #'Q_state2_eval': Q_state2_eval,
+                #'Q_state2_target': Q_state2_target,
                 'Q_state2_target_action': Q_state2_target_action,
             }
 
@@ -129,7 +133,26 @@ class DQN(BaseAgent, DiscreteActionAgentSource):
             self.policy_logits_model = tf.keras.Model(inputs['state'], Q_eval)
             self.train_model = tf.keras.Model(inputs, self.train_outputs)
 
-    def compute_losses(self, model_outputs, reward, gamma, done, mask):
+    def huber_loss(self, y_true, y_pred, delta=1.):
+        error = tf.subtract(y_pred, y_true)
+        abs_error = tf.abs(error)
+        half = tf.convert_to_tensor(0.5, dtype=abs_error.dtype)
+        return tf.where(abs_error <= delta, half * tf.square(error),
+                             delta * abs_error - half * tf.square(delta))
+
+    def td_huber_loss(self, model_outputs, reward, gamma, done, mask):
+        y = tf.stop_gradient(reward + gamma*(1-done) * model_outputs['Q_state2_target_action'])
+        pred = model_outputs['Q_action_train']
+        td_error = y - pred
+        losses = 0.5 * self.huber_loss(y, pred)
+
+        addl_output = {
+            'td_error': td_error,
+            'y': y
+        }
+        return losses, addl_output
+
+    def td_mse_loss(self, model_outputs, reward, gamma, done, mask):
         # loss functions
         losses, (y, td_error) = td_learning(
             model_outputs['Q_action_train'],
@@ -143,3 +166,14 @@ class DQN(BaseAgent, DiscreteActionAgentSource):
             'y': y
         }
         return losses, addl_output
+
+    def compute_losses(self, model_outputs, reward, gamma, done, mask):
+
+        if self.loss_type == 'mse':
+            return self.td_mse_loss(model_outputs, reward, gamma, done, mask)
+
+        elif self.loss_type == 'huber':
+            return self.td_huber_loss(model_outputs, reward, gamma, done, mask)
+
+        else:
+            raise NotImplementedError(f"unhandled loss type {self.loss_type}")

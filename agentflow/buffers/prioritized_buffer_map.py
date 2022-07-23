@@ -37,9 +37,9 @@ class PrioritizedBufferMap(BufferMap):
             priority_key: str = None,
             normalized: bool = True,
             with_indices: bool = False,
+            **kwargs
         ):
-
-        super(PrioritizedBufferMap, self).__init__(max_length)
+        super().__init__(max_length, **kwargs)
 
         assert alpha > 0, f"alpha={alpha} is invalid, alpha must be positive"
         if isinstance(beta, float):
