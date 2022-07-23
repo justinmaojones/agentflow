@@ -10,7 +10,6 @@ import yaml
 from agentflow.agents import CompletelyRandomDiscreteUntil 
 from agentflow.agents import DQN
 from agentflow.agents import EpsilonGreedy
-from agentflow.buffers import ActionToOneHotBuffer
 from agentflow.buffers import BufferMap
 from agentflow.buffers import CompressedImageBuffer 
 from agentflow.buffers import PrioritizedBufferMap
@@ -207,8 +206,6 @@ def run(**cfg):
         n_steps=cfg['n_step_return'],
         gamma=cfg['gamma'],
     )
-
-    replay_buffer = ActionToOneHotBuffer(replay_buffer, num_actions)
 
     trainer = Trainer(
         env=env, 

@@ -98,7 +98,7 @@ class BootstrappedDQN(BaseAgent, DiscreteActionAgentSource):
 
             inputs = {
                 'state': tf.keras.Input(shape=tuple(self.state_shape), dtype=tf.float32, name='state'), 
-                'action': tf.keras.Input(shape=(self.num_actions, ), dtype=tf.float32, name='action'), 
+                'action': tf.keras.Input(shape=(), dtype=tf.int32, name='action'), 
                 'reward': tf.keras.Input(shape=(), dtype=tf.float32, name='reward'), 
                 'done': tf.keras.Input(shape=(), dtype=tf.float32, name='done'), 
                 'state2': tf.keras.Input(shape=tuple(self.state_shape), dtype=tf.float32, name='state2'), 
@@ -106,6 +106,7 @@ class BootstrappedDQN(BaseAgent, DiscreteActionAgentSource):
             }
             self.inputs = inputs
 
+            action_onehot = tf.one_hot(inputs['action'], self.num_actions)
 
             # dont use tf.keras.models.clone_model, because it will not preserve
             # uniqueness of shared objects within model
@@ -127,7 +128,7 @@ class BootstrappedDQN(BaseAgent, DiscreteActionAgentSource):
             # Q_action_train_multihead is shape (None, num_actions, num_heads) 
             # and represents Q(s, a) for each head
             Q_action_train_multihead = tf.reduce_sum(
-                    Q_train_multihead*inputs['action'][:, :, None], axis=-2)
+                    Q_train_multihead*action_onehot[:, :, None], axis=-2)
 
             # Q_eval_multihead is shape (None, num_actions, num_heads)
             Q_eval_multihead = Q_model(inputs['state'], training=False)

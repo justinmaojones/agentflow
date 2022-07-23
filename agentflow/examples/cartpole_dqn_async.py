@@ -10,7 +10,6 @@ from agentflow.env import CartpoleGymEnv
 from agentflow.agents import CompletelyRandomDiscreteUntil 
 from agentflow.agents import DQN
 from agentflow.agents import EpsilonGreedy
-from agentflow.buffers import ActionToOneHotBuffer
 from agentflow.buffers import PrioritizedBufferMap
 from agentflow.buffers import NStepReturnBuffer
 from agentflow.logging import scoped_log_tf_summary 
@@ -150,8 +149,6 @@ def run(**cfg):
         n_steps=cfg['n_step_return'],
         gamma=cfg['gamma'],
     )
-
-    replay_buffer = ActionToOneHotBuffer(replay_buffer, num_actions)
 
 
     print("Build AsyncTrainer")
