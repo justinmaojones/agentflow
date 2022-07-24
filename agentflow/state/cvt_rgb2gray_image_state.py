@@ -1,14 +1,14 @@
+from dataclasses import dataclass
 import numpy as np
 import cv2
 
-from .base_state import BaseState
-from .state_env import StateEnv
+from agentflow.state.flow import State
+from agentflow.state.flow import StatefulEnvFlow
 
-class CvtRGB2GrayImageState(BaseState):
+@dataclass
+class CvtRGB2GrayImageState(State):
 
-    def __init__(self,flatten=False):
-        self.flatten = flatten
-        self.reset()
+    flatten: bool = False
 
     def update(self, frame, reset_mask=None):
         n = len(frame)
@@ -26,9 +26,9 @@ class CvtRGB2GrayImageState(BaseState):
             output = self._state
         return output.copy()
 
-class CvtRGB2GrayImageStateEnv(StateEnv):
+class CvtRGB2GrayImageStateEnv(StatefulEnvFlow):
 
-    def __init__(self,env,**kwargs):
+    def __init__(self, source, **kwargs):
         state = CvtRGB2GrayImageState(**kwargs)
-        super(CvtRGB2GrayImageStateEnv, self).__init__(env, state)
+        super(CvtRGB2GrayImageStateEnv, self).__init__(source, state)
 

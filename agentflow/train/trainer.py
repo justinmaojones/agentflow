@@ -8,20 +8,20 @@ from agentflow.agents import AgentSource
 from agentflow.agents.utils import test_agent as test_agent_fn
 from agentflow.buffers import BufferFlow
 from agentflow.buffers import BufferSource
-from agentflow.env import BaseEnv
+from agentflow.env import EnvFlow
+from agentflow.env import EnvSource
 from agentflow.logging import ScopedLogsTFSummary
 from agentflow.logging import WithLogging
-from agentflow.state import StateEnv
 from agentflow.tensorflow.profiler import TFProfiler
 
 class Trainer(WithLogging):
 
     def __init__(self, 
-            env: Union[BaseEnv, StateEnv], 
+            env: Union[EnvSource, EnvFlow], 
             agent: Union[AgentFlow, AgentSource],
             replay_buffer: Union[BufferFlow, BufferSource],
             batchsize: int,
-            test_env: Union[BaseEnv, StateEnv],
+            test_env: Union[EnvSource, EnvFlow],
             test_agent: Union[AgentFlow, AgentSource] = None,
             log: ScopedLogsTFSummary = None,
             log_flush_freq: int = 100,

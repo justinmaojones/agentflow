@@ -1,13 +1,13 @@
+from dataclasses import dataclass
 import numpy as np
 
-from agentflow.state.base_state import BaseState
-from agentflow.env.base_env import BaseEnv
+from agentflow.state.flow import State
+from agentflow.state.flow import StatefulEnvFlow
 
-class RandomOneHotMask(BaseState):
+@dataclass
+class RandomOneHotMask(State):
 
-    def __init__(self, dim):
-        self.dim = dim
-        self._state = None
+    depth: int
 
     def _update_mask(self, indices):
         # indices along first dimension to update
@@ -15,13 +15,16 @@ class RandomOneHotMask(BaseState):
         assert self._state is not None, "have you called env.reset() yet?"
         assert indices.ndim == 1, "indices must be a 1d array"
         self._state[indices] = False 
-        rnd_idx = np.random.choice(self.dim, size=len(indices))
+        rnd_idx = np.random.choice(self.depth, size=len(indices))
         self._state[indices, rnd_idx] = True
 
-    def reset(self, frame):
-        shape = (len(frame), self.dim)
-        self._state = np.zeros(shape, dtype=bool)
-        self._update_mask(np.arange(len(self._state)))
+    def reset(self, frame=None):
+        if frame is None:
+            self._state = None
+        else:
+            shape = (len(frame), self.depth)
+            self._state = np.zeros(shape, dtype=bool)
+            self._update_mask(np.arange(len(self._state)))
 
     def update(self, frame, reset_mask=None):
         if self._state is None:
@@ -35,28 +38,24 @@ class RandomOneHotMask(BaseState):
         return self._state.copy()
 
     def state(self):
-        return self._state.copy()
+        if self._state is not None:
+            return self._state.copy()
+        return None
 
-class RandomOneHotMaskEnv(BaseEnv):
+class RandomOneHotMaskEnv(StatefulEnvFlow):
 
-    def __init__(self, env, dim):
-        self.env = env
-        self.state = RandomOneHotMask(dim)
-
-    def n_actions(self):
-        return self.env.n_actions()
-
-    def action_shape(self):
-        return self.env.action_shape()
+    def __init__(self, source, depth: int):
+        self.source = source
+        self.state = RandomOneHotMask(depth)
 
     def reset(self):
-        prior_output = self.env.reset()
+        prior_output = self.source.reset()
         self.state.reset(prior_output['state'])
         output = {k: prior_output[k] for k in prior_output}
         output['mask'] = self.state.state()
         return output
 
     def step(self, action):
-        output = self.env.step(action)
+        output = self.source.step(action)
         output['mask'] = self.state.update(output['state'], output['done'])
         return output

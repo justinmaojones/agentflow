@@ -1,8 +1,8 @@
 import numpy as np
 
-from .base_env import BaseEnv
+from agentflow.env.source import EnvSource
 
-class VecConcaveFuncEnv(BaseEnv):
+class VecConcaveFuncEnv(EnvSource):
 
     def __init__(self,n_dims=1,n_envs=4,max_steps=100,min_reward=-20,square_boundary_limit=None):
         self.n_dims = n_dims

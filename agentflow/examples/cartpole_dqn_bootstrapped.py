@@ -18,8 +18,8 @@ from agentflow.logging import scoped_log_tf_summary
 from agentflow.numpy.schedules import ExponentialDecaySchedule 
 from agentflow.numpy.schedules import LinearAnnealingSchedule
 from agentflow.state import NPrevFramesStateEnv
-from agentflow.state import PrevEpisodeReturnsEnv 
-from agentflow.state import PrevEpisodeLengthsEnv 
+from agentflow.env import PrevEpisodeReturnsEnv 
+from agentflow.env import PrevEpisodeLengthsEnv 
 from agentflow.state import RandomOneHotMaskEnv 
 from agentflow.tensorflow.nn import dense_net
 from agentflow.tensorflow.nn import normalize_ema
@@ -90,7 +90,7 @@ def run(**cfg):
     # environment
     env = CartpoleGymEnv(n_envs=cfg['n_envs'])
     env = NPrevFramesStateEnv(env, n_prev_frames=cfg['n_prev_frames'], flatten=True)
-    env = RandomOneHotMaskEnv(env, dim=cfg['bootstrap_num_heads'])
+    env = RandomOneHotMaskEnv(env, depth=cfg['bootstrap_num_heads'])
     env = PrevEpisodeReturnsEnv(env) 
     env = PrevEpisodeLengthsEnv(env)
     test_env = CartpoleGymEnv(n_envs=1)

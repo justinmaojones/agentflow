@@ -13,15 +13,15 @@ from agentflow.agents import AgentSource
 from agentflow.agents.utils import test_agent as test_agent_fn
 from agentflow.buffers import BufferFlow
 from agentflow.buffers import BufferSource
-from agentflow.env import BaseEnv
+from agentflow.env import EnvFlow
+from agentflow.env import EnvSource
 from agentflow.logging import ScopedLogsTFSummary
-from agentflow.state import StateEnv
 from agentflow.tensorflow.profiler import TFProfilerIterator
 
 class Runner:
 
     def __init__(self,
-            env: Union[BaseEnv, StateEnv], 
+            env: Union[EnvSource, EnvFlow], 
             agent: Union[AgentFlow, AgentSource],
             replay_buffer: Union[BufferFlow, BufferSource],
             log: ScopedLogsTFSummary,
@@ -118,7 +118,7 @@ class TestRunner:
     import tensorflow as tf
 
     def __init__(self,
-            env: Union[BaseEnv, StateEnv], 
+            env: Union[EnvSource, EnvFlow], 
             agent: Union[AgentFlow, AgentSource],
             log: ScopedLogsTFSummary = None,
         ):
@@ -342,7 +342,7 @@ class RunnerCountersServer:
 class AsyncTrainer:
 
     def __init__(self, 
-            env: Union[BaseEnv, StateEnv], 
+            env: Union[EnvSource, EnvFlow], 
             agent: Union[AgentFlow, AgentSource],
             replay_buffer: Union[BufferFlow, BufferSource],
             log: ScopedLogsTFSummary,
@@ -351,7 +351,7 @@ class AsyncTrainer:
             batchsize: int,
             dataset_prefetch: int = 1,
             min_parallel_sample_rpc: int = 8,
-            test_env: Union[BaseEnv, StateEnv] = None,
+            test_env: Union[EnvSource, EnvFlow] = None,
             test_agent: Union[AgentFlow, AgentSource] = None,
             runner_count: int = 1,
             runner_cpu: int = 1,

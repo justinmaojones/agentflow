@@ -16,8 +16,8 @@ from agentflow.logging import scoped_log_tf_summary
 from agentflow.numpy.schedules import ExponentialDecaySchedule 
 from agentflow.numpy.schedules import LinearAnnealingSchedule
 from agentflow.state import NPrevFramesStateEnv
-from agentflow.state import PrevEpisodeReturnsEnv 
-from agentflow.state import PrevEpisodeLengthsEnv 
+from agentflow.env import PrevEpisodeReturnsEnv 
+from agentflow.env import PrevEpisodeLengthsEnv 
 from agentflow.tensorflow.nn import dense_net
 from agentflow.tensorflow.nn import normalize_ema
 from agentflow.train import AsyncTrainer
