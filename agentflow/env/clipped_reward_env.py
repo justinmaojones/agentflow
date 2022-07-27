@@ -3,6 +3,7 @@ import numpy as np
 
 from agentflow.env.flow import EnvFlow
 
+
 @dataclass
 class ClippedRewardEnv(EnvFlow):
 
@@ -11,6 +12,7 @@ class ClippedRewardEnv(EnvFlow):
 
     def step(self, action):
         output = self.source.step(action)
-        output['reward'] = np.maximum(self.lower_bound, np.minimum(self.upper_bound, output['reward']))
+        output["reward"] = np.maximum(
+            self.lower_bound, np.minimum(self.upper_bound, output["reward"])
+        )
         return output
-

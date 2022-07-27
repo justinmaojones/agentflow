@@ -15,12 +15,14 @@ class CropImageState(State):
 
     def update(self, frame, reset_mask=None):
         if frame.ndim != 4:
-            raise ValueError(f"input to CropImageState must be 4d, received {frame.ndim} dims")
-        self._state = frame[:,self.top:-self.bottom,self.left:-self.right]
+            raise ValueError(
+                f"input to CropImageState must be 4d, received {frame.ndim} dims"
+            )
+        self._state = frame[:, self.top: -self.bottom, self.left: -self.right]
         return self.state()
 
-class CropImageStateEnv(StatefulEnvFlow):
 
+class CropImageStateEnv(StatefulEnvFlow):
     def __init__(self, source, **kwargs):
         state = CropImageState(**kwargs)
-        super(CropImageStateEnv,self).__init__(source, state)
+        super(CropImageStateEnv, self).__init__(source, state)

@@ -10,13 +10,13 @@ from agentflow.transform import ImgEncoder
 
 
 class CompressedImageBuffer(BufferFlow):
+    def __init__(
+        self,
+        source: Union[BufferFlow, BufferSource],
+        encoding_buffer_size: int = 20000,
+        keys_to_encode: list[str] = ["state", "state2"],
+    ):
 
-    def __init__(self,
-            source: Union[BufferFlow, BufferSource],
-            encoding_buffer_size: int = 20000,
-            keys_to_encode: list[str] = ['state', 'state2'],
-        ):
-        
         self.source = source
         self._encoding_buffer_size = encoding_buffer_size
         self._keys_to_encode = keys_to_encode
@@ -30,11 +30,11 @@ class CompressedImageBuffer(BufferFlow):
         _decoders = []
         for k in self._keys_to_encode:
             d = data[k]
-            if d.ndim==4 and d.shape[3]==1:
+            if d.ndim == 4 and d.shape[3] == 1:
                 # correct for cv2 squeezing of last dim
                 encoder = ImgEncoder(k, self._encoding_buffer_size)
                 decoder = ImgDecoder(k, reshape=d.shape[1:])
-            elif d.ndim > 4 or (d.ndim==4 and (d.shape[3] not in [1, 3])):
+            elif d.ndim > 4 or (d.ndim == 4 and (d.shape[3] not in [1, 3])):
                 reshape = (d.shape[1], int(np.prod(d.shape[2:])))
                 encoder = ImgEncoder(k, self._encoding_buffer_size, reshape=reshape)
                 decoder = ImgDecoder(k, reshape=d.shape[1:])
@@ -69,7 +69,7 @@ class CompressedImageBuffer(BufferFlow):
         s = {}
         for k in self._keys_to_encode:
             s[k] = data[k].shape
-            data[k] = data[k].reshape([s[k][0]*s[k][1], *s[k][2:]])
+            data[k] = data[k].reshape([s[k][0] * s[k][1], *s[k][2:]])
 
         # decode
         data = self.decode(data)
@@ -92,7 +92,9 @@ class CompressedImageBuffer(BufferFlow):
         else:
             return self.decode(self.source.get(time_idx, batch_idx))
 
-    def get_sequence(self, time_idx: np.ndarray, seq_size: int, batch_idx: np.ndarray = None):
+    def get_sequence(
+        self, time_idx: np.ndarray, seq_size: int, batch_idx: np.ndarray = None
+    ):
         raise NotImplementedError
 
     def sample(self, n_samples: int, **kwargs):

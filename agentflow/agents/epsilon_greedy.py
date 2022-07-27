@@ -6,6 +6,7 @@ from agentflow.agents.flow import DiscreteActionAgentFlow
 from agentflow.numpy.ops import eps_greedy_noise
 from agentflow.numpy.schedules.schedule import Schedule
 
+
 @dataclass
 class EpsilonGreedy(DiscreteActionAgentFlow):
 
@@ -22,8 +23,9 @@ class EpsilonGreedy(DiscreteActionAgentFlow):
             self._t += 1
         else:
             raise NotImplementedError(
-                f"Unhandled type: {type(self.epsilon)}. epsilon must be a float or Schedule")
-    
+                f"Unhandled type: {type(self.epsilon)}. epsilon must be a float or Schedule"
+            )
+
         if self.log is not None:
             self.log.append(f"{self.__class__.__name__}/epsilon", eps)
 

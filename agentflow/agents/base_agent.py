@@ -4,14 +4,14 @@ import tensorflow as tf
 from typing import Dict, List
 
 from agentflow.agents.source import AgentSource
-from agentflow.tensorflow.ops import l2_loss 
+from agentflow.tensorflow.ops import l2_loss
 
 
 @dataclass
 class BaseAgent(AgentSource):
 
     gamma: float = 0.99
-    ema_decay: float = None 
+    ema_decay: float = None
     weight_decay: float = None
     grad_clip_norm: float = None
     target_update_freq: int = None
@@ -59,7 +59,7 @@ class BaseAgent(AgentSource):
 
     def act(self, state, mask=None):
         return self.act_fn(state, mask)
-        
+
     @abstractmethod
     def build_model(self):
         ...
@@ -79,7 +79,10 @@ class BaseAgent(AgentSource):
     def learning_rate(self):
         if isinstance(self.optimizer.learning_rate, tf.Variable):
             return self.optimizer.learning_rate
-        elif isinstance(self.optimizer.learning_rate, tf.keras.optimizers.schedules.LearningRateSchedule):
+        elif isinstance(
+            self.optimizer.learning_rate,
+            tf.keras.optimizers.schedules.LearningRateSchedule,
+        ):
             return self.optimizer.learning_rate(self.optimizer.iterations)
         else:
             raise NotImplementedError("Unhandled type of learning rate in {self}")
@@ -101,10 +104,10 @@ class BaseAgent(AgentSource):
             """
 
             weight_classes = {
-                'trainable_weights/main': self.trainable_weights,
-                'trainable_weights/target': self.trainable_weights_target,
-                'non_trainable_weights/main': self.non_trainable_weights,
-                'non_trainable_weights/target': self.non_trainable_weights_target,
+                "trainable_weights/main": self.trainable_weights,
+                "trainable_weights/target": self.trainable_weights_target,
+                "non_trainable_weights/main": self.non_trainable_weights,
+                "non_trainable_weights/target": self.non_trainable_weights_target,
             }
 
             pnorms = {}
@@ -153,10 +156,11 @@ class BaseAgent(AgentSource):
             weight_decay=None,
             grad_clip_norm=None,
             importance_weight=None,
-            debug=False
+            debug=False,
         ):
 
             outputs = {}
+
             def add_to_outputs(x: Dict):
                 for k in x:
                     assert k not in outputs, f"{k} is already in outputs"
@@ -179,22 +183,24 @@ class BaseAgent(AgentSource):
                 tape.watch(self.trainable_weights)
 
                 model_inputs = {
-                    'state': state,
-                    'action': action,
-                    'reward': reward,
-                    'done': done,
-                    'state2': state2,
+                    "state": state,
+                    "action": action,
+                    "reward": reward,
+                    "done": done,
+                    "state2": state2,
                 }
 
                 if mask is not None:
                     mask = tf.cast(mask, tf.float32)
-                    model_inputs['mask'] = mask
+                    model_inputs["mask"] = mask
 
                 model_outputs = self.train_model(model_inputs)
                 add_to_outputs(model_outputs)
 
-                losses, addl_losses_output = self.compute_losses(model_outputs, reward, gamma, done, mask)
-                add_to_outputs({'losses': losses})
+                losses, addl_losses_output = self.compute_losses(
+                    model_outputs, reward, gamma, done, mask
+                )
+                add_to_outputs({"losses": losses})
                 add_to_outputs(addl_losses_output)
 
                 # check shapes
@@ -207,7 +213,8 @@ class BaseAgent(AgentSource):
                     tf.debugging.assert_equal(
                         tf.shape(importance_weight),
                         tf.shape(losses),
-                        message = "shape of importance_weight and losses do not match")
+                        message="shape of importance_weight and losses do not match",
+                    )
 
                     # overall loss function (importance weighted)
                     loss = tf.reduce_mean(importance_weight * losses)
@@ -215,7 +222,7 @@ class BaseAgent(AgentSource):
                 if weight_decay is not None:
                     loss = loss + weight_decay * l2_loss(self.trainable_weights)
 
-                add_to_outputs({'loss': loss})
+                add_to_outputs({"loss": loss})
 
             # update model weights
             grads = tape.gradient(loss, self.trainable_weights)
@@ -226,39 +233,42 @@ class BaseAgent(AgentSource):
             else:
                 gnorm = tf.linalg.global_norm(grads)
 
-            add_to_outputs({'gnorm': gnorm})
+            add_to_outputs({"gnorm": gnorm})
 
-            add_to_outputs({'learning_rate': self.learning_rate})
+            add_to_outputs({"learning_rate": self.learning_rate})
             self.optimizer.apply_gradients(zip(grads, self.trainable_weights))
 
             # ema update, zero debias not needed since we initialized identically
             for v, vt in zip(self.trainable_weights, self.trainable_weights_target):
-                vt.assign(ema_decay*vt + (1.0-ema_decay)*v)
+                vt.assign(ema_decay * vt + (1.0 - ema_decay) * v)
 
             # e.g. batchnorm moving avg should be same between main & target models
-            for v, vt in zip(self.non_trainable_weights, self.non_trainable_weights_target):
+            for v, vt in zip(
+                self.non_trainable_weights, self.non_trainable_weights_target
+            ):
                 vt.assign(v)
 
             if debug:
                 return {f"{self.__class__.__name__}/{k}": outputs[k] for k in outputs}
             else:
-                keys = ['loss', 'learning_rate']
+                keys = ["loss", "learning_rate"]
                 return {f"{self.__class__.__name__}/{k}": outputs[k] for k in keys}
 
         self._update_fn = _update
 
         return self._update_fn
 
-    def update(self,
-            state,
-            action,
-            reward,
-            done,
-            state2,
-            mask=None,
-            importance_weight=None,
-            debug=False
-        ):
+    def update(
+        self,
+        state,
+        action,
+        reward,
+        done,
+        state2,
+        mask=None,
+        importance_weight=None,
+        debug=False,
+    ):
 
         if self.target_update_freq is not None:
             if self._t % 1000 == 0:
@@ -269,7 +279,9 @@ class BaseAgent(AgentSource):
         else:
             ema_decay = self.ema_decay
 
-        assert ema_decay is not None, "either ema_decay or target_update_freq must be provided"
+        assert (
+            ema_decay is not None
+        ), "either ema_decay or target_update_freq must be provided"
 
         return self.update_fn(
             state,
@@ -283,6 +295,5 @@ class BaseAgent(AgentSource):
             weight_decay=self.weight_decay,
             grad_clip_norm=self.grad_clip_norm,
             importance_weight=importance_weight,
-            debug=debug
+            debug=debug,
         )
-

@@ -1,14 +1,14 @@
 import numpy as np
 import random
 
+
 class NDArrayBuffer(object):
-    
     def __init__(self, max_length=1e6):
         self._buffer = None
         self._index = 0
         self._n = 0
-        self._max_length = max_length 
-        
+        self._max_length = max_length
+
     def __len__(self):
         return self._n
 
@@ -33,7 +33,7 @@ class NDArrayBuffer(object):
 
     def _build_buffer(self, shape, dtype):
         self._buffer = np.zeros(shape, dtype=dtype)
-    
+
     def append(self, x):
         if not isinstance(x, np.ndarray):
             raise TypeError("x must be of type np.ndarray")
@@ -44,8 +44,8 @@ class NDArrayBuffer(object):
             self._build_buffer(shape, x.dtype)
 
         self._buffer[self._index] = x
-        self._n = min(self._n+1, self._max_length)
-        self._index = (self._index+1) % self._max_length
+        self._n = min(self._n + 1, self._max_length)
+        self._index = (self._index + 1) % self._max_length
 
     def append_sequence(self, x):
         if not isinstance(x, np.ndarray):
@@ -56,10 +56,10 @@ class NDArrayBuffer(object):
             shape = [self._max_length] + list(x.shape)[1:]
             self._build_buffer(shape, x.dtype)
 
-        seq_size = x.shape[0] 
+        seq_size = x.shape[0]
         i1 = self._index
         i2 = min(self._index + seq_size, self._max_length)
-        segment_size = i2 - i1 
+        segment_size = i2 - i1
         self._buffer[i1:i2] = x[:segment_size]
         self._n = min(self._n + segment_size, self._max_length)
         self._index = (self._index + segment_size) % self._max_length
@@ -82,13 +82,15 @@ class NDArrayBuffer(object):
         i1 = max(0, self._index - seq_size)
         i2 = self._index
         slices.append(slice(i1, i2))
-        seq_size -= (i2-i1)
+        seq_size -= i2 - i1
         if seq_size > 0:
             i1 = self._n - seq_size
             i2 = self._n
             slices.append(slice(i1, i2))
-            if not (i2-i1 == seq_size):
-                raise ValueError("there is an error in the logic, we should never get here")
+            if not (i2 - i1 == seq_size):
+                raise ValueError(
+                    "there is an error in the logic, we should never get here"
+                )
         return list(reversed(slices))
 
     def tail(self, seq_size, batch_idx=None):
@@ -104,7 +106,7 @@ class NDArrayBuffer(object):
         if not (seq_size > 0):
             raise ValueError("seq_size must be between 0 and len(self)")
 
-        if not (i >= seq_size-1):
+        if not (i >= seq_size - 1):
             raise ValueError("i must be greater than or equal to seq_size-1")
 
         if not (i < len(self)):
@@ -157,7 +159,9 @@ class NDArrayBuffer(object):
             raise ValueError("sample size must be greater than 0")
 
         if not (len(self) >= seq_size):
-            raise ValueError("cannot sample from buffer if it is not as large as seq_size")
+            raise ValueError(
+                "cannot sample from buffer if it is not as large as seq_size"
+            )
 
         if not (seq_size > 0):
             raise ValueError("seq_size must be greater than 0")
@@ -165,7 +169,7 @@ class NDArrayBuffer(object):
         batch_size = self._buffer.shape[1]
         output = []
         for i in range(n):
-            time_idx = random.randint(seq_size, len(self)-1)
-            batch_idx = random.randint(0, batch_size-1)
+            time_idx = random.randint(seq_size, len(self) - 1)
+            batch_idx = random.randint(0, batch_size - 1)
             output.append(self.get_sequence(time_idx, seq_size, batch_idx)[None])
         return np.concatenate(output, axis=0)

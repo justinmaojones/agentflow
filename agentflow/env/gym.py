@@ -3,8 +3,8 @@ import numpy as np
 
 from agentflow.env.source import EnvSource
 
-class GymEnv(EnvSource):
 
+class GymEnv(EnvSource):
     def __init__(self, env_id, noops=30, frames_per_action=1, fire_reset=False):
         self.env_id = env_id
         self.env = gym.make(env_id)
@@ -51,26 +51,32 @@ class GymEnv(EnvSource):
     def action_shape(self):
         return self.env.action_space.shape
 
-class VecGymEnv(EnvSource):
 
-    def __init__(self, env_id, n_envs=4, noops=30, frames_per_action=4, fire_reset=False):
+class VecGymEnv(EnvSource):
+    def __init__(
+        self, env_id, n_envs=4, noops=30, frames_per_action=4, fire_reset=False
+    ):
         self.env_id = env_id
         self.n_envs = n_envs
         self.noops = noops
         self.frames_per_action = frames_per_action
-        self.envs = [GymEnv(env_id, noops, frames_per_action, fire_reset) for i in range(n_envs)]
+        self.envs = [
+            GymEnv(env_id, noops, frames_per_action, fire_reset) for i in range(n_envs)
+        ]
 
     def reset(self):
-        return {'state': np.stack([env.reset() for env in self.envs])}
+        return {"state": np.stack([env.reset() for env in self.envs])}
 
     def step(self, action):
-        assert len(action) == len(self.envs), '%d %d'%(len(action), len(self.envs))
-        obs, rewards, dones, infos = zip(*[env.step(a) for a, env in zip(action, self.envs)])
+        assert len(action) == len(self.envs), "%d %d" % (len(action), len(self.envs))
+        obs, rewards, dones, infos = zip(
+            *[env.step(a) for a, env in zip(action, self.envs)]
+        )
         return {
-            'state': np.stack(obs), 
-            'reward': np.stack(rewards), 
-            'done': np.stack(dones),
-            'info': infos,
+            "state": np.stack(obs),
+            "reward": np.stack(rewards),
+            "done": np.stack(dones),
+            "info": infos,
         }
 
     def action_space(self):
@@ -80,16 +86,25 @@ class VecGymEnv(EnvSource):
         return self.action_space().n
 
     def action_shape(self):
-        return tuple([self.n_envs]+list(self.envs[0].action_space.shape))
+        return tuple([self.n_envs] + list(self.envs[0].action_space.shape))
+
 
 class CartpoleGymEnv(VecGymEnv):
     def __init__(self, n_envs=1):
-        super().__init__('CartPole-v1', n_envs, noops=0, frames_per_action=1)
+        super().__init__("CartPole-v1", n_envs, noops=0, frames_per_action=1)
+
 
 class PendulumGymEnv(VecGymEnv):
     def __init__(self, n_envs=1):
-        super().__init__('Pendulum-v1', n_envs, noops=0, frames_per_action=1)
+        super().__init__("Pendulum-v1", n_envs, noops=0, frames_per_action=1)
+
 
 class AtariGymEnv(VecGymEnv):
     def __init__(self, env_id, n_envs=1, frames_per_action=1, fire_reset=False):
-        super().__init__(env_id, n_envs, noops=30, frames_per_action=frames_per_action, fire_reset=fire_reset)
+        super().__init__(
+            env_id,
+            n_envs,
+            noops=30,
+            frames_per_action=frames_per_action,
+            fire_reset=fire_reset,
+        )

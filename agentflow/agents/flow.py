@@ -9,6 +9,7 @@ from agentflow.agents.source import AgentSource
 from agentflow.agents.source import DiscreteActionAgentSource
 from agentflow.flow import Flow
 
+
 @dataclass
 class AgentFlow(Flow, WithLogging):
 
@@ -19,7 +20,7 @@ class AgentFlow(Flow, WithLogging):
 
     def build_model(self):
         self.source.build_model()
-        
+
     def get_weights(self):
         return self.source.get_weights()
 
@@ -41,6 +42,7 @@ class AgentFlow(Flow, WithLogging):
 
     def update(self, *args, **kwargs):
         return self.source.update(*args, **kwargs)
+
 
 @dataclass
 class DiscreteActionAgentFlow(AgentFlow):

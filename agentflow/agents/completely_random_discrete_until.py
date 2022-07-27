@@ -4,6 +4,7 @@ import tensorflow as tf
 
 from agentflow.agents.flow import DiscreteActionAgentFlow
 
+
 @dataclass
 class CompletelyRandomDiscreteUntil(DiscreteActionAgentFlow):
     """
@@ -11,7 +12,7 @@ class CompletelyRandomDiscreteUntil(DiscreteActionAgentFlow):
     until a specified step has been reached
     """
 
-    num_steps: int 
+    num_steps: int
 
     def __post_init__(self):
         self._t = 0

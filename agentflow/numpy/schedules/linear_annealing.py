@@ -3,6 +3,7 @@ import numpy as np
 
 from agentflow.numpy.schedules.schedule import Schedule
 
+
 @dataclass
 class LinearAnnealingSchedule(Schedule):
     """
@@ -24,12 +25,16 @@ class LinearAnnealingSchedule(Schedule):
     begin_at_step : int, float
     Schedule returns initial value until step `begin_at_step`
     """
+
     initial_value: float
     final_value: float
     annealing_steps: int
     begin_at_step: int = 0
 
-
     def __call__(self, step: int) -> float:
-        step = 1.0 * np.minimum(np.maximum(0, step - self.begin_at_step), self.annealing_steps)
-        return self.initial_value + (self.final_value - self.initial_value) * (step / self.annealing_steps)
+        step = 1.0 * np.minimum(
+            np.maximum(0, step - self.begin_at_step), self.annealing_steps
+        )
+        return self.initial_value + (self.final_value - self.initial_value) * (
+            step / self.annealing_steps
+        )

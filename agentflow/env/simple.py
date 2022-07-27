@@ -2,9 +2,16 @@ import numpy as np
 
 from agentflow.env.source import EnvSource
 
-class VecConcaveFuncEnv(EnvSource):
 
-    def __init__(self,n_dims=1,n_envs=4,max_steps=100,min_reward=-20,square_boundary_limit=None):
+class VecConcaveFuncEnv(EnvSource):
+    def __init__(
+        self,
+        n_dims=1,
+        n_envs=4,
+        max_steps=100,
+        min_reward=-20,
+        square_boundary_limit=None,
+    ):
         self.n_dims = n_dims
         self.n_envs = n_envs
         self._state = None
@@ -15,26 +22,28 @@ class VecConcaveFuncEnv(EnvSource):
 
     def apply_boundary(self):
         if self._square_boundary_limit is not None:
-            self._state = np.clip(self._state,-self._square_boundary_limit,self._square_boundary_limit)
+            self._state = np.clip(
+                self._state, -self._square_boundary_limit, self._square_boundary_limit
+            )
 
-    def reset(self,done=None):
-        reset_state = np.random.randn(self.n_envs,self.n_dims)
+    def reset(self, done=None):
+        reset_state = np.random.randn(self.n_envs, self.n_dims)
         reset_steps = np.zeros(self.n_envs)
         if done is None:
             self._state = reset_state
             self._steps = reset_steps
         else:
-            done = done.reshape(-1,1)
-            self._state = self._state*(1-done) + reset_state*done
+            done = done.reshape(-1, 1)
+            self._state = self._state * (1 - done) + reset_state * done
             done = done.ravel()
-            self._steps = self._steps*(1-done) + reset_steps*done
+            self._steps = self._steps * (1 - done) + reset_steps * done
         self.apply_boundary()
-        return {'state': self._state}
+        return {"state": self._state}
 
-    def compute_reward(self,state):
-        return -(state**2).sum(axis=1)**0.5
+    def compute_reward(self, state):
+        return -(state**2).sum(axis=1) ** 0.5
 
-    def step(self,action):
+    def step(self, action):
         assert len(action) == self.n_envs
         action = action.reshape(self._state.shape)
         self._state = self._state + action
@@ -44,18 +53,18 @@ class VecConcaveFuncEnv(EnvSource):
         rewards = self.compute_reward(self._state)
 
         dones = np.logical_or(
-                self._steps >= self.max_steps,
-                rewards <= self.min_reward).astype(float)
+            self._steps >= self.max_steps, rewards <= self.min_reward
+        ).astype(float)
 
-        self._state = self.reset(dones)['state']
+        self._state = self.reset(dones)["state"]
 
         self.apply_boundary()
 
         return {
-            'state': self._state, 
-            'reward': rewards, 
-            'done': dones, 
-            'info': {},
+            "state": self._state,
+            "reward": rewards,
+            "done": dones,
+            "info": {},
         }
 
     def action_shape(self):

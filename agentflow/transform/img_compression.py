@@ -2,9 +2,11 @@ import numpy as np
 import cv2
 from typing import Tuple
 
-class ImgEncoder:
 
-    def __init__(self, key_to_encode: str, buffer_size: int, reshape: Tuple[int] = None):
+class ImgEncoder:
+    def __init__(
+        self, key_to_encode: str, buffer_size: int, reshape: Tuple[int] = None
+    ):
         """
         Compresses elements within a dictionary at key=`key_to_encode` into PNG format.
         Assumes that the first dimension is a batch dimension.  When called, returns
@@ -20,8 +22,9 @@ class ImgEncoder:
             Useful when data does not conform to standard image shapes.
         """
 
-        assert isinstance(buffer_size, int) and buffer_size > 0, \
-                "buffer_size must be a positive integer"
+        assert (
+            isinstance(buffer_size, int) and buffer_size > 0
+        ), "buffer_size must be a positive integer"
         if reshape is not None:
             assert isinstance(reshape, tuple), "reshape must be a tuple of ints"
             for x in reshape:
@@ -44,15 +47,16 @@ class ImgEncoder:
         n = len(x)
         encodings = []
         for i in range(n):
-            e = cv2.imencode('.png', x[i])[1]
-            assert e.ndim == 1 
+            e = cv2.imencode(".png", x[i])[1]
+            assert e.ndim == 1
             if len(e) <= self.buffer_size:
                 encodings.append(e)
             else:
                 raise ValueError(
-                        f"could not append encoding of length={len(e)},"
-                        f"because it is greater than max encoding size "
-                        f"of {self.buffer_size}")
+                    f"could not append encoding of length={len(e)},"
+                    f"because it is greater than max encoding size "
+                    f"of {self.buffer_size}"
+                )
 
         m = len(encodings)
 
@@ -63,16 +67,18 @@ class ImgEncoder:
         # store encodings in arrary
         for i, e in enumerate(encodings):
             # store encoding
-            encoded_array[i, :len(e)] = e
+            encoded_array[i, : len(e)] = e
 
-        output = {k: encoded_array if k==self.key_to_encode else data[k] for k in data}
+        output = {
+            k: encoded_array if k == self.key_to_encode else data[k] for k in data
+        }
         return output
 
     def __call__(self, data):
         return self.transform(data)
 
-class ImgDecoder:
 
+class ImgDecoder:
     def __init__(self, key_to_decode, reshape=None):
         """
         Decompresses elements within a dictionary at key=`key_to_encode` from PNG format.
@@ -104,9 +110,13 @@ class ImgDecoder:
         for i in range(n):
             decodings.append(cv2.imdecode(x_encoded[i], cv2.IMREAD_UNCHANGED))
         decoded_array = np.stack(decodings)
-        output = {k: decoded_array if k==self.key_to_decode else data[k] for k in data}
+        output = {
+            k: decoded_array if k == self.key_to_decode else data[k] for k in data
+        }
         if self.reshape:
-            output[self.key_to_decode] = output[self.key_to_decode].reshape(-1, *self.reshape)
+            output[self.key_to_decode] = output[self.key_to_decode].reshape(
+                -1, *self.reshape
+            )
         return output
 
     def __call__(self, data):
