@@ -41,5 +41,5 @@ setup(
     include_package_data=True,
     install_requires=requirements,
     extras_require=extras_require,
-    packages=find_packages(include=["agentflow", "agentflow.*"]),
+    packages=find_packages(include=["agentflow", "agentflow*"]),
 )
