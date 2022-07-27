@@ -22,7 +22,7 @@ class _DelayedBufferMapPublisher(BufferMap):
         returns = []
         R = 0
         for t in reversed(range(T)):
-            r = rewards[..., t : t + 1]
+            r = rewards[..., t: t + 1]
             R = r + gamma * R
             returns.append(R)
         return np.concatenate(returns[::-1], axis=-1)

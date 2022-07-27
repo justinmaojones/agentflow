@@ -542,8 +542,6 @@ class AsyncTrainer:
         update_counter = 0
         frame_counter = 0
         step_counter = 0
-        test_counter = 0
-        refresh_weights_counter = 0
         num_updates = num_updates
 
         progress_bar_metrics = [
@@ -554,7 +552,6 @@ class AsyncTrainer:
         ]
 
         pb = tf.keras.utils.Progbar(num_updates, stateful_metrics=progress_bar_metrics)
-        start_time = time.time()
         start_update_time = None
 
         print("AsyncTrainer: start runners")

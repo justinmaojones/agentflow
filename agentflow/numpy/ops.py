@@ -27,7 +27,7 @@ def binarize(x, b):
 def moving_average(a, n=3):
     ret = np.cumsum(a, dtype=float)
     ret[n:] = ret[n:] - ret[:-n]
-    return ret[n - 1 :] / n
+    return ret[n - 1:] / n
 
 
 def clip(x, clip_to_min=None, clip_to_max=None):

@@ -18,7 +18,7 @@ class CropImageState(State):
             raise ValueError(
                 f"input to CropImageState must be 4d, received {frame.ndim} dims"
             )
-        self._state = frame[:, self.top : -self.bottom, self.left : -self.right]
+        self._state = frame[:, self.top: -self.bottom, self.left: -self.right]
         return self.state()
 
 

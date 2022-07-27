@@ -112,8 +112,7 @@ class DDPG(BaseAgent):
                 policy_model_target.trainable_weights + Q_model_target.trainable_weights
             )
             self.non_trainable_weights_target = (
-                policy_model_target.non_trainable_weights
-                + Q_model_target.non_trainable_weights
+                policy_model_target.non_trainable_weights + Q_model_target.non_trainable_weights
             )
 
             # initialize target weights equal to main model
@@ -129,20 +128,16 @@ class DDPG(BaseAgent):
             Q_policy_eval = Q_model([inputs["state"], policy_eval], training=False)
 
             Q_action_train = Q_model([inputs["state"], inputs["action"]], training=True)
-            Q_action_eval = Q_model([inputs["state"], inputs["action"]], training=False)
 
             policy_target = policy_model_target(inputs["state"], training=False)
             policy_target_state2 = policy_model_target(inputs["state2"], training=False)
 
-            Q_target = Q_model_target([inputs["state"], policy_target], training=False)
             Q_target_state2 = Q_model_target(
                 [inputs["state2"], policy_target_state2], training=False
             )
 
             # make sure inputs to loss functions are in the correct shape
             # (to avoid erroneous broadcasting)
-            reward = tf.reshape(inputs["reward"], [-1])
-            done = tf.reshape(inputs["done"], [-1])
             Q_action_train = tf.reshape(Q_action_train, [-1])
             Q_target_state2 = tf.reshape(Q_target_state2, [-1])
 
