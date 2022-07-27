@@ -1,7 +1,6 @@
 import numpy as np
 import unittest
 from unittest.mock import patch
-from unittest.mock import MagicMock
 
 from agentflow.env.tanh_action_env import TanhActionEnv
 
