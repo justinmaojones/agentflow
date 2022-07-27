@@ -18,17 +18,11 @@ class RandomOneHotMask(State):
         rnd_idx = np.random.choice(self.depth, size=len(indices))
         self._state[indices, rnd_idx] = True
 
-    def reset(self, frame=None):
-        if frame is None:
-            self._state = None
-        else:
+    def update(self, frame, reset_mask=None):
+        if self._state is None:
             shape = (len(frame), self.depth)
             self._state = np.zeros(shape, dtype=bool)
             self._update_mask(np.arange(len(self._state)))
-
-    def update(self, frame, reset_mask=None):
-        if self._state is None:
-            self.reset(frame)
         else:
             if reset_mask is not None and sum(reset_mask) > 0:
                 assert len(reset_mask) == len(self._state)
@@ -50,9 +44,9 @@ class RandomOneHotMaskEnv(StatefulEnvFlow):
 
     def reset(self):
         prior_output = self.source.reset()
-        self.state.reset(prior_output['state'])
+        self.state.reset()
         output = {k: prior_output[k] for k in prior_output}
-        output['mask'] = self.state.state()
+        output['mask'] = self.state.update(prior_output['state'])
         return output
 
     def step(self, action):
