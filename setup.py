@@ -2,7 +2,7 @@ from setuptools import find_packages, setup, Extension
 
 setup(
 	name='agentflow',
-	version='1.0',
+	version='0.1',
 	description='AgentFlow Reinforcement Learning Library',
     url="https://github.com/justinmaojones/agentflow",
 	author='Justin Mao-Jones',
@@ -10,8 +10,6 @@ setup(
     license="MIT",
     classifiers=[
         "License :: OSI Approved :: MIT License",
-        "Programming Language :: Python :: 3",
-        "Programming Language :: Python :: 3.6",
         "Programming Language :: Python :: 3.7",
         "Programming Language :: Python :: 3.8",
         "Programming Language :: Python :: 3.9",
