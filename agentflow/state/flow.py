@@ -9,8 +9,8 @@ class State(ABC):
     def __post_init__(self):
         self.reset()
 
-    def reset(self, frame=None, **kwargs):
-        self._state = frame
+    def reset(self):
+        self._state = None 
 
     @abstractmethod
     def update(self, frame, reset_mask=None):
