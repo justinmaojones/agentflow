@@ -12,15 +12,11 @@ class CropImageState(State):
     bottom: int = 0
     left: int = 0
     right: int = 0
-    flatten: bool = False
 
     def update(self, frame, reset_mask=None):
-        _, h, w, _ = frame.shape
-        top = self.top
-        left = self.left
-        bottom = h-self.bottom
-        right = w-self.right
-        self._state = frame[:,top:bottom,left:right]
+        if frame.ndim != 4:
+            raise ValueError(f"input to CropImageState must be 4d, received {frame.ndim} dims")
+        self._state = frame[:,self.top:-self.bottom,self.left:-self.right]
         return self.state()
 
 class CropImageStateEnv(StatefulEnvFlow):
