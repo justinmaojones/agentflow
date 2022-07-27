@@ -4,17 +4,17 @@ from unittest.mock import patch
 
 from agentflow.env.tanh_action_env import TanhActionEnv
 
-class TestTanhActionEnv(unittest.TestCase):
 
-    @patch('agentflow.env.source.EnvSource')
+class TestTanhActionEnv(unittest.TestCase):
+    @patch("agentflow.env.source.EnvSource")
     def test_step(self, MockEnvSource):
         identity = lambda x: x
         MockEnvSource.step = identity
         env = TanhActionEnv(MockEnvSource, scale=1.1)
 
-        x1 = 2.
-        x2 = np.array([-1,0,1], dtype=np.float32)
-        x3 = np.array([[-1,0,1]], dtype=np.float32)
+        x1 = 2.0
+        x2 = np.array([-1, 0, 1], dtype=np.float32)
+        x3 = np.array([[-1, 0, 1]], dtype=np.float32)
 
         y1 = env.step(x1)
         y2 = env.step(x2)
@@ -29,6 +29,5 @@ class TestTanhActionEnv(unittest.TestCase):
         np.testing.assert_array_equal(expected3, y3)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main()
-
