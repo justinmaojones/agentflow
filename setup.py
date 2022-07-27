@@ -23,14 +23,14 @@ def get_long_description():
 
 
 setup(
-	name='agentflow',
-	version='0.1',
-	description='AgentFlow Reinforcement Learning Library',
+    name="agentflow",
+    version="0.1",
+    description="AgentFlow Reinforcement Learning Library",
     long_description=get_long_description(),
     long_description_content_type="text/markdown",
     url="https://github.com/justinmaojones/agentflow",
-	author='Justin Mao-Jones',
-	author_email='justinmaojones@gmail.com',
+    author="Justin Mao-Jones",
+    author_email="justinmaojones@gmail.com",
     license="MIT",
     classifiers=[
         "License :: OSI Approved :: MIT License",
@@ -42,4 +42,4 @@ setup(
     install_requires=requirements,
     extras_require=extras_require,
     packages=find_packages(include=["agentflow", "agentflow.*"]),
- )
+)
