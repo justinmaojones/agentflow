@@ -9,14 +9,9 @@ def create_empty_state(frame, n_prev_frames):
     return np.zeros(shape, dtype=frame.dtype)
 
 def shift_and_update_state(state, frame):
-    ndim = state.ndim
-    T = state.shape[-1]
-    idx_prev = tuple([slice(None)]*(ndim-1) + [slice(0,T-1)])
-    idx_next = tuple([slice(None)]*(ndim-1) + [slice(1,T)])
-    idx_frame = tuple([slice(None)]*(ndim-1) + [0])
-    state[idx_next] = state[idx_prev]
-    state[idx_frame] = frame
-    return state
+    output = np.roll(state, 1, axis=-1)
+    output[..., 0] = frame
+    return output
 
 @dataclass
 class NPrevFramesState(State):
@@ -24,10 +19,9 @@ class NPrevFramesState(State):
     n_prev_frames: int
     flatten: bool = False
 
-
-    def reset(self,frame=None,**kwargs):
+    def reset(self):
         self._new_shape = None
-        super(NPrevFramesState, self).reset(frame)
+        super().reset()
 
     def update(self,frame,reset_mask=None):
 
@@ -42,7 +36,7 @@ class NPrevFramesState(State):
             self._state[reset_mask==1] = 0 
 
         # update state
-        shift_and_update_state(self._state,frame)
+        self._state = shift_and_update_state(self._state, frame)
 
         return self.state()
 
