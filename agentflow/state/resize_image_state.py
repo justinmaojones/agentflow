@@ -1,15 +1,17 @@
+from dataclasses import dataclass
+
 import numpy as np
 import cv2
+from typing import Tuple
 
-from .base_state import BaseState
-from .state_env import StateEnv
+from agentflow.state.flow import State
+from agentflow.state.flow import StatefulEnvFlow
 
-class ResizeImageState(BaseState):
+@dataclass
+class ResizeImageState(State):
 
-    def __init__(self,resized_shape,flatten=False):
-        self.resized_shape = resized_shape
-        self.flatten = flatten
-        self.reset()
+    resized_shape: Tuple[int]
+    flatten: bool = False
 
     def update(self, frame, reset_mask=None):
         n = len(frame)
@@ -29,8 +31,8 @@ class ResizeImageState(BaseState):
             output = self._state
         return output.copy()
 
-class ResizeImageStateEnv(StateEnv):
+class ResizeImageStateEnv(StatefulEnvFlow):
 
-    def __init__(self,env,*args,**kwargs):
-        state = ResizeImageState(*args,**kwargs)
-        super(ResizeImageStateEnv,self).__init__(env, state)
+    def __init__(self, source, *args, **kwargs):
+        state = ResizeImageState(*args, **kwargs)
+        super(ResizeImageStateEnv,self).__init__(source, state)

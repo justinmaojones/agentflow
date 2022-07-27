@@ -21,14 +21,15 @@ from agentflow.logging import scoped_log_tf_summary
 from agentflow.numpy.schedules import ExponentialDecaySchedule 
 from agentflow.numpy.schedules import LinearAnnealingSchedule
 from agentflow.state import NPrevFramesStateEnv
-from agentflow.state import PrevEpisodeReturnsEnv 
-from agentflow.state import PrevEpisodeLengthsEnv 
+from agentflow.env import PrevEpisodeReturnsEnv 
+from agentflow.env import PrevEpisodeLengthsEnv 
 from agentflow.tensorflow.nn import dense_net
 from agentflow.tensorflow.nn import normalize_ema
 from agentflow.train import AsyncTrainer
 
 
 @click.option('--env_id', default='PongNoFrameskip-v4', type=str)
+@click.option('--n_actions', default=6, type=int)
 @click.option('--frames_per_action', default=1, type=int)
 @click.option('--num_steps', default=30000, type=int)
 @click.option('--n_envs', default=16)
@@ -123,7 +124,7 @@ def run(**cfg):
     state_shape = state.shape
     print('STATE SHAPE: ', state_shape)
 
-    num_actions = env.n_actions()
+    num_actions = cfg['n_actions'] 
     print('ACTION SHAPE: ', num_actions)
 
 

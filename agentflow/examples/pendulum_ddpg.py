@@ -7,6 +7,7 @@ import time
 import yaml 
 
 from agentflow.env import PendulumGymEnv
+from agentflow.env import TanhActionEnv 
 from agentflow.agents import DDPG
 from agentflow.agents.utils import test_agent
 from agentflow.buffers import BufferMap
@@ -17,9 +18,8 @@ from agentflow.numpy.ops import onehot
 from agentflow.numpy.schedules import ExponentialDecaySchedule 
 from agentflow.numpy.schedules import LinearAnnealingSchedule
 from agentflow.state import NPrevFramesStateEnv
-from agentflow.state import PrevEpisodeReturnsEnv 
-from agentflow.state import PrevEpisodeLengthsEnv 
-from agentflow.state import TanhActionEnv 
+from agentflow.env import PrevEpisodeReturnsEnv 
+from agentflow.env import PrevEpisodeLengthsEnv 
 from agentflow.tensorflow.nn import dense_net
 from agentflow.tensorflow.nn import normalize_ema
 

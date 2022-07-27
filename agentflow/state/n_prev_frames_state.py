@@ -1,19 +1,27 @@
+from dataclasses import dataclass
 import numpy as np
-from .base_state import BaseState
-from .state_env import StateEnv
-from .utils import create_empty_state
-from .utils import shift_and_update_state
 
-class NPrevFramesState(BaseState):
+from agentflow.state.flow import State
+from agentflow.state.flow import StatefulEnvFlow
 
-    def __init__(self,n_prev_frames=4,flatten=False):
-        self.n_prev_frames = n_prev_frames
-        self.flatten = flatten
-        super(NPrevFramesState, self).__init__()
+def create_empty_state(frame, n_prev_frames):
+    shape = list(frame.shape) + [n_prev_frames]
+    return np.zeros(shape, dtype=frame.dtype)
 
-    def reset(self,frame=None,**kwargs):
+def shift_and_update_state(state, frame):
+    output = np.roll(state, 1, axis=-1)
+    output[..., 0] = frame
+    return output
+
+@dataclass
+class NPrevFramesState(State):
+
+    n_prev_frames: int
+    flatten: bool = False
+
+    def reset(self):
         self._new_shape = None
-        super(NPrevFramesState, self).reset(frame)
+        super().reset()
 
     def update(self,frame,reset_mask=None):
 
@@ -28,7 +36,7 @@ class NPrevFramesState(BaseState):
             self._state[reset_mask==1] = 0 
 
         # update state
-        shift_and_update_state(self._state,frame)
+        self._state = shift_and_update_state(self._state, frame)
 
         return self.state()
 
@@ -39,8 +47,8 @@ class NPrevFramesState(BaseState):
             output = self._state
         return output.copy()
 
-class NPrevFramesStateEnv(StateEnv):
+class NPrevFramesStateEnv(StatefulEnvFlow):
 
-    def __init__(self,env,**kwargs):
+    def __init__(self, source, **kwargs):
         state = NPrevFramesState(**kwargs)
-        super(NPrevFramesStateEnv,self).__init__(env, state)
+        super(NPrevFramesStateEnv,self).__init__(source, state)

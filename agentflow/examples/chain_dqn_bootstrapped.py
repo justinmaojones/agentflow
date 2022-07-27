@@ -85,7 +85,7 @@ def run(**cfg):
 
     # environment
     env = ChainEnv(n_envs=cfg['n_envs'], length=cfg['chain_env_length'])
-    env = RandomOneHotMaskEnv(env, dim=cfg['bootstrap_num_heads'])
+    env = RandomOneHotMaskEnv(env, depth=cfg['bootstrap_num_heads'])
     test_env = env.env.copy(n_envs=1) 
     assert np.abs(env.env.action_mask - test_env.action_mask).max() == 0
 

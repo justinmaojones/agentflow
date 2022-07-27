@@ -1,5 +1,5 @@
 from agentflow.env import AtariGymEnv
-from agentflow.state import ClippedRewardEnv 
+from agentflow.env import ClippedRewardEnv 
 from agentflow.state import CropImageStateEnv
 from agentflow.state import CvtRGB2GrayImageStateEnv
 from agentflow.state import NPrevFramesStateEnv

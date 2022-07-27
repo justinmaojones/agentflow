@@ -1,9 +1,9 @@
 import numpy as np
 
-from .base_env import BaseEnv
-from ..numpy.ops import onehot
+from agentflow.env.source import EnvSource
+from agentflow.numpy.ops import onehot
 
-class ChainEnv(BaseEnv):
+class ChainEnv(EnvSource):
     """Implements the deterministic chain environment described in [1]
 
     References:

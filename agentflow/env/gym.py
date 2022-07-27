@@ -1,8 +1,9 @@
 import gym
 import numpy as np
-from .base_env import BaseEnv
 
-class GymEnv(BaseEnv):
+from agentflow.env.source import EnvSource
+
+class GymEnv(EnvSource):
 
     def __init__(self, env_id, noops=30, frames_per_action=1, fire_reset=False):
         self.env_id = env_id
@@ -50,7 +51,7 @@ class GymEnv(BaseEnv):
     def action_shape(self):
         return self.env.action_space.shape
 
-class VecGymEnv(BaseEnv):
+class VecGymEnv(EnvSource):
 
     def __init__(self, env_id, n_envs=4, noops=30, frames_per_action=4, fire_reset=False):
         self.env_id = env_id

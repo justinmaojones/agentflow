@@ -7,12 +7,13 @@ class TestRandomOneHotMask(unittest.TestCase):
 
     def test_reset(self):
         state = RandomOneHotMask(3)
-        state.reset(np.random.randn(5,6))
-        np.testing.assert_array_equal(state.state().sum(axis=1), np.ones(5))
+        state.reset()
+        assert state.state() is None
 
     def test_update_reset(self):
         state = RandomOneHotMask(3)
-        state.reset(np.random.randn(5,6))
+        state.reset()
+        state.update(np.random.randn(5,6))
         np.testing.assert_array_equal(state.state().sum(axis=1), np.ones(5))
         state.update(np.random.randn(5,6))
         np.testing.assert_array_equal(state.state().sum(axis=1), np.ones(5))
