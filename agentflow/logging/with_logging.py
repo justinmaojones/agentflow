@@ -2,6 +2,7 @@ from dataclasses import dataclass, field
 
 from agentflow.logging.logs_tf_summary import LogsTFSummary
 
+
 @dataclass
 class WithLogging:
 

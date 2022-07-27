@@ -4,9 +4,9 @@ import numpy as np
 import tensorflow as tf
 from typing import Dict, List, Union
 
-class LogsTFSummary:
 
-    def __init__(self, savedir: str, filename: str = 'log.h5', **kwargs):
+class LogsTFSummary:
+    def __init__(self, savedir: str, filename: str = "log.h5", **kwargs):
         self.logs = {}
         self.savedir = savedir
         self.kwargs = kwargs
@@ -23,7 +23,9 @@ class LogsTFSummary:
     def summary_writer(self):
         # lazy build of summary writer
         if self._summary_writer is None:
-            self._summary_writer = tf.summary.create_file_writer(self.savedir, **self.kwargs)
+            self._summary_writer = tf.summary.create_file_writer(
+                self.savedir, **self.kwargs
+            )
         return self._summary_writer
 
     def append(self, key: str, val: Union[float, int, np.ndarray]):
@@ -34,7 +36,7 @@ class LogsTFSummary:
             self.logs[key] = []
         self.logs[key].append(val)
 
-        # WARNING: tf.summary overwrites previously written values 
+        # WARNING: tf.summary overwrites previously written values
         # for the same step
         with self.summary_writer.as_default():
             tf.summary.scalar(key, val, step=self.step)
@@ -72,24 +74,20 @@ class LogsTFSummary:
         self.logs = {}
 
     def with_filename(self, filename: str):
-        return LogsTFSummary(
-            savedir=self.savedir, 
-            filename=filename, 
-            **self.kwargs
-        )
+        return LogsTFSummary(savedir=self.savedir, filename=filename, **self.kwargs)
 
     def _write_h5(self):
-        with h5py.File(self._log_filepath, 'a') as f:
+        with h5py.File(self._log_filepath, "a") as f:
             for key in sorted(self.logs):
                 data = np.array(self.logs[key])
                 try:
                     if key not in f:
                         dataset = f.create_dataset(
-                            key, 
-                            data.shape, 
+                            key,
+                            data.shape,
                             dtype=data.dtype,
                             chunks=data.shape,
-                            maxshape=tuple([None]+list(data.shape[1:]))
+                            maxshape=tuple([None] + list(data.shape[1:])),
                         )
                         dataset[:] = data
 
@@ -103,7 +101,9 @@ class LogsTFSummary:
                     for k in self.logs:
                         if k in key:
                             raise TypeError(
-                                    f"cannot have parent='{k}' and child='{key}' log paths in same dataset")
+                                f"cannot have parent='{k}' and child='{key}' log paths in same dataset"
+                            )
                         if key in k:
                             raise TypeError(
-                                    f"cannot have parent='{key}' and child='{k}' log paths in same dataset")
+                                f"cannot have parent='{key}' and child='{k}' log paths in same dataset"
+                            )

@@ -7,7 +7,6 @@ from agentflow.source import Source
 
 
 class AgentSource(Source, WithLogging):
-
     @abstractmethod
     def act(self, state, mask=None, **kwargs):
         ...
@@ -15,7 +14,7 @@ class AgentSource(Source, WithLogging):
     @abstractmethod
     def build_model(self):
         ...
-        
+
     @abstractmethod
     def get_weights(self):
         ...
@@ -40,8 +39,8 @@ class AgentSource(Source, WithLogging):
     def update(self, *args, **kwargs):
         ...
 
+
 @dataclass
 class DiscreteActionAgentSource(AgentSource):
 
     num_actions: int
-

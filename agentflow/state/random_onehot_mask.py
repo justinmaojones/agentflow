@@ -4,6 +4,7 @@ import numpy as np
 from agentflow.state.flow import State
 from agentflow.state.flow import StatefulEnvFlow
 
+
 @dataclass
 class RandomOneHotMask(State):
 
@@ -14,7 +15,7 @@ class RandomOneHotMask(State):
         indices = np.array(indices)
         assert self._state is not None, "have you called env.reset() yet?"
         assert indices.ndim == 1, "indices must be a 1d array"
-        self._state[indices] = False 
+        self._state[indices] = False
         rnd_idx = np.random.choice(self.depth, size=len(indices))
         self._state[indices, rnd_idx] = True
 
@@ -27,7 +28,7 @@ class RandomOneHotMask(State):
             if reset_mask is not None and sum(reset_mask) > 0:
                 assert len(reset_mask) == len(self._state)
                 # indices along first dim that need to be reset
-                idx = np.arange(len(reset_mask))[reset_mask==1]
+                idx = np.arange(len(reset_mask))[reset_mask == 1]
                 self._update_mask(idx)
         return self._state.copy()
 
@@ -36,8 +37,8 @@ class RandomOneHotMask(State):
             return self._state.copy()
         return None
 
-class RandomOneHotMaskEnv(StatefulEnvFlow):
 
+class RandomOneHotMaskEnv(StatefulEnvFlow):
     def __init__(self, source, depth: int):
         self.source = source
         self.state = RandomOneHotMask(depth)
@@ -46,10 +47,10 @@ class RandomOneHotMaskEnv(StatefulEnvFlow):
         prior_output = self.source.reset()
         self.state.reset()
         output = {k: prior_output[k] for k in prior_output}
-        output['mask'] = self.state.update(prior_output['state'])
+        output["mask"] = self.state.update(prior_output["state"])
         return output
 
     def step(self, action):
         output = self.source.step(action)
-        output['mask'] = self.state.update(output['state'], output['done'])
+        output["mask"] = self.state.update(output["state"], output["done"])
         return output

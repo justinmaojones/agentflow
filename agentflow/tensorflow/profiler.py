@@ -2,6 +2,7 @@ import contextlib
 
 import tensorflow as tf
 
+
 class TFProfiler:
     """
     Wrapper around tensorflow profiler.
@@ -30,13 +31,13 @@ class TFProfiler:
         if self._t == self._stop_step:
             tf.profiler.experimental.stop()
 
-class TFProfilerIterator:
 
+class TFProfilerIterator:
     def __init__(self, start_step, stop_stop, logdir):
         self._profiler = TFProfiler(start_step, stop_stop, logdir)
 
     def __call__(self, iterator):
-        if not hasattr(iterator, '__next__'):
+        if not hasattr(iterator, "__next__"):
             iterator = iter(iterator)
 
         while True:

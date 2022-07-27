@@ -3,8 +3,8 @@ from .binary_pendulum import VecBinaryPendulumEnv
 from .chain import ChainEnv
 from .clipped_reward_env import ClippedRewardEnv
 from .flow import EnvFlow
-from .gym import AtariGymEnv 
-from .gym import CartpoleGymEnv 
+from .gym import AtariGymEnv
+from .gym import CartpoleGymEnv
 from .gym import GymEnv
 from .gym import PendulumGymEnv
 from .gym import VecGymEnv

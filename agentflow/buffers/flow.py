@@ -34,7 +34,9 @@ class BufferFlow(Flow, WithLogging):
     def get(self, time_idx: np.ndarray, batch_idx: np.ndarray = None):
         return self.source.get(time_idx, batch_idx)
 
-    def get_sequence(self, time_idx: np.ndarray, seq_size: int, batch_idx: np.ndarray = None):
+    def get_sequence(
+        self, time_idx: np.ndarray, seq_size: int, batch_idx: np.ndarray = None
+    ):
         return self.source.get_sequence(time_idx, seq_size, batch_idx)
 
     def sample(self, n_samples: int, **kwargs):
@@ -50,4 +52,3 @@ class BufferFlow(Flow, WithLogging):
     def set_log(self, log: LogsTFSummary):
         super().set_log(log)
         self.source.set_log(log)
-

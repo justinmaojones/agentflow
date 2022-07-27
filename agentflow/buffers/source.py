@@ -29,7 +29,9 @@ class BufferSource(Source, WithLogging):
         ...
 
     @abstractmethod
-    def get_sequence(self, time_idx: np.ndarray, seq_size: int, batch_idx: np.ndarray = None):
+    def get_sequence(
+        self, time_idx: np.ndarray, seq_size: int, batch_idx: np.ndarray = None
+    ):
         ...
 
     def extend(self, data_list: List[Dict[str, np.ndarray]]):
@@ -42,7 +44,7 @@ class BufferSource(Source, WithLogging):
 
     @property
     def shape(self):
-        return {k:self._buffers[k].shape for k in self._buffers}
+        return {k: self._buffers[k].shape for k in self._buffers}
 
     @abstractmethod
     def tail(self, seq_size: int, batch_idx: np.ndarray = None):

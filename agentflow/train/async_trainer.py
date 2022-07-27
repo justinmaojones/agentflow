@@ -18,14 +18,15 @@ from agentflow.env import EnvSource
 from agentflow.logging import ScopedLogsTFSummary
 from agentflow.tensorflow.profiler import TFProfilerIterator
 
-class Runner:
 
-    def __init__(self,
-            env: Union[EnvSource, EnvFlow], 
-            agent: Union[AgentFlow, AgentSource],
-            replay_buffer: Union[BufferFlow, BufferSource],
-            log: ScopedLogsTFSummary,
-        ):
+class Runner:
+    def __init__(
+        self,
+        env: Union[EnvSource, EnvFlow],
+        agent: Union[AgentFlow, AgentSource],
+        replay_buffer: Union[BufferFlow, BufferSource],
+        log: ScopedLogsTFSummary,
+    ):
 
         self.env = env
         self.agent = agent
@@ -37,7 +38,6 @@ class Runner:
         self.env.set_log(log.scope("train_env"))
         self.agent.set_log(log.scope("train_agent"))
         self.replay_buffer.set_log(log.scope("replay_buffer"))
-
 
         # initialize
         self.next = self.env.reset()
@@ -55,7 +55,10 @@ class Runner:
         return self._step_counter
 
     def counters(self):
-        return {'frame_counter': self._frame_counter, "step_counter": self._step_counter}
+        return {
+            "frame_counter": self._frame_counter,
+            "step_counter": self._step_counter,
+        }
 
     def set_step(self, t, flush=False):
         if flush:
@@ -65,13 +68,13 @@ class Runner:
     def set_weights(self, weights):
         self.agent.set_weights(weights)
         self._set_weights_counter += 1
-        self.log.append('async/runner/set_weights', self._set_weights_counter)
+        self.log.append("async/runner/set_weights", self._set_weights_counter)
 
     def step(self):
         if self.next is None:
             self.next = self.env.reset()
 
-        action = self.agent.act(self.next['state'])
+        action = self.agent.act(self.next["state"])
         if isinstance(action, tf.Tensor):
             action = action.numpy()
 
@@ -79,18 +82,18 @@ class Runner:
         self.next = self.env.step(action)
 
         data = {
-            'state': self.prev['state'],
-            'action': action,
-            'reward': self.next['reward'],
-            'done': self.next['done'],
-            'state2': self.next['state'],
+            "state": self.prev["state"],
+            "action": action,
+            "reward": self.next["reward"],
+            "done": self.next["done"],
+            "state2": self.next["state"],
         }
 
         with self._lock_buffer:
             self.replay_buffer.append(data)
 
         # num frames = num steps x num envs
-        self._frame_counter += len(self.next['state'])
+        self._frame_counter += len(self.next["state"])
         self._step_counter += 1
 
     def sample(self, n_samples, **kwargs):
@@ -113,15 +116,17 @@ class Runner:
     def stop(self):
         self._run = False
 
+
 class TestRunner:
 
     import tensorflow as tf
 
-    def __init__(self,
-            env: Union[EnvSource, EnvFlow], 
-            agent: Union[AgentFlow, AgentSource],
-            log: ScopedLogsTFSummary = None,
-        ):
+    def __init__(
+        self,
+        env: Union[EnvSource, EnvFlow],
+        agent: Union[AgentFlow, AgentSource],
+        log: ScopedLogsTFSummary = None,
+    ):
 
         self.env = env
         self.agent = agent
@@ -141,11 +146,11 @@ class TestRunner:
         if flush:
             self.log.flush()
         self.log.set_step(t)
-        
+
     def set_weights(self, weights):
         self.agent.set_weights(weights)
         self._set_weights_counter += 1
-        self.log.append('async/test_runner/set_weights', self._set_weights_counter)
+        self.log.append("async/test_runner/set_weights", self._set_weights_counter)
 
     def test(self):
         test_output = test_agent_fn(self.env, self.agent)
@@ -155,24 +160,23 @@ class TestRunner:
         return test_output
 
 
-
 class ParameterServer:
-
-
-    def __init__(self, 
-            agent: Union[AgentFlow, AgentSource],
-            runners: List[Runner],
-            log: ScopedLogsTFSummary,
-            batchsize: int,
-            dataset_prefetch: int = 1,
-            min_parallel_sample_rpc: int = 8,
-            profiler_start_step: int = 100,
-            profiler_stop_step: int = 200,
-            inter_op_parallelism: int = 6,
-            intra_op_parallelism: int = 6
-        ):
+    def __init__(
+        self,
+        agent: Union[AgentFlow, AgentSource],
+        runners: List[Runner],
+        log: ScopedLogsTFSummary,
+        batchsize: int,
+        dataset_prefetch: int = 1,
+        min_parallel_sample_rpc: int = 8,
+        profiler_start_step: int = 100,
+        profiler_stop_step: int = 200,
+        inter_op_parallelism: int = 6,
+        intra_op_parallelism: int = 6,
+    ):
 
         import tensorflow as tf
+
         tf.config.threading.set_inter_op_parallelism_threads(inter_op_parallelism)
         tf.config.threading.set_intra_op_parallelism_threads(intra_op_parallelism)
 
@@ -190,12 +194,13 @@ class ParameterServer:
         self._dataset = None
         self._update_counter = 0
 
-        self._profiler = TFProfilerIterator(profiler_start_step, profiler_stop_step, self.log.savedir)
+        self._profiler = TFProfilerIterator(
+            profiler_start_step, profiler_stop_step, self.log.savedir
+        )
 
         self._time = None
         self._idle_time = 0
         self._running_time = 0
-
 
     def _build_dataset_pipeline(self):
 
@@ -211,8 +216,10 @@ class ParameterServer:
                 yield ray.get(self.runners[i].sample.remote(self.batchsize))
 
         # ensure there are enough parallel fetches to support prefetch
-        n_rpc = max(len(self.runners), self.dataset_prefetch, self.min_parallel_sample_rpc)
-        
+        n_rpc = max(
+            len(self.runners), self.dataset_prefetch, self.min_parallel_sample_rpc
+        )
+
         # ensure n is multiple of len(self.runners)
         n_rpc = int(math.ceil(n_rpc / len(self.runners)) * len(self.runners))
 
@@ -220,22 +227,21 @@ class ParameterServer:
         dataset = tf.data.Dataset.range(n_rpc)
 
         # interleave results from different runners
-        dataset = dataset.interleave(lambda i: 
-            tf.data.Dataset.from_generator(
+        dataset = dataset.interleave(
+            lambda i: tf.data.Dataset.from_generator(
                 sample_runner_generator,
                 output_signature=output_signature,
-                args=(i % len(self.runners),)
+                args=(i % len(self.runners),),
             ),
             num_parallel_calls=tf.data.AUTOTUNE,
             deterministic=False,
         )
 
         if self.dataset_prefetch > 0:
-            # so that we aren't waiting on RPC 
+            # so that we aren't waiting on RPC
             dataset = dataset.prefetch(self.dataset_prefetch)
 
         self._dataset = dataset
-
 
     def get_weights(self):
         return self.agent.get_weights()
@@ -253,14 +259,14 @@ class ParameterServer:
 
     def log_time(self):
         frac_idle = self._idle_time / (self._idle_time + self._running_time + 1e-12)
-        self.log.append('fraction_idle', frac_idle)
+        self.log.append("fraction_idle", frac_idle)
 
     def update(self, n_steps: int = 1):
 
         if self._dataset is None:
             self._build_dataset_pipeline()
 
-        t = 0 
+        t = 0
         for sample in self._profiler(self._dataset):
 
             if self._time is None:
@@ -290,13 +296,14 @@ class ParameterServer:
     def update_counter(self):
         return self._update_counter
 
-class WeightUpdater:
 
-    def __init__(self, 
-            parameter_server: ParameterServer, 
-            runners: List[Union[Runner, TestRunner]],
-            log: ScopedLogsTFSummary = None,
-        ):
+class WeightUpdater:
+    def __init__(
+        self,
+        parameter_server: ParameterServer,
+        runners: List[Union[Runner, TestRunner]],
+        log: ScopedLogsTFSummary = None,
+    ):
         self.parameter_server = parameter_server
         self.runners = runners
         self.log = log.scope("async/weight_updater")
@@ -318,52 +325,52 @@ class WeightUpdater:
         for runner in self.runners:
             ops.append(runner.set_weights.remote(weights))
 
-        # block until all have finished 
+        # block until all have finished
         ray.get(ops)
 
         self._refresh_counter += 1
         self.log.append("refresh_counter", self._refresh_counter)
 
-class RunnerCountersServer:
 
+class RunnerCountersServer:
     def __init__(self, runners: List[Runner]):
         self.runners = runners
 
     def counters(self):
         counters_list = ray.get([r.counters.remote() for r in self.runners])
         counters = {
-            'frame_counter': sum([c['frame_counter'] for c in counters_list]),
-            'step_counter_min': min([c['step_counter'] for c in counters_list]),
-            'step_counter_max': max([c['step_counter'] for c in counters_list]),
+            "frame_counter": sum([c["frame_counter"] for c in counters_list]),
+            "step_counter_min": min([c["step_counter"] for c in counters_list]),
+            "step_counter_max": max([c["step_counter"] for c in counters_list]),
         }
         return counters
 
 
 class AsyncTrainer:
-
-    def __init__(self, 
-            env: Union[EnvSource, EnvFlow], 
-            agent: Union[AgentFlow, AgentSource],
-            replay_buffer: Union[BufferFlow, BufferSource],
-            log: ScopedLogsTFSummary,
-            begin_learning_at_step: int,
-            n_updates_per_model_refresh: int,
-            batchsize: int,
-            dataset_prefetch: int = 1,
-            min_parallel_sample_rpc: int = 8,
-            test_env: Union[EnvSource, EnvFlow] = None,
-            test_agent: Union[AgentFlow, AgentSource] = None,
-            runner_count: int = 1,
-            runner_cpu: int = 1,
-            runner_threads: int = 2,
-            parameter_server_cpu: int = 1,
-            parameter_server_gpu: int = 0,
-            parameter_server_threads: int = 2,
-            start_step: int = 0,
-            max_frames: int = None,
-            profiler_start_step: int = 100,
-            profiler_stop_step: int = 200,
-        ):
+    def __init__(
+        self,
+        env: Union[EnvSource, EnvFlow],
+        agent: Union[AgentFlow, AgentSource],
+        replay_buffer: Union[BufferFlow, BufferSource],
+        log: ScopedLogsTFSummary,
+        begin_learning_at_step: int,
+        n_updates_per_model_refresh: int,
+        batchsize: int,
+        dataset_prefetch: int = 1,
+        min_parallel_sample_rpc: int = 8,
+        test_env: Union[EnvSource, EnvFlow] = None,
+        test_agent: Union[AgentFlow, AgentSource] = None,
+        runner_count: int = 1,
+        runner_cpu: int = 1,
+        runner_threads: int = 2,
+        parameter_server_cpu: int = 1,
+        parameter_server_gpu: int = 0,
+        parameter_server_threads: int = 2,
+        start_step: int = 0,
+        max_frames: int = None,
+        profiler_start_step: int = 100,
+        profiler_stop_step: int = 200,
+    ):
 
         self.env = env
         self.agent = agent
@@ -415,7 +422,7 @@ class AsyncTrainer:
         self.build_weight_updater()
 
         print("AsyncTrainer: build frame counter server")
-        self.build_runner_counters_server() 
+        self.build_runner_counters_server()
 
         # wait 10 seconds for actors to startup
         time.sleep(10)
@@ -430,40 +437,32 @@ class AsyncTrainer:
     def build_runners(self):
         assert self.runners is None, "runners already built"
 
-        RemoteRunner = ray.remote(
-            num_cpus=self.runner_cpu
-        )(Runner)
+        RemoteRunner = ray.remote(num_cpus=self.runner_cpu)(Runner)
 
-        # runners perform two general tasks: 
+        # runners perform two general tasks:
         # 1) interacting with environment to collect training data
         # 2) sampling from buffer and returning sample to parameter server
         # Thus we should have at least 2 threads per runner to handle IO
         # concurrently with computation for some small gains
-        RemoteRunner = RemoteRunner.options(
-            max_concurrency=self.runner_threads
-        )
+        RemoteRunner = RemoteRunner.options(max_concurrency=self.runner_threads)
 
         # create runners
         self.runners = []
         for i in range(self.runner_count):
             runner = RemoteRunner.remote(
-                env=self.env, 
-                agent=self.agent, 
-                replay_buffer=self.replay_buffer, 
-                log=self.log.with_filename(f"runner_{i}_log.h5"), 
+                env=self.env,
+                agent=self.agent,
+                replay_buffer=self.replay_buffer,
+                log=self.log.with_filename(f"runner_{i}_log.h5"),
             )
             self.runners.append(runner)
 
     def build_test_runner(self):
         assert self.test_runner is None, "test_runner already built"
 
-        RemoteTestRunner = ray.remote(
-            num_cpus=1
-        )(TestRunner)
+        RemoteTestRunner = ray.remote(num_cpus=1)(TestRunner)
 
-        RemoteTestRunner = RemoteTestRunner.options(
-            max_concurrency=self.runner_threads
-        )
+        RemoteTestRunner = RemoteTestRunner.options(max_concurrency=self.runner_threads)
 
         self.test_runner = RemoteTestRunner.remote(
             env=self.test_env,
@@ -476,8 +475,7 @@ class AsyncTrainer:
         assert self.parameter_server is None, "parameter server already built"
 
         RemoteParameterServer = ray.remote(
-            num_cpus=self.parameter_server_cpu, 
-            num_gpus=self.parameter_server_gpu
+            num_cpus=self.parameter_server_cpu, num_gpus=self.parameter_server_gpu
         )(ParameterServer)
 
         # Threads should be at least 2 to overlap communication with compute.
@@ -504,33 +502,29 @@ class AsyncTrainer:
         assert self.parameter_server is not None, "need to build runners first"
         assert self.weight_updater is None, "weight updater already built"
 
-        RemoteWeightUpdater = ray.remote(
-            num_cpus=1
-        )(WeightUpdater)
+        RemoteWeightUpdater = ray.remote(num_cpus=1)(WeightUpdater)
 
         self.weight_updater = RemoteWeightUpdater.remote(
             parameter_server=self.parameter_server,
             runners=self.runners + [self.test_runner],
-            log=self.log.with_filename("weight_updater_log.h5")
+            log=self.log.with_filename("weight_updater_log.h5"),
         )
 
     def build_runner_counters_server(self):
         assert self.runners is not None, "need to build runners first"
         assert self.runner_counters_server is None, "frame counter server already built"
 
-        RemoteRunnerCountersServer = ray.remote(
-            num_cpus=1
-        )(RunnerCountersServer)
+        RemoteRunnerCountersServer = ray.remote(num_cpus=1)(RunnerCountersServer)
 
         self.runner_counters_server = RemoteRunnerCountersServer.remote(
             runners=self.runners
-        ) 
+        )
 
     def set_step(self, t, flush: bool = False):
         if flush:
             self.log.flush()
         self.log.set_step(t)
-        rpc = [r.set_step.remote(t, flush) for r in self.runners] 
+        rpc = [r.set_step.remote(t, flush) for r in self.runners]
         rpc += [self.parameter_server.set_step.remote(t, flush)]
         rpc += [self.test_runner.set_step.remote(t, flush)]
         rpc += [self.weight_updater.set_step.remote(t, flush)]
@@ -550,18 +544,18 @@ class AsyncTrainer:
         step_counter = 0
         test_counter = 0
         refresh_weights_counter = 0
-        num_updates = num_updates 
+        num_updates = num_updates
 
         progress_bar_metrics = [
-            'test/ep_returns',
-            'steps',
-            'frames',
-            'updates',
+            "test/ep_returns",
+            "steps",
+            "frames",
+            "updates",
         ]
 
         pb = tf.keras.utils.Progbar(num_updates, stateful_metrics=progress_bar_metrics)
         start_time = time.time()
-        start_update_time = None 
+        start_update_time = None
 
         print("AsyncTrainer: start runners")
         self.start_runners()
@@ -579,8 +573,10 @@ class AsyncTrainer:
 
             if self.max_frames is not None:
                 if frame_counter >= self.max_frames:
-                    print(f"Stopping program because frame_counter={self._frame_counter} "
-                          f"has exceeded num_frames_max={self.max_frames}")
+                    print(
+                        f"Stopping program because frame_counter={self._frame_counter} "
+                        f"has exceeded num_frames_max={self.max_frames}"
+                    )
                     break
 
             if update_counter >= num_updates:
@@ -603,8 +599,12 @@ class AsyncTrainer:
                 if step_counter >= self.begin_learning_at_step:
                     if start_update_time is None:
                         start_update_time = time.time()
-                    _n_update_steps = min(num_updates-update_counter, self.n_updates_per_model_refresh)
-                    ops[self.parameter_server.update.remote(_n_update_steps)] = Op.UPDATE_AGENT
+                    _n_update_steps = min(
+                        num_updates - update_counter, self.n_updates_per_model_refresh
+                    )
+                    ops[
+                        self.parameter_server.update.remote(_n_update_steps)
+                    ] = Op.UPDATE_AGENT
 
             ready_op_list, _ = ray.wait(list(ops))
             for op in ready_op_list:
@@ -616,32 +616,38 @@ class AsyncTrainer:
 
                 if op_type == Op.RUNNER_COUNTERS:
                     counters = ray.get(op)
-                    frame_counter = counters['frame_counter']
-                    step_counter = counters['step_counter_min']
+                    frame_counter = counters["frame_counter"]
+                    step_counter = counters["step_counter_min"]
                     self.log.append("trainer/frames", frame_counter)
                     self.log.append("trainer/steps/min", step_counter)
-                    self.log.append("trainer/steps/max", counters['step_counter_max'])
-                    pb.update(update_counter, [('frames', frame_counter)])
-                    pb.update(update_counter, [('steps', step_counter)])
+                    self.log.append("trainer/steps/max", counters["step_counter_max"])
+                    pb.update(update_counter, [("frames", frame_counter)])
+                    pb.update(update_counter, [("steps", step_counter)])
 
                 elif op_type == Op.UPDATE_AGENT:
                     update_counter = ray.get(op)
                     # ensure all workers have up-to-date update counter
                     ray.get(self.set_step(update_counter, flush=True))
-                    pb.update(update_counter, [('updates', update_counter)])
+                    pb.update(update_counter, [("updates", update_counter)])
 
                     curr_time = time.time()
-                    self.log.append('trainer/batchsize', self.batchsize)
-                    self.log.append('trainer/updates_per_sec', update_counter / (curr_time-start_update_time))
-                    self.log.append('trainer/training_examples_per_sec', (update_counter * self.batchsize) / (curr_time-start_update_time))
-                    self.log.append('trainer/update_counter', update_counter)
-
+                    self.log.append("trainer/batchsize", self.batchsize)
+                    self.log.append(
+                        "trainer/updates_per_sec",
+                        update_counter / (curr_time - start_update_time),
+                    )
+                    self.log.append(
+                        "trainer/training_examples_per_sec",
+                        (update_counter * self.batchsize)
+                        / (curr_time - start_update_time),
+                    )
+                    self.log.append("trainer/update_counter", update_counter)
 
                 elif op_type == Op.REFRESH_WEIGHTS:
                     pass
 
                 elif op_type == Op.TEST_RUN:
-                    pb.update(update_counter, [('test/ep_returns', ray.get(op))])
+                    pb.update(update_counter, [("test/ep_returns", ray.get(op))])
 
                 else:
                     raise NotImplementedError(f"Unhandled op_type={op_type}")

@@ -14,26 +14,27 @@ from agentflow.logging import ScopedLogsTFSummary
 from agentflow.logging import WithLogging
 from agentflow.tensorflow.profiler import TFProfiler
 
-class Trainer(WithLogging):
 
-    def __init__(self, 
-            env: Union[EnvSource, EnvFlow], 
-            agent: Union[AgentFlow, AgentSource],
-            replay_buffer: Union[BufferFlow, BufferSource],
-            batchsize: int,
-            test_env: Union[EnvSource, EnvFlow],
-            test_agent: Union[AgentFlow, AgentSource] = None,
-            log: ScopedLogsTFSummary = None,
-            log_flush_freq: int = 100,
-            start_step: int = 0,
-            begin_learning_at_step: int = 0,
-            update_freq: int = 1,
-            n_update_steps: int = 1,
-            n_steps_per_eval: int = 100,
-            max_frames: int = None,
-            profiler_start_step: int = 100,
-            profiler_stop_step: int = 200,
-        ):
+class Trainer(WithLogging):
+    def __init__(
+        self,
+        env: Union[EnvSource, EnvFlow],
+        agent: Union[AgentFlow, AgentSource],
+        replay_buffer: Union[BufferFlow, BufferSource],
+        batchsize: int,
+        test_env: Union[EnvSource, EnvFlow],
+        test_agent: Union[AgentFlow, AgentSource] = None,
+        log: ScopedLogsTFSummary = None,
+        log_flush_freq: int = 100,
+        start_step: int = 0,
+        begin_learning_at_step: int = 0,
+        update_freq: int = 1,
+        n_update_steps: int = 1,
+        n_steps_per_eval: int = 100,
+        max_frames: int = None,
+        profiler_start_step: int = 100,
+        profiler_stop_step: int = 200,
+    ):
 
         self.env = env
         self.agent = agent
@@ -71,7 +72,9 @@ class Trainer(WithLogging):
         # ensure that profiler captures learning
         profiler_start_step = profiler_start_step + self.begin_learning_at_step
         profiler_stop_step = profiler_stop_step + self.begin_learning_at_step
-        self._profiler = TFProfiler(profiler_start_step, profiler_stop_step, self.log.savedir)
+        self._profiler = TFProfiler(
+            profiler_start_step, profiler_stop_step, self.log.savedir
+        )
 
     def set_step(self, t):
         self.t = t
@@ -80,14 +83,16 @@ class Trainer(WithLogging):
 
     def learn(self, num_steps: int):
         T = num_steps
-        pb = tf.keras.utils.Progbar(T, stateful_metrics=['test_env/ep_returns'])
+        pb = tf.keras.utils.Progbar(T, stateful_metrics=["test_env/ep_returns"])
         self._start_update_time = None
         for t in range(T):
 
             if self.max_frames is not None:
                 if self._frame_counter >= self.max_frames:
-                    print(f"Stopping program because frame_counter={self._frame_counter} "
-                          f"has exceeded num_frames_max={self.max_frames}")
+                    print(
+                        f"Stopping program because frame_counter={self._frame_counter} "
+                        f"has exceeded num_frames_max={self.max_frames}"
+                    )
                     break
 
             pb_input = []
@@ -98,10 +103,9 @@ class Trainer(WithLogging):
                 test_ep_returns = self.eval_step()
 
                 avg_test_ep_returns = np.mean(test_ep_returns)
-                pb_input.append(('test_env/ep_returns', avg_test_ep_returns))
-                self.log.append('test_env/ep_returns', avg_test_ep_returns) 
-                self.log.append('test_env/test_counter', self.t)
-
+                pb_input.append(("test_env/ep_returns", avg_test_ep_returns))
+                self.log.append("test_env/ep_returns", avg_test_ep_returns)
+                self.log.append("test_env/test_counter", self.t)
 
             pb.add(1, pb_input)
 
@@ -113,7 +117,7 @@ class Trainer(WithLogging):
 
     def run_step(self):
         if self._state is None:
-            self._state = self.env.reset()['state']
+            self._state = self.env.reset()["state"]
 
         action = self.agent.act(self._state)
         if isinstance(action, tf.Tensor):
@@ -122,20 +126,20 @@ class Trainer(WithLogging):
         step_output = self.env.step(action)
 
         data = {
-            'state':self._state,
-            'action':action,
-            'reward':step_output['reward'],
-            'done':step_output['done'],
-            'state2':step_output['state'],
+            "state": self._state,
+            "action": action,
+            "reward": step_output["reward"],
+            "done": step_output["done"],
+            "state2": step_output["state"],
         }
         self.replay_buffer.append(data)
 
         # update state
-        self._state = step_output['state']
+        self._state = step_output["state"]
 
         # num frames = num steps x num envs
         self._frame_counter += len(self._state)
-        self.log.append('trainer/frames', self._frame_counter)
+        self.log.append("trainer/frames", self._frame_counter)
 
     def update_step(self):
         if self._start_update_time is None:
@@ -149,11 +153,17 @@ class Trainer(WithLogging):
         end_time = time.time()
 
         self.log_train_agent.append_dict(update_outputs)
-        self.log.append('trainer/batchsize', self.batchsize)
-        self.log.append('trainer/updates_per_sec', self._update_counter / (end_time-self._start_update_time))
-        self.log.append('trainer/training_examples_per_sec', 
-                (self._update_counter * self.batchsize) / (end_time-self._start_update_time))
-        self.log.append('trainer/update_counter', self._update_counter)
+        self.log.append("trainer/batchsize", self.batchsize)
+        self.log.append(
+            "trainer/updates_per_sec",
+            self._update_counter / (end_time - self._start_update_time),
+        )
+        self.log.append(
+            "trainer/training_examples_per_sec",
+            (self._update_counter * self.batchsize)
+            / (end_time - self._start_update_time),
+        )
+        self.log.append("trainer/update_counter", self._update_counter)
 
     def train_step(self):
         with self._profiler():
@@ -162,6 +172,5 @@ class Trainer(WithLogging):
                 if self.t % self.update_freq == 0:
                     self.update_step()
 
-            self.set_step(self.t+1)
-            self.log.append('trainer/steps', self.t)
-
+            self.set_step(self.t + 1)
+            self.log.append("trainer/steps", self.t)
