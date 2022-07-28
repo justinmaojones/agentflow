@@ -20,8 +20,8 @@ Construct an environment flow
 from agentflow.env import CartpoleGymEnv
 from agentflow.state import NPrevFramesStateEnv
 
-env = CartpoleGymEnv(n_envs=4)
-env = NPrevFramesStateEnv(env, n_prev_frames=4, flatten=True) # appends prev frames to state
+env = CartpoleGymEnv(n_envs=16)
+env = NPrevFramesStateEnv(env, n_prev_frames=16, flatten=True) # appends prev frames to state
 ```
 
 Construct a buffer flow
@@ -29,8 +29,8 @@ Construct a buffer flow
 from agentflow.buffers import BufferMap
 from agentflow.buffers import NStepReturnBuffer
 
-replay_buffer = BufferMap(max_length=10000)
-replay_buffer = NStepReturnBuffer(replay_buffer, n_steps=4, gamma=0.99) # n-step discounted sum of rewards
+replay_buffer = BufferMap(max_length=30000)
+replay_buffer = NStepReturnBuffer(replay_buffer, n_steps=8, gamma=0.99) # n-step discounted sum of rewards
 ```
 
 Construct an agent flow
@@ -44,11 +44,11 @@ from agentflow.tensorflow.nn import normalize_ema
 
 def q_fn(state, **kwargs):
     state = normalize_ema(state)
-    h = dense_net(state, units=32, layers=3)
+    h = dense_net(state, units=64, layers=4)
     return tf.keras.layers.Dense(2)(h)
 
-optimizer = tf.keras.optimizers.Adam(1e-3)
-agent = DQN(state_shape=[12], num_actions=2, q_fn=q_fn, optimizer=optimizer)
+optimizer = tf.keras.optimizers.Adam(1e-4)
+agent = DQN(state_shape=[12], num_actions=2, q_fn=q_fn, optimizer=optimizer, gamma=0.99, ema_decay=0.999)
 agent = EpsilonGreedy(agent, epsilon=0.5) # cartpole likes a lot of noise
 agent = CompletelyRandomDiscreteUntil(agent, num_steps=1000) # uniform random actions until num_steps
 ```
@@ -69,6 +69,8 @@ from agentflow.train import AsyncTrainer
 
 async_trainer = AsyncTrainer(env, agent, replay_buffer, log=log, batchsize=64, begin_learning_at_step=1000, n_updates_per_model_refresh=32)
 async_trainer.learn(num_updates=10000)
+
+# interrupt async trainer with `ray stop` on commandline
 ```
 
 View your results on Tensorboard. The trainers include tracing with [TensorFlow profilers](https://www.tensorflow.org/tensorboard/tensorboard_profiling_keras) to help diagnose performance bottlenecks.  To see results, go to the `Profile` tab in Tensorboard.
