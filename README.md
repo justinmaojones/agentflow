@@ -106,3 +106,4 @@ There are many features available, here is a list of some of them
 * Migrate chain examples to trainre and cleanup chain env
 * Add more explicitly defined target updaters decoupled from agent classes
 * Configuration is a bit messy, should clean that up
+* Publish to pypi
