@@ -84,19 +84,25 @@ Check out [agentflow/examples](https://github.com/justinmaojones/agentflow/tree/
 
 There are many features available, here is a list of some of them
 * Enviroments
- - [OpenAI Gym](https://github.com/openai/gym) (including vectorized gym environments)
- - Simple concave function environments (great for testing)
- - Chain game (from the [Boostrapped DQN paper](https://papers.nips.cc/paper/2016/file/8d8818c8e140c64c743113f563cf750f-Paper.pdf))
- - ...many more env flow wrappers...
+    * [OpenAI Gym](https://github.com/openai/gym) (including vectorized gym environments)
+    * Simple concave function environments (great for testing)
+    * Chain game (from the [Boostrapped DQN paper](https://papers.nips.cc/paper/2016/file/8d8818c8e140c64c743113f563cf750f-Paper.pdf))
+    * ...many more env flow wrappers...
 * Replay Buffers
- - Prioritized experience replay buffers, using [STArr](https://github.com/justinmaojones/starr) for efficient sampling
- - Image compression buffers
+    * Prioritized experience replay buffers, using [STArr](https://github.com/justinmaojones/starr) for efficient sampling
+    * Image compression buffers
 * Agents supported
- - DQN (with double Q learning)
- - Bootstrapped DQN (with random prior functions)
- - DDPG
+    * DQN (with double Q learning)
+    * Bootstrapped DQN (with random prior functions)
+    * DDPG
 * Training
- - Synchronous Trainer
- - Asynchronous Trainer using the excellent [Ray](https://github.com/ray-project/ray) library 
+    * Synchronous Trainer
+    * Asynchronous Trainer using the excellent [Ray](https://github.com/ray-project/ray) library 
 * Logging to h5 as well as tensorboard
 
+## To-Do
+* Add tf.data pipeline to `Trainer` for performance optimization
+* A recent refactor removed ability to update priorities for Prioritized Experience Replay...need to fix that
+* Migrate chain examples to trainre and cleanup chain env
+* Add more explicitly defined target updaters decoupled from agent classes
+* Configuration is a bit messy, should clean that up
