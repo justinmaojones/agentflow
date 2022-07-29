@@ -75,7 +75,9 @@ trainer.learn(num_steps=10000)
 or an AsyncTrainer 
 ```python
 from agentflow.train import AsyncTrainer
+from agentflow.logging import scoped_log_tf_summary
 
+log = scoped_log_tf_summary("/tmp/agentflow/cartpole")
 async_trainer = AsyncTrainer(
     env, agent, replay_buffer, 
     log=log, batchsize=64, begin_learning_at_step=1000, 
