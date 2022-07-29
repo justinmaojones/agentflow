@@ -76,7 +76,11 @@ or an AsyncTrainer
 ```python
 from agentflow.train import AsyncTrainer
 
-async_trainer = AsyncTrainer(env, agent, replay_buffer, log=log, batchsize=64, begin_learning_at_step=1000, n_updates_per_model_refresh=32)
+async_trainer = AsyncTrainer(
+    env, agent, replay_buffer, 
+    log=log, batchsize=64, begin_learning_at_step=1000, 
+    test_env=test_env, test_agent=test_agent,
+    n_updates_per_model_refresh=32)
 async_trainer.learn(num_updates=10000)
 
 # interrupt async trainer with `ray stop` on commandline
