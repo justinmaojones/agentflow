@@ -51,7 +51,9 @@ def q_fn(state, **kwargs):
     return tf.keras.layers.Dense(2)(h)
 
 optimizer = tf.keras.optimizers.Adam(1e-4)
-agent = DQN(state_shape=[64], num_actions=2, q_fn=q_fn, optimizer=optimizer, gamma=0.99, target_update_freq=16)
+agent = DQN(
+    state_shape=[64], num_actions=2, q_fn=q_fn, 
+    optimizer=optimizer, gamma=0.99, target_update_freq=16)
 test_agent = agent
 agent = EpsilonGreedy(agent, epsilon=0.5) # cartpole likes a lot of noise
 agent = CompletelyRandomDiscreteUntil(agent, num_steps=1000) # uniform random actions until num_steps
