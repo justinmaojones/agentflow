@@ -18,7 +18,7 @@ class BootstrappedDQN(BaseAgent, DiscreteActionAgentSource):
         double_q=False,
         random_prior=False,
         prior_scale=1.0,
-        auto_build: bool = True,
+        auto_build: bool = False,
         **kwargs,
     ):
         """Implements Boostrapped Deep Q Networks [1] with Tensorflow
@@ -42,6 +42,7 @@ class BootstrappedDQN(BaseAgent, DiscreteActionAgentSource):
           random_prior: boolean, when true builds a separate randomized prior function [3]
             for each bootstrap head using q_fn.
           prior_scale: float, controls the strength of the prior
+          auto_build: boolean, automatically build model on class instantiation
 
         References:
         [1] Osband, Ian, et al. "Deep exploration via bootstrapped DQN." Advances in neural

@@ -163,7 +163,6 @@ def run(**cfg):
         weight_decay=cfg["weight_decay"],
         grad_clip_norm=cfg["grad_clip_norm"],
         target_update_freq=cfg["target_update_freq"],
-        auto_build=False,
     )
     test_agent = agent
 

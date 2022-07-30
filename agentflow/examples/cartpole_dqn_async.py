@@ -121,7 +121,6 @@ def run(**cfg):
         gamma=cfg["gamma"],
         ema_decay=cfg["ema_decay"],
         weight_decay=cfg["weight_decay"],
-        auto_build=False,
     )
 
     agent = EpsilonGreedy(agent, epsilon=cfg["noise_eps"])
