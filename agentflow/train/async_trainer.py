@@ -36,7 +36,7 @@ class Runner:
         self.set_step(0)
 
         self.env.set_log(log.scope("train_env"))
-        self.agent.set_log(log.scope("train_agent"))
+        self.agent.set_log(log.scope("agent"))
         self.replay_buffer.set_log(log.scope("replay_buffer"))
 
         # initialize
@@ -186,7 +186,7 @@ class ParameterServer:
         self.batchsize = batchsize
         self.dataset_prefetch = dataset_prefetch
         self.min_parallel_sample_rpc = min_parallel_sample_rpc
-        self.log = log.scope("train_agent")
+        self.log = log.scope("agent")
         self.set_step(0)
 
         self.agent.set_log(log)

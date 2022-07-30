@@ -46,12 +46,12 @@ class Trainer(WithLogging):
         self.test_agent = test_agent if test_agent is not None else agent
 
         self.log = log
-        self.log_train_agent = self.log.scope("train_agent")
+        self.log_agent = self.log.scope("agent")
         self.log_flush_freq = log_flush_freq
 
         if log:
             self.env.set_log(log.scope("train_env"))
-            self.agent.set_log(self.log_train_agent)
+            self.agent.set_log(self.log_agent)
             self.replay_buffer.set_log(log.scope("replay_buffer"))
             self.test_env.set_log(log.scope("test_env"))
 
@@ -152,7 +152,7 @@ class Trainer(WithLogging):
 
         end_time = time.time()
 
-        self.log_train_agent.append_dict(update_outputs)
+        self.log_agent.append_dict(update_outputs)
         self.log.append("trainer/batchsize", self.batchsize)
         self.log.append(
             "trainer/updates_per_sec",

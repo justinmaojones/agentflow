@@ -16,7 +16,7 @@ class TestAgentEnv(EnvFlow):
         state = self.reset()["state"]
         all_done = None
         while all_done is None or np.mean(all_done) < 1:
-            action = agent.act(state)
+            action = agent.act(state, explore=False)
             step_output = self.step(action)
             state = step_output["state"]
             done = step_output["done"]

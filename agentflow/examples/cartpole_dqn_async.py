@@ -123,7 +123,6 @@ def run(**cfg):
         weight_decay=cfg["weight_decay"],
         auto_build=False,
     )
-    test_agent = agent
 
     agent = EpsilonGreedy(agent, epsilon=cfg["noise_eps"])
     agent = CompletelyRandomDiscreteUntil(
@@ -161,7 +160,6 @@ def run(**cfg):
         dataset_prefetch=cfg["dataset_prefetch"],
         min_parallel_sample_rpc=cfg["min_parallel_sample_rpc"],
         test_env=test_env,
-        test_agent=test_agent,
         runner_count=cfg["runner_count"],
         runner_cpu=cfg["runner_cpu"],
         runner_threads=cfg["runner_threads"],

@@ -153,7 +153,6 @@ def run(**cfg):
         ema_decay=cfg["ema_decay"],
         weight_decay=cfg["weight_decay"],
     )
-    test_agent = agent
 
     if cfg["noise"] == "eps_greedy":
         agent = EpsilonGreedy(agent, epsilon=cfg["noise_eps"])
@@ -209,7 +208,6 @@ def run(**cfg):
         replay_buffer=replay_buffer,
         batchsize=cfg["batchsize"],
         test_env=test_env,
-        test_agent=test_agent,
         log=log,
         begin_learning_at_step=cfg["begin_learning_at_step"],
         n_steps_per_eval=cfg["n_steps_per_eval"],

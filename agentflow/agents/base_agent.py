@@ -58,7 +58,7 @@ class BaseAgent(AgentSource):
         return self._act_fn
 
     def act(self, state, mask=None, explore=True):
-        return self.act_fn(state, mask)
+        return self.act_fn(state, mask).numpy()
 
     @abstractmethod
     def build_model(self):
