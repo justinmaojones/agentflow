@@ -31,8 +31,11 @@ class EpsilonGreedy(DiscreteActionAgentFlow):
 
         return eps
 
-    def act(self, state, mask=None, **kwargs):
-        greedy_action = self.source.act(state, mask, **kwargs)
+    def act(self, state, mask=None, explore=True, **kwargs):
+        greedy_action = self.source.act(state, mask, explore, **kwargs)
         if isinstance(greedy_action, tf.Tensor):
             greedy_action = greedy_action.numpy()
-        return eps_greedy_noise(greedy_action, self.num_actions, self._get_eps())
+        if explore:
+            return eps_greedy_noise(greedy_action, self.num_actions, self._get_eps())
+        else:
+            return greedy_action

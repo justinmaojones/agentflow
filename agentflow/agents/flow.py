@@ -15,8 +15,8 @@ class AgentFlow(Flow, WithLogging):
 
     source: Union[AgentSource, AgentFlow]
 
-    def act(self, state, mask=None, **kwargs):
-        return self.source.act(state, mask, **kwargs)
+    def act(self, state, mask=None, explore=True, **kwargs):
+        return self.source.act(state, mask, explore, **kwargs)
 
     def build_model(self):
         self.source.build_model()

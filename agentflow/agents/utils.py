@@ -7,7 +7,7 @@ def test_agent(test_env, agent):
     rt = None
     all_done = 0
     while np.mean(all_done) < 1:
-        action = agent.act(state).numpy()
+        action = agent.act(state, explore=False).numpy()
         step_output = test_env.step(action)
         state = step_output["state"]
         reward = step_output["reward"]

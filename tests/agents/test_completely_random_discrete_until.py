@@ -22,8 +22,9 @@ class TestCompletelyRandomDiscreteUntil(unittest.TestCase):
         assert not MockAgentSource.act.called
 
         out2 = crd.act(state)
-        out3 = crd.act(state)
+        assert MockAgentSource.act.called
 
+        out3 = crd.act(state)
         assert MockAgentSource.act.called
 
         np.testing.assert_array_equal(out2, greedy_actions.numpy())
