@@ -99,11 +99,11 @@ class LogsTFSummary:
                         f[key][n:] = data
                 except TypeError:
                     for k in self.logs:
-                        if k in key:
+                        if k in key and k != key:
                             raise TypeError(
                                 f"cannot have parent='{k}' and child='{key}' log paths in same dataset"
                             )
-                        if key in k:
+                        if key in k and k != key:
                             raise TypeError(
                                 f"cannot have parent='{key}' and child='{k}' log paths in same dataset"
                             )

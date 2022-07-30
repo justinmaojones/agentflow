@@ -22,6 +22,9 @@ from agentflow.state import NPrevFramesStateEnv
 
 env = CartpoleGymEnv(n_envs=16)
 env = NPrevFramesStateEnv(env, n_prev_frames=16, flatten=True) # appends prev frames to state
+
+test_env = CartpoleGymEnv(n_envs=1)
+test_env = NPrevFramesStateEnv(test_env, n_prev_frames=16, flatten=True) # appends prev frames to state
 ```
 
 Construct a buffer flow
@@ -48,7 +51,10 @@ def q_fn(state, **kwargs):
     return tf.keras.layers.Dense(2)(h)
 
 optimizer = tf.keras.optimizers.Adam(1e-4)
-agent = DQN(state_shape=[12], num_actions=2, q_fn=q_fn, optimizer=optimizer, gamma=0.99, ema_decay=0.999)
+agent = DQN(
+    state_shape=[64], num_actions=2, q_fn=q_fn, 
+    optimizer=optimizer, gamma=0.99, target_update_freq=16)
+test_agent = agent
 agent = EpsilonGreedy(agent, epsilon=0.5) # cartpole likes a lot of noise
 agent = CompletelyRandomDiscreteUntil(agent, num_steps=1000) # uniform random actions until num_steps
 ```
@@ -59,15 +65,24 @@ from agentflow.train import Trainer
 from agentflow.logging import scoped_log_tf_summary
 
 log = scoped_log_tf_summary("/tmp/agentflow/cartpole")
-trainer = Trainer(env, agent, replay_buffer, log=log, batchsize=64, begin_learning_at_step=1000)
+trainer = Trainer(
+    env, agent, replay_buffer, 
+    log=log, batchsize=64, begin_learning_at_step=1000, 
+    test_env=test_env, test_agent=test_agent)
 trainer.learn(num_steps=10000)
 ```
 
 or an AsyncTrainer 
 ```python
 from agentflow.train import AsyncTrainer
+from agentflow.logging import scoped_log_tf_summary
 
-async_trainer = AsyncTrainer(env, agent, replay_buffer, log=log, batchsize=64, begin_learning_at_step=1000, n_updates_per_model_refresh=32)
+log = scoped_log_tf_summary("/tmp/agentflow/cartpole")
+async_trainer = AsyncTrainer(
+    env, agent, replay_buffer, 
+    log=log, batchsize=64, begin_learning_at_step=1000, 
+    test_env=test_env, test_agent=test_agent,
+    n_updates_per_model_refresh=32)
 async_trainer.learn(num_updates=10000)
 
 # interrupt async trainer with `ray stop` on commandline
