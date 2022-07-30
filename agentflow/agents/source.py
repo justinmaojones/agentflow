@@ -8,7 +8,7 @@ from agentflow.source import Source
 
 class AgentSource(Source, WithLogging):
     @abstractmethod
-    def act(self, state, mask=None, **kwargs):
+    def act(self, state, mask=None, explore=True, **kwargs):
         ...
 
     @abstractmethod

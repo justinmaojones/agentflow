@@ -71,7 +71,7 @@ from agentflow.train import Trainer
 @click.option("--update_freq", default=1, type=int)
 @click.option("--n_steps_per_eval", default=100, type=int)
 @click.option("--batchsize", default=64)
-@click.option("--savedir", default="results")
+@click.option("--savedir", default="results/cartpole_dqn_bootstrapped")
 @click.option("--seed", default=None, type=int)
 def run(**cfg):
 
@@ -153,7 +153,6 @@ def run(**cfg):
         ema_decay=cfg["ema_decay"],
         weight_decay=cfg["weight_decay"],
     )
-    test_agent = agent
 
     if cfg["noise"] == "eps_greedy":
         agent = EpsilonGreedy(agent, epsilon=cfg["noise_eps"])
@@ -209,7 +208,6 @@ def run(**cfg):
         replay_buffer=replay_buffer,
         batchsize=cfg["batchsize"],
         test_env=test_env,
-        test_agent=test_agent,
         log=log,
         begin_learning_at_step=cfg["begin_learning_at_step"],
         n_steps_per_eval=cfg["n_steps_per_eval"],

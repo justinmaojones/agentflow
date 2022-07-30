@@ -54,7 +54,6 @@ optimizer = tf.keras.optimizers.Adam(1e-4)
 agent = DQN(
     state_shape=[64], num_actions=2, q_fn=q_fn, 
     optimizer=optimizer, gamma=0.99, target_update_freq=16)
-test_agent = agent
 agent = EpsilonGreedy(agent, epsilon=0.5) # cartpole likes a lot of noise
 agent = CompletelyRandomDiscreteUntil(agent, num_steps=1000) # uniform random actions until num_steps
 ```
@@ -68,7 +67,7 @@ log = scoped_log_tf_summary("/tmp/agentflow/cartpole")
 trainer = Trainer(
     env, agent, replay_buffer, 
     log=log, batchsize=64, begin_learning_at_step=1000, 
-    test_env=test_env, test_agent=test_agent)
+    test_env=test_env)
 trainer.learn(num_steps=10000)
 ```
 
@@ -81,8 +80,7 @@ log = scoped_log_tf_summary("/tmp/agentflow/cartpole")
 async_trainer = AsyncTrainer(
     env, agent, replay_buffer, 
     log=log, batchsize=64, begin_learning_at_step=1000, 
-    test_env=test_env, test_agent=test_agent,
-    n_updates_per_model_refresh=32)
+    test_env=test_env, n_updates_per_model_refresh=32)
 async_trainer.learn(num_updates=10000)
 
 # interrupt async trainer with `ray stop` on commandline
