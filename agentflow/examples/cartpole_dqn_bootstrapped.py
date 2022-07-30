@@ -71,7 +71,7 @@ from agentflow.train import Trainer
 @click.option("--update_freq", default=1, type=int)
 @click.option("--n_steps_per_eval", default=100, type=int)
 @click.option("--batchsize", default=64)
-@click.option("--savedir", default="results")
+@click.option("--savedir", default="results/cartpole_dqn_bootstrapped")
 @click.option("--seed", default=None, type=int)
 def run(**cfg):
 
