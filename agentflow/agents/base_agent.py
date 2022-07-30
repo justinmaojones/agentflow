@@ -29,7 +29,7 @@ class BaseAgent(AgentSource):
     trainable_weights_target: List[tf.Variable] = None
     non_trainable_weights_target: List[tf.Variable] = None
 
-    auto_build: bool = False 
+    auto_build: bool = False
 
     _update_fn = None
     _act_fn = None
