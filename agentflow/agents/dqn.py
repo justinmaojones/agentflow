@@ -18,7 +18,7 @@ class DQN(BaseAgent, DiscreteActionAgentSource):
         optimizer,
         double_q: bool = False,
         loss_type: str = "huber",
-        auto_build: bool = True,
+        auto_build: bool = False,
         **kwargs,
     ):
         """Implements Deep Q Networks [1] with Tensorflow

@@ -38,6 +38,7 @@ class Trainer(WithLogging):
 
         self.env = env
         self.agent = agent
+        agent.build_model()
         self.replay_buffer = replay_buffer
 
         self.batchsize = batchsize

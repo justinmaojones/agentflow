@@ -80,7 +80,7 @@ log = scoped_log_tf_summary("/tmp/agentflow/cartpole")
 async_trainer = AsyncTrainer(
     env, agent, replay_buffer, 
     log=log, batchsize=64, begin_learning_at_step=1000, 
-    test_env=test_env, n_updates_per_model_refresh=32)
+    test_env=test_env, n_updates_per_model_refresh=8)
 async_trainer.learn(num_updates=10000)
 
 # interrupt async trainer with `ray stop` on commandline

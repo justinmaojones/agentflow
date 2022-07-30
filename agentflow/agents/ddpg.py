@@ -17,7 +17,7 @@ class DDPG(BaseAgent):
         dqda_clipping=None,
         clip_norm=False,
         policy_loss_weight=1.0,
-        auto_build: bool = True,
+        auto_build: bool = False,
         **kwargs,
     ):
         """Implements Deep Deterministic Policy Gradient with Tensorflow
@@ -40,6 +40,7 @@ class DDPG(BaseAgent):
           clip_norm: Whether to perform dqda clipping on the vector norm of the last
             dimension, or component wise (default).
           policy_loss_weight: coefficient applied to policy loss
+          auto_build: boolean, automatically build model on class instantiation
 
         References:
         [1] Barth-Maron, Gabriel, et al. "Distributed distributional deterministic
