@@ -13,7 +13,6 @@ from agentflow.env import EnvSource
 from agentflow.logging import ScopedLogsTFSummary
 from agentflow.logging import WithLogging
 from agentflow.tensorflow.profiler import TFProfiler
-from agentflow.train.dataset import split
 
 
 class Trainer(WithLogging):
@@ -106,7 +105,7 @@ class Trainer(WithLogging):
             sample_runner_generator,
             output_signature=output_signature
         )
-        dataset = split(dataset, self.batchsize)
+        dataset = dataset.flat_map(lambda x: tf.data.Dataset.from_tensor_slices(x)).batch(self.batchsize)
         dataset = dataset.prefetch(self.n_dataset_prefetches)
 
         self._dataset = iter(dataset)
