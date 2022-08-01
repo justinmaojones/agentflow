@@ -102,14 +102,14 @@ class Trainer(WithLogging):
                 yield self.replay_buffer.sample(self.batchsize * self.n_update_steps)
 
         dataset = tf.data.Dataset.from_generator(
-            sample_runner_generator,
-            output_signature=output_signature
+            sample_runner_generator, output_signature=output_signature
         )
-        dataset = dataset.flat_map(lambda x: tf.data.Dataset.from_tensor_slices(x)).batch(self.batchsize)
+        dataset = dataset.flat_map(
+            lambda x: tf.data.Dataset.from_tensor_slices(x)
+        ).batch(self.batchsize)
         dataset = dataset.prefetch(self.n_dataset_prefetches)
 
         self._dataset = iter(dataset)
-
 
     def set_step(self, t):
         self.t = t
@@ -178,7 +178,6 @@ class Trainer(WithLogging):
 
         self.set_step(self.t + 1)
         self.log.append("trainer/steps", self.t)
-
 
     def update_step(self):
 
