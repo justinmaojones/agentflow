@@ -13,6 +13,7 @@ from agentflow.env import EnvSource
 from agentflow.logging import ScopedLogsTFSummary
 from agentflow.logging import WithLogging
 from agentflow.tensorflow.profiler import TFProfiler
+from agentflow.train.dataset import split
 
 
 class Trainer(WithLogging):
@@ -34,7 +35,13 @@ class Trainer(WithLogging):
         max_frames: int = None,
         profiler_start_step: int = 100,
         profiler_stop_step: int = 200,
+        n_dataset_prefetches: int = 2,
+        inter_op_parallelism: int = 6,
+        intra_op_parallelism: int = 6,
     ):
+
+        tf.config.threading.set_inter_op_parallelism_threads(inter_op_parallelism)
+        tf.config.threading.set_intra_op_parallelism_threads(intra_op_parallelism)
 
         self.env = env
         self.agent = agent
@@ -76,6 +83,34 @@ class Trainer(WithLogging):
         self._profiler = TFProfiler(
             profiler_start_step, profiler_stop_step, self.log.savedir
         )
+
+        self._dataset = None
+        self.n_dataset_prefetches = n_dataset_prefetches
+
+    def _build_dataset_pipeline(self):
+
+        sample = self.replay_buffer.sample(self.batchsize * self.n_update_steps)
+
+        output_signature = {
+            k: tf.TensorSpec(shape=sample[k].shape, dtype=sample[k].dtype)
+            for k in sample
+        }
+
+        def sample_runner_generator():
+            while True:
+                for i in range(self.update_freq):
+                    self.run_step()
+                yield self.replay_buffer.sample(self.batchsize * self.n_update_steps)
+
+        dataset = tf.data.Dataset.from_generator(
+            sample_runner_generator,
+            output_signature=output_signature
+        )
+        dataset = split(dataset, self.batchsize)
+        dataset = dataset.prefetch(self.n_dataset_prefetches)
+
+        self._dataset = iter(dataset)
+
 
     def set_step(self, t):
         self.t = t
@@ -142,12 +177,20 @@ class Trainer(WithLogging):
         self._frame_counter += len(self._state)
         self.log.append("trainer/frames", self._frame_counter)
 
+        self.set_step(self.t + 1)
+        self.log.append("trainer/steps", self.t)
+
+
     def update_step(self):
+
+        if self._dataset is None:
+            self._build_dataset_pipeline()
+
         if self._start_update_time is None:
             self._start_update_time = time.time()
 
-        for i in range(self.n_update_steps):
-            sample = self.replay_buffer.sample(self.batchsize)
+        for _ in range(self.n_update_steps):
+            sample = next(self._dataset)
             update_outputs = self.agent.update(**sample)
             self._update_counter += 1
 
@@ -168,10 +211,7 @@ class Trainer(WithLogging):
 
     def train_step(self):
         with self._profiler():
-            self.run_step()
-            if self.t >= self.begin_learning_at_step:
-                if self.t % self.update_freq == 0:
-                    self.update_step()
-
-            self.set_step(self.t + 1)
-            self.log.append("trainer/steps", self.t)
+            if self.t < self.begin_learning_at_step:
+                self.run_step()
+            else:
+                self.update_step()
