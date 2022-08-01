@@ -116,9 +116,9 @@ There are many features available, here is a list of some of them
 * Logging to h5 as well as tensorboard
 
 ## To-Do
-* Add tf.data pipeline to `Trainer` for performance optimization
 * A recent refactor removed ability to update priorities for Prioritized Experience Replay...need to fix that
 * Migrate chain examples to trainre and cleanup chain env
 * Add more explicitly defined target updaters decoupled from agent classes
 * Configuration is a bit messy, should clean that up
 * Publish to pypi
+
