@@ -138,9 +138,11 @@ There are many features available, here is a list of some of them
 * Add docstrings
 * A recent refactor removed ability to update priorities for Prioritized Experience Replay...need to fix that
 * Migrate chain examples to trainer and cleanup chain env
+* Migrate pendulum to trainer and create a random gaussian action agent flow
 * Add more explicitly defined target updaters decoupled from agent classes
 * Configuration is a bit messy, cleanup with dataclasses or pydantic 
 * Publish to pypi
+* Add more tests for agents and envs
 
 ## References
 [1] Brockman, Greg, et al. "Openai gym." arXiv preprint arXiv:1606.01540 (2016).
