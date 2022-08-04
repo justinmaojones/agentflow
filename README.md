@@ -118,8 +118,7 @@ There are many features available, here is a list of some of them
     * Image compression buffers
     * Bootstrapping mask buffer (for Bootstrapped DQN)
     * N-step return buffers
-    * And more...
-* Agents supported
+* Agents
     * DDPG [8]
     * DQN [2]
     * Double-Q Learning [3]
