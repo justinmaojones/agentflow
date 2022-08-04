@@ -3,9 +3,11 @@
 
 # AgentFlow
 
-An RL framework inspired by the composability of TensorFlow.  Primarily written for fun and learning.
+An RL library inspired by the composability of TensorFlow.  Primarily written for fun, curiosity, and learning.
 
 ## Installation
+
+It's recommended to install into a [virtualenv](https://docs.python.org/3/tutorial/venv.html)
 
 ```
 git clone git@github.com:justinmaojones/agentflow.git
@@ -128,6 +130,7 @@ There are many features available, here is a list of some of them
 * Logging to h5 as well as tensorboard
 
 ## To-Do
+* Add docstrings
 * A recent refactor removed ability to update priorities for Prioritized Experience Replay...need to fix that
 * Migrate chain examples to trainer and cleanup chain env
 * Add more explicitly defined target updaters decoupled from agent classes
@@ -136,19 +139,27 @@ There are many features available, here is a list of some of them
 
 ## References
 [1] Brockman, Greg, et al. "Openai gym." arXiv preprint arXiv:1606.01540 (2016).
+
 [2] Mnih, Volodymyr, et al. "Playing atari with deep reinforcement learning."
     arXiv preprint arXiv:1312.5602 (2013).
+
 [3] Van Hasselt, Hado, Arthur Guez, and David Silver. "Deep reinforcement learning
     with double q-learning." arXiv preprint arXiv:1509.06461 (2015).
+
 [4] Osband, Ian, et al. "Deep exploration via bootstrapped DQN." Advances in neural
     information processing systems. 2016.
+
 [5] Osband, Ian, John Aslanides, and Albin Cassirer. "Randomized prior functions for
     deep reinforcement learning." Advances in Neural Information Processing Systems. 2018.
+
 [6] Wang, Ziyu, et al. "Dueling network architectures for deep reinforcement learning." 
     International conference on machine learning. PMLR, 2016.
+
 [7] Schaul, Tom, et al. "Prioritized experience replay." 
     arXiv preprint arXiv:1511.05952 (2015).
+
 [8] Lillicrap, Timothy P., et al. "Continuous control with deep reinforcement learning." 
     arXiv preprint arXiv:1509.02971 (2015).
+
 [9] Burda, Yuri, et al. "Exploration by random network distillation." 
     arXiv preprint arXiv:1810.12894 (2018).
