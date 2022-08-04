@@ -95,7 +95,7 @@ tensorboard --logdir /tmp/agentflow/cartpole
 
 ## More Examples
 
-Check out [agentflow/examples](https://github.com/justinmaojones/agentflow/tree/master/agentflow/examples) and corresponding run scripts at [scripts/examples](https://github.com/justinmaojones/agentflow/tree/master/scripts/examples).
+Check out [agentflow/examples](https://github.com/justinmaojones/agentflow/tree/master/agentflow/examples) and corresponding run scripts at [scripts/examples](https://github.com/justinmaojones/agentflow/tree/master/scripts/examples). Pong trains in 3 hours on my Macbook Pro.
 
 ## Supported Features
 
