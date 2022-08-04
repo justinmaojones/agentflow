@@ -7,7 +7,7 @@ An RL library inspired by the composability of TensorFlow.  Primarily written fo
 
 ## Installation
 
-It's recommended to install into a [virtualenv](https://docs.python.org/3/tutorial/venv.html)
+Only Python 3.7, 3.8, and 3.9 are supported.  It's recommended to install into a [virtualenv](https://docs.python.org/3/tutorial/venv.html).
 
 ```
 git clone git@github.com:justinmaojones/agentflow.git
