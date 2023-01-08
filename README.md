@@ -3,7 +3,7 @@
 
 # AgentFlow
 
-An RL library inspired by the composability of modern deep learning libraries like Tensorflow, Theano, and PyTorch.  Primarily written for fun, curiosity, and learning.  Includes async trainers built on the excellent [Ray](https://github.com/ray-project/ray) library.
+An RL library inspired by the composability of modern deep learning libraries like Tensorflow, Theano, and PyTorch.  Primarily written for fun, curiosity, and learning.  Includes async trainers built on the excellent [Ray](https://github.com/ray-project/ray) library that can train Pong in 3 hours on the CPU on my laptop.
 
 ## Installation
 
@@ -170,3 +170,5 @@ There are many features available, here is a list of some of them
 
 [9] Burda, Yuri, et al. "Exploration by random network distillation." 
     arXiv preprint arXiv:1810.12894 (2018).
+    
+[10] Moritz, Philipp, et al. "Ray: A distributed framework for emerging {AI} applications." 13th USENIX Symposium on Operating Systems Design and   Implementation (OSDI 18). 2018.
