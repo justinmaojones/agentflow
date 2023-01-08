@@ -131,7 +131,7 @@ There are many features available, here is a list of some of them
     * Epsilon greedy agents
 * Training
     * Synchronous Trainer
-    * Asynchronous Trainer using the excellent [Ray](https://github.com/ray-project/ray) library 
+    * Asynchronous Trainer using the excellent [Ray](https://github.com/ray-project/ray) library [10]
 * Logging to h5 as well as tensorboard
 
 ## To-Do
