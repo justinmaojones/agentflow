@@ -3,7 +3,7 @@
 
 # AgentFlow
 
-An RL library inspired by the composability of TensorFlow.  Primarily written for fun, curiosity, and learning.
+An RL library inspired by the composability of modern deep learning libraries like Tensorflow, Theano, and PyTorch.  Primarily written for fun, curiosity, and learning.  Includes async trainers built on the excellent [Ray](https://github.com/ray-project/ray) library.
 
 ## Installation
 
@@ -73,7 +73,7 @@ trainer = Trainer(
 trainer.learn(num_steps=10000)
 ```
 
-or an AsyncTrainer 
+or an AsyncTrainer (using the excellent [Ray](https://github.com/ray-project/ray) library) 
 ```python
 from agentflow.train import AsyncTrainer
 from agentflow.logging import scoped_log_tf_summary
