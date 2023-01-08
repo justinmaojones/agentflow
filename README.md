@@ -3,7 +3,7 @@
 
 # AgentFlow
 
-An RL library inspired by the composability of modern deep learning libraries like Tensorflow, Theano, and PyTorch.  Primarily written for fun, curiosity, and learning.  Includes async trainers built on [Ray](https://github.com/ray-project/ray) that can train Pong in 3 hours on the CPU on my laptop.
+An RL library inspired by the composability of modern deep learning libraries like Tensorflow, Theano, and PyTorch.  Primarily written for fun, curiosity, and learning.  Includes async trainers built on [Ray](https://github.com/ray-project/ray) that can train a DQN agent to master Pong in 3 hours on the CPU on my laptop.
 
 ## Installation
 
